@@ -1,0 +1,29 @@
+Press any key to begin sending sync pulses!
+ Audio acquire process STARTED
+Process AudioAcquirer-2:
+Traceback (most recent call last):
+  File "C:\Users\Brian Kardon\AppData\Local\Programs\Python\Python37-32\lib\multiprocessing\process.py", line 297, in _bootstrap
+    self.run()
+  File "C:\Users\Brian Kardon\Dropbox\Documents\Work\Cornell Lab Tech\Projects\Video VI\PyVAQ\nidaqmx_test.py", line 113, in run
+    timeout=10.0)
+  File "C:\Users\Brian Kardon\AppData\Local\Programs\Python\Python37-32\lib\site-packages\nidaqmx\stream_readers.py", line 218, in read_many_sample
+    self._verify_array(data, number_of_samples_per_channel, False, True)
+  File "C:\Users\Brian Kardon\AppData\Local\Programs\Python\Python37-32\lib\site-packages\nidaqmx\stream_readers.py", line 78, in _verify_array
+    channels_to_read = self._in_stream.channels_to_read
+  File "C:\Users\Brian Kardon\AppData\Local\Programs\Python\Python37-32\lib\site-packages\nidaqmx\_task_modules\in_stream.py", line 223, in channels_to_read
+    check_for_error(size_or_code)
+  File "C:\Users\Brian Kardon\AppData\Local\Programs\Python\Python37-32\lib\site-packages\nidaqmx\errors.py", line 127, in check_for_error
+    raise DaqError(error_buffer.value.decode("utf-8"), error_code)
+nidaqmx.errors.DaqError: Source terminal to be routed could not be found on the device.
+
+Make sure the terminal name is valid for the specified device. Refer to Measurement & Automation Explorer for valid terminal names.
+Property: DAQmx_SampClk_Src
+Property: DAQmx_SampClk_ActiveEdge
+Source Device: Dev3
+Source Terminal: Dev3/ctr0
+
+Task Name: _unnamedTask<0>
+
+Status Code: -89120
+
+Synchronization process STARTED
