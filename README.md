@@ -1,1 +1,1 @@
-"# PyVAQ" 
+# PyVAQ
