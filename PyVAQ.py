@@ -12,7 +12,11 @@ import numpy as np
 import multiprocessing as mp
 import nidaqmx
 from nidaqmx.stream_readers import AnalogMultiChannelReader
-import PySpin
+try:
+    import PySpin
+except ModuleNotFoundError:
+    # pip seems to install PySpin as pyspin sometimes...
+    import pyspin as PySpin
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter.filedialog import askdirectory, asksaveasfilename, askopenfilename
