@@ -3394,18 +3394,21 @@ def getOptimalMonitorGrid(numCameras):
     return sorted([bestDivisor, int(numCameras/bestDivisor)], key=lambda x:-x)
 
 def checkCameraSpeed(camSerial):
-    system = PySpin.System.GetInstance()
-    camList = system.GetCameras()
-    cam = camList.GetBySerial(camSerial)
-    cam.Init()
-    cameraSpeedValue, cameraSpeed = getCameraAttribute(cam.GetTLDeviceNodeMap(), 'DeviceCurrentSpeed', PySpin.CEnumerationPtr)
-    cameraBaudValue, cameraBaud =   getCameraAttribute(cam.GetNodeMap(), 'SerialPortBaudRate', PySpin.CEnumerationPtr)
-    cameraSpeed = cameraSpeed + ' ' + cameraBaud
-    cam.DeInit()
-    del cam
-    camList.Clear()
-    system.ReleaseInstance()
-    return cameraSpeed
+    try:
+        system = PySpin.System.GetInstance()
+        camList = system.GetCameras()
+        cam = camList.GetBySerial(camSerial)
+        cam.Init()
+        cameraSpeedValue, cameraSpeed = getCameraAttribute(cam.GetTLDeviceNodeMap(), 'DeviceCurrentSpeed', PySpin.CEnumerationPtr)
+        cameraBaudValue, cameraBaud =   getCameraAttribute(cam.GetNodeMap(), 'SerialPortBaudRate', PySpin.CEnumerationPtr)
+        cameraSpeed = cameraSpeed + ' ' + cameraBaud
+        cam.DeInit()
+        del cam
+        camList.Clear()
+        system.ReleaseInstance()
+        return cameraSpeed
+    except:
+        return "Unknown speed"
 
 def flattenList(l):
     return [item for sublist in l for item in sublist]
