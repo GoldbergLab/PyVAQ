@@ -12,6 +12,7 @@ import numpy as np
 import multiprocessing as mp
 import nidaqmx
 from nidaqmx.stream_readers import AnalogMultiChannelReader
+import nidaqmx.system as nisys
 try:
     import PySpin
 except ModuleNotFoundError:
@@ -31,6 +32,7 @@ from threading import BrokenBarrierError
 import itertools
 from decimal import Decimal
 from TimeInput import TimeVar, TimeEntry
+from ParamDialog import ParamDialog, Param
 import cProfile, pstats, io
 from scipy.signal import butter, lfilter
 # For audio monitor graph embedding:
@@ -43,16 +45,16 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.lines import Line2D
 
-VERSION='0.1.0'
+VERSION='0.2.0'
 
 # Todo:
-#  - Add help dialog that includes version
 #  - Add video frameRate indicator
 #  - Make attributes settable
 #  - Add filename entry for each stream
 #  - Make saved avis not gigantic (maybe switch to opencv for video writing?)
 #  - Add external record triggering
 # Done
+#  - Add help dialog that includes version
 #  - Fix acquire/write indicator positioing
 #  - Add volume-based triggering
 #  - Camera commands are not being collected properly
@@ -527,6 +529,20 @@ def generateFileName(directory, baseName, extension, trigger):
     fileName = baseName + '_' + timeString + extension
     return os.path.join(directory, fileName)
 
+def discoverDAQAudioChannels():
+    s = nisys.System.local()
+    channels = {}
+    for d in s.devices:
+        channels[d.name] = [c.name for c in d.ai_physical_chans]
+    return channels
+
+def discoverDAQClockChannels():
+    s = nisys.System.local()
+    channels = {}
+    for d in s.devices:
+        channels[d.name] = [c.name for c in d.co_physical_chans]
+    return channels
+
 def discoverCameras(numFakeCameras=0):
     system = PySpin.System.GetInstance()
     camList = system.GetCameras()
@@ -709,7 +725,7 @@ class AVMerger(mp.Process):
                     elif msg == AVMerger.START:
                         self.ignoreFlag = False
                         nextState = AVMerger.WAITING
-                    elif msg == '':
+                    elif msg in '':
                         nextState = AVMerger.WAITING
                     elif msg == AVMerger.STOP:
                         nextState = AVMerger.STOPPING
@@ -813,7 +829,7 @@ class AVMerger(mp.Process):
                     elif len(groupedFileEventList) > 0:
                         # At least one group of unmerged matching files - go to merge
                         nextState = AVMerger.MERGING
-                    elif msg == '' or msg == AVMerger.START:
+                    elif msg in ['', AVMerger.START]:
                         nextState = AVMerger.WAITING
                     elif msg == AVMerger.STOP:
                         nextState = AVMerger.STOPPING
@@ -899,7 +915,7 @@ class AVMerger(mp.Process):
                         if arg is not None:
                             receivedFileEventList.append(arg)
                         nextState = AVMerger.WAITING
-                    elif msg == '' or msg == AVMerger.START:
+                    elif msg in ['', AVMerger.START]:
                         nextState = AVMerger.WAITING
                     elif msg == AVMerger.CHILL:
                         self.ignoreFlag = True
@@ -926,6 +942,8 @@ class AVMerger(mp.Process):
                         nextState = AVMerger.STOPPED
                     elif msg == '':
                         nextState = AVMerger.STOPPED
+                    elif msg == AVMerger.START:
+                        nextState = AVMerger.INITIALIZING
                     elif msg == AVMerger.STOP:
                         nextState = AVMerger.STOPPED
                     elif msg == AVMerger.EXIT:
@@ -1119,7 +1137,7 @@ class Synchronizer(mp.Process):
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         nextState = Synchronizer.STOPPING
-                    elif msg == '':
+                    elif msg in ['', Synchronizer.START]:
                         nextState = Synchronizer.SYNC_READY
                     elif msg == Synchronizer.STOP:
                         nextState = Synchronizer.STOPPING
@@ -1147,7 +1165,7 @@ class Synchronizer(mp.Process):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if msg == '':
+                    if msg in ['', Synchronizer.START]:
                         nextState = Synchronizer.SYNCHRONIZING
                     elif msg == Synchronizer.STOP:
                         nextState = Synchronizer.STOPPING
@@ -1168,7 +1186,7 @@ class Synchronizer(mp.Process):
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         nextState = Synchronizer.STOPPING
-                    elif msg == '':
+                    elif msg in ['', Synchronizer.START]:
                         nextState = state
                     elif msg == Synchronizer.STOP:
                         nextState = Synchronizer.STOPPING
@@ -1191,6 +1209,8 @@ class Synchronizer(mp.Process):
                         nextState = Synchronizer.STOPPED
                     elif msg == '':
                         nextState = Synchronizer.STOPPED
+                    elif msg == Synchronizer.START:
+                        nextState = Synchronizer.INITIALIZING
                     elif msg == Synchronizer.STOP:
                         nextState = Synchronizer.STOPPED
                     elif msg == Synchronizer.EXIT:
@@ -1464,7 +1484,7 @@ class AudioTriggerer(mp.Process):
                         nextState = AudioTriggerer.STOPPING
                     elif msg == AudioTriggerer.STOP:
                         nextState = AudioTriggerer.STOPPING
-                    elif msg == '' or msg == AudioTriggerer.STOPANALYZE:
+                    elif msg in ['', AudioTriggerer.START, AudioTriggerer.STOPANALYZE]:
                         nextState = AudioTriggerer.WAITING
                     elif msg == AudioTriggerer.STARTANALYZE or self.analyzeFlag:
                         nextState = AudioTriggerer.ANALYZING
@@ -1645,6 +1665,8 @@ class AudioTriggerer(mp.Process):
                     elif msg == AudioTriggerer.EXIT:
                         self.exitFlag = True
                         nextState = AudioTriggerer.STOPPED
+                    elif msg == AudioTriggerer.START:
+                        nextState = AudioTriggerer.INITIALIZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + state + " state")
 # ********************************* ERROR *********************************
@@ -1863,7 +1885,7 @@ class AudioAcquirer(mp.Process):
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         nextState = AudioAcquirer.STOPPING
-                    elif msg == '':
+                    elif msg in ['', AudioAcquirer.START]:
                         nextState = AudioAcquirer.ACQUIRE_READY
                     elif msg == AudioAcquirer.STOP:
                         nextState = AudioAcquirer.STOPPING
@@ -1890,7 +1912,7 @@ class AudioAcquirer(mp.Process):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if msg == '':
+                    if msg in ['', AudioAcquirer.START]:
                         nextState = AudioAcquirer.ACQUIRING
                     elif msg == AudioAcquirer.STOP:
                         nextState = AudioAcquirer.STOPPING
@@ -1926,7 +1948,7 @@ class AudioAcquirer(mp.Process):
                             if self.verbose: syncPrint(processedData, buffer=self.stdoutBuffer)
 
                         if self.audioMonitorQueue is not None:
-                            self.audioMonitorQueue.put((self.inputChannels, data))      # If a monitoring queue is provided, queue up the data
+                            self.audioMonitorQueue.put((self.inputChannels, chunkStartTime, data))      # If a monitoring queue is provided, queue up the data
                         if self.audioAnalysisQueue is not None:
                             self.audioAnalysisQueue.put((chunkStartTime, data))
                     except nidaqmx.errors.DaqError:
@@ -1940,7 +1962,7 @@ class AudioAcquirer(mp.Process):
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         nextState = AudioAcquirer.STOPPING
-                    elif msg == '':
+                    elif msg in ['', AudioAcquirer.START]:
                         nextState = AudioAcquirer.ACQUIRING
                     elif msg == AudioAcquirer.STOP:
                         nextState = AudioAcquirer.STOPPING
@@ -1969,6 +1991,8 @@ class AudioAcquirer(mp.Process):
                     elif msg == AudioAcquirer.EXIT:
                         self.exitFlag = True
                         nextState = AudioAcquirer.STOPPED
+                    elif msg == AudioAcquirer.START:
+                        nextState = AudioAcquirer.INITIALIZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + state + " state")
 # ********************************* ERROR *********************************
@@ -2156,7 +2180,7 @@ class AudioWriter(mp.Process):
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         nextState = AudioWriter.STOPPING
-                    elif msg == '':
+                    elif msg in ['', AudioWriter.START]:
                         nextState = AudioWriter.BUFFERING
                     elif msg == AudioWriter.STOP:
                         nextState = AudioWriter.STOPPING
@@ -2229,7 +2253,7 @@ class AudioWriter(mp.Process):
                             # No audio chunks have been received yet, can't evaluate if trigger time has begun yet
                             if self.verbose: syncPrint("AW - No audio chunks yet, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen), buffer=self.stdoutBuffer)
                             nextState = AudioWriter.BUFFERING
-                    elif msg == '':
+                    elif msg in ['', AudioWriter.START]:
                         nextState = AudioWriter.BUFFERING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + state + " state")
@@ -2290,33 +2314,33 @@ class AudioWriter(mp.Process):
                     elif msg == AudioWriter.EXIT:
                         self.exitFlag = True
                         nextState = AudioWriter.STOPPING
-                    elif len(triggers) > 0 and audioChunk is not None:
-                        chunkStartTriggerState, chunkEndTriggerState = audioChunk.getTriggerState(triggers[0])
-                        if chunkStartTriggerState * chunkEndTriggerState > 0:
-                            # Trigger period does not overlap the chunk at all - return to buffering
-                            if self.verbose: syncPrint("AW - Audio chunk does not overlap trigger. Switching to buffering.", buffer=self.stdoutBuffer)
-                            nextState = AudioWriter.BUFFERING
-                            if audioFile is not None:
-                                # Done with trigger, close file and clear audioFile
-                                audioFile.writeframes(b'')  # Recompute header info?
-                                audioFile.close()
-                                if self.mergeMessageQueue is not None:
-                                    # Send file for AV merging:
-                                    fileEvent = dict(
-                                        filePath=audioFile.audioFileName,
-                                        streamType=AVMerger.AUDIO,
-                                        trigger=triggers[0],
-                                        streamID='audio'
-                                    )
-                                    self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
-                                audioFile = None
-                            # Remove current trigger
-                            triggers.pop(0)
-                        else:
-                            # Audio chunk does overlap with trigger period. Continue writing.
-                            nextState = AudioWriter.WRITING
-                    elif msg == '':
-                        nextState = state
+                    elif msg in ['', AudioWriter.START]:
+                        nextState = AudioWriter.WRITING
+                        if len(triggers) > 0 and audioChunk is not None:
+                            chunkStartTriggerState, chunkEndTriggerState = audioChunk.getTriggerState(triggers[0])
+                            if chunkStartTriggerState * chunkEndTriggerState > 0:
+                                # Trigger period does not overlap the chunk at all - return to buffering
+                                if self.verbose: syncPrint("AW - Audio chunk does not overlap trigger. Switching to buffering.", buffer=self.stdoutBuffer)
+                                nextState = AudioWriter.BUFFERING
+                                if audioFile is not None:
+                                    # Done with trigger, close file and clear audioFile
+                                    audioFile.writeframes(b'')  # Recompute header info?
+                                    audioFile.close()
+                                    if self.mergeMessageQueue is not None:
+                                        # Send file for AV merging:
+                                        fileEvent = dict(
+                                            filePath=audioFile.audioFileName,
+                                            streamType=AVMerger.AUDIO,
+                                            trigger=triggers[0],
+                                            streamID='audio'
+                                        )
+                                        self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                                    audioFile = None
+                                # Remove current trigger
+                                triggers.pop(0)
+                            else:
+                                # Audio chunk does overlap with trigger period. Continue writing.
+                                pass
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + state + " state")
 # ********************************* STOPPING *********************************
@@ -2353,6 +2377,8 @@ class AudioWriter(mp.Process):
                     elif msg == AudioWriter.EXIT:
                         self.exitFlag = True
                         nextState = AudioWriter.STOPPED
+                    elif msg == AudioWriter.START:
+                        nextState = AudioWriter.INITIALIZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + state + " state")
 # ********************************* ERROR *********************************
@@ -2549,7 +2575,7 @@ class VideoAcquirer(mp.Process):
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         nextState = VideoAcquirer.STOPPING
-                    elif msg == '':
+                    elif msg in ['', VideoAcquirer.START]:
                         nextState = VideoAcquirer.ACQUIRE_READY
                     elif msg == VideoAcquirer.STOP:
                         nextState = VideoAcquirer.STOPPING
@@ -2577,7 +2603,7 @@ class VideoAcquirer(mp.Process):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if msg == '':
+                    if msg in ['', VideoAcquirer.START]:
                         nextState = VideoAcquirer.ACQUIRING
                     elif msg == VideoAcquirer.STOP:
                         nextState = VideoAcquirer.STOPPING
@@ -2645,7 +2671,7 @@ class VideoAcquirer(mp.Process):
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         nextState = VideoAcquirer.STOPPING
-                    elif msg == '':
+                    elif msg in ['', VideoAcquirer.START]:
                         nextState = VideoAcquirer.ACQUIRING
                     elif msg == VideoAcquirer.STOP:
                         nextState = VideoAcquirer.STOPPING
@@ -2680,6 +2706,8 @@ class VideoAcquirer(mp.Process):
                     elif msg == VideoAcquirer.EXIT:
                         self.exitFlag = True
                         nextState = VideoAcquirer.STOPPED
+                    elif msg == VideoAcquirer.START:
+                        nextState = VideoAcquirer.INITIALIZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + state + " state")
 # ********************************* ERROR *********************************
@@ -2897,7 +2925,7 @@ class VideoWriter(mp.Process):
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         nextState = VideoWriter.STOPPING
-                    elif msg == '':
+                    elif msg in ['', VideoWriter.START]:
                         nextState = VideoWriter.BUFFERING
                     elif msg == VideoWriter.STOP:
                         nextState = VideoWriter.STOPPING
@@ -2962,7 +2990,7 @@ class VideoWriter(mp.Process):
                             if self.verbose: syncPrint(self.ID + " - No frames yet, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen), buffer=self.stdoutBuffer)
                             nextState = VideoWriter.BUFFERING
 
-                    elif msg == '':
+                    elif msg in ['', VideoWriter.START]:
                         nextState = VideoWriter.BUFFERING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + state + " state")
@@ -3032,33 +3060,33 @@ class VideoWriter(mp.Process):
                     elif msg == VideoWriter.EXIT:
                         self.exitFlag = True
                         nextState = VideoWriter.STOPPING
-                    elif len(triggers) > 0 and imp is not None:
-                        triggerState = triggers[0].state(imp.frameTime)
-                        if triggerState != 0:
-                            # Frame is not in trigger period - return to buffering
-                            if self.verbose: syncPrint(self.ID + " - Frame does not overlap trigger. Switching to buffering.", buffer=self.stdoutBuffer)
-                            nextState = VideoWriter.BUFFERING
-                            # Remove current trigger
-                            if aviRecorder is not None:
-                                # Done with trigger, close file and clear video file
-                                aviRecorder.Close()
-                                if self.mergeMessageQueue is not None:
-                                    # Send file for AV merging:
-                                    fileEvent = dict(
-                                        filePath=aviRecorder.videoFileName,
-                                        streamType=AVMerger.VIDEO,
-                                        trigger=triggers[0],
-                                        streamID=self.camSerial
-                                    )
-                                    if self.verbose: syncPrint(self.ID + " - Sending video filename to merger", buffer=self.stdoutBuffer)
-                                    self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
-                                aviRecorder = None
-                            triggers.pop(0)
-                        else:
-                            # Frame is in trigger period - continue writing
-                            nextState = VideoWriter.WRITING
-                    elif msg == '':
-                        nextState = state
+                    elif msg in ['', VideoWriter.START]:
+                        nextState = VideoWriter.WRITING
+                        if len(triggers) > 0 and imp is not None:
+                            triggerState = triggers[0].state(imp.frameTime)
+                            if triggerState != 0:
+                                # Frame is not in trigger period - return to buffering
+                                if self.verbose: syncPrint(self.ID + " - Frame does not overlap trigger. Switching to buffering.", buffer=self.stdoutBuffer)
+                                nextState = VideoWriter.BUFFERING
+                                # Remove current trigger
+                                if aviRecorder is not None:
+                                    # Done with trigger, close file and clear video file
+                                    aviRecorder.Close()
+                                    if self.mergeMessageQueue is not None:
+                                        # Send file for AV merging:
+                                        fileEvent = dict(
+                                            filePath=aviRecorder.videoFileName,
+                                            streamType=AVMerger.VIDEO,
+                                            trigger=triggers[0],
+                                            streamID=self.camSerial
+                                        )
+                                        if self.verbose: syncPrint(self.ID + " - Sending video filename to merger", buffer=self.stdoutBuffer)
+                                        self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                                    aviRecorder = None
+                                triggers.pop(0)
+                            else:
+                                # Frame is in trigger period - continue writing
+                                pass
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + state + " state")
                     if self.verbose > 1: profiler.disable()
@@ -3095,6 +3123,8 @@ class VideoWriter(mp.Process):
                     elif msg == VideoWriter.EXIT:
                         self.exitFlag = True
                         nextState = VideoWriter.STOPPED
+                    elif msg == VideoWriter.START:
+                        nextState = VideoWriter.INITIALIZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + state + " state")
 # ********************************* ERROR *********************************
@@ -3377,6 +3407,9 @@ def checkCameraSpeed(camSerial):
     system.ReleaseInstance()
     return cameraSpeed
 
+def flattenList(l):
+    return [item for sublist in l for item in sublist]
+
 class PyVAQ:
     lineStyles = [c+'-' for c in 'bgrcmyk']
     def __init__(self, master):
@@ -3409,21 +3442,15 @@ class PyVAQ:
         self.style.configure('ValidDirectory.TEntry', fieldbackground=self.colors[2])
         self.style.configure('InvalidDirectory.TEntry', fieldbackground=self.colors[3])
 #        self.style.map('Directory.TEntry.label', background=[(('!invalid',), 'green'),(('invalid',), 'red')])
-        self.cameraAttributes = {}
-        self.camSerials = discoverCameras()
-        self.cameraSpeeds = dict([(camSerial, checkCameraSpeed(camSerial)) for camSerial in self.camSerials])
-        # self.updateAllCamerasAttributes()
-        # with open('attributes.txt', 'w') as f:
-        #     pp = pprint.PrettyPrinter(stream=f, indent=2)
-        #     pp.pprint(self.cameraAttributes)
 
-        self.audioDAQChannels = ['Dev3/ai5']
+        self.chunkSize = 1000
+
+        self.audioDAQChannels = []
+
         self.audioSyncSource = 'PFI4'
         self.audioSyncTerminal = 'Dev3/ctr0'
         self.videoSyncSource = 'PFI5'
         self.videoSyncTerminal = 'Dev3/ctr1'
-
-        self.chunkSize = 1000
 
         ########### GUI WIDGETS #####################
         self.settings = []  # A list of StringVar/IntVar/etc that are settings to save/restore
@@ -3434,29 +3461,21 @@ class PyVAQ:
         self.closeButton = ttk.Button(self.titleBarFrame, text="X", command=self.cleanupAndExit)
 
         self.monitorFrame = ttk.Frame(self.mainFrame)
-
         self.videoMonitorMasterFrame = ttk.Frame(self.monitorFrame)
+        self.canvasSize = (300, 300)
+        self.audioMonitorSampleSize = 44100*2
+        self.audioMonitorMasterFrame = ttk.Frame(self.monitorFrame)
+
+        self.audioMonitorWidgets = {}
+        self.audioMonitorFrames = {}
+        self.cameraAttributes = {}
         self.videoMonitorFrames = {}
         self.videoMonitors = {}
         self.imageIDs = {}
         self.currentImages = {}
         self.cameraAttributeBrowserButtons = {}
-        self.canvasSize = (300, 300)
-        for camSerial in self.camSerials:
-            self.videoMonitorFrames[camSerial] = vFrame = ttk.LabelFrame(self.videoMonitorMasterFrame, text="{serial} ({speed})".format(serial=camSerial, speed=self.cameraSpeeds[camSerial]))
-            self.videoMonitors[camSerial] = tk.Canvas(vFrame, width=self.canvasSize[0], height=self.canvasSize[1], borderwidth=2, relief=tk.SUNKEN)
-            self.imageIDs[camSerial] = None
-            self.currentImages[camSerial] = None
-            self.cameraAttributeBrowserButtons[camSerial] = ttk.Button(vFrame, text="Attribute browser", command=lambda:self.createCameraAttributeBrowser(camSerial))
 
-        # Audio stream monitoring widgets
-        self.audioMonitorSampleSize = 44100*2
-        self.audioMonitorWidgets = {}
-        self.audioMonitorMasterFrame = ttk.Frame(self.monitorFrame)
-        self.audioMonitorFrames = {}
-        for k, channel in enumerate(self.audioDAQChannels):
-            self.audioMonitorFrames[channel] = aFrame = ttk.LabelFrame(self.audioMonitorMasterFrame, text=channel)
-            self.createAudioMonitor(channel, k)
+        self.camSerials = []
 
         self.controlFrame = ttk.Frame(self.mainFrame)
 
@@ -3492,6 +3511,8 @@ class PyVAQ:
         self.directoryEntry =       ttk.Entry(self.directoryFrame, width=48, textvariable=self.directoryVar, style='ValidDirectory.TEntry')
         self.directoryButton =      ttk.Button(self.directoryFrame, text="Select write directory", command=self.selectWriteDirectory)
         self.directoryEntry.bind('<FocusOut>', self.directoryChangeHandler)
+
+        self.updateInputsButton =   ttk.Button(self.acquisitionFrame, text="Select audio/video inputs", command=self.selectInputs)
 
         self.mergeFrame = ttk.LabelFrame(self.acquisitionFrame, text="AV File merging")
 
@@ -3584,6 +3605,8 @@ class PyVAQ:
         self.loadDefaultSettingsButton = ttk.Button(self.settingsFrame, text="Load defaults", command=lambda *args: self.loadSettings(path='default.pvs'))
         self.helpButton = ttk.Button(self.settingsFrame, text="Help", command=self.showHelpDialog)
 
+        self.setupInputMonitoringWidgets(camSerials=self.camSerials, audioDAQChannels=self.audioDAQChannels)
+
         ########### Child process objects #####################
 
         # Monitoring queues for collecting qudio and video data for user monitoring purposes
@@ -3592,7 +3615,7 @@ class PyVAQ:
         self.audioAnalysisQueue = None
         self.mergeMessageQueue = None
         self.monitorFrameRate = 15
-        self.audioMonitorData = np.zeros((len(self.audioDAQChannels), self.audioMonitorSampleSize))
+        self.audioMonitorData = None    #np.zeros((len(self.audioDAQChannels), self.audioMonitorSampleSize))
         self.stdoutQueue = None
         self.audioAnalysisMonitorQueue = None
 
@@ -3610,6 +3633,7 @@ class PyVAQ:
         self.videoAcquireProcesses = {}
         self.audioWriteProcess = None
         self.audioAcquireProcess = None
+        self.audioTriggerProcess = None
         self.syncProcess = None
         self.mergeProcess = None
         self.StdoutManager = None
@@ -3635,13 +3659,14 @@ class PyVAQ:
 
         self.update()
 
-        self.createChildProcesses()
+#        self.createChildProcesses()
 #        self.startChildProcesses()
 
         # Start automatic updating of video and audio monitors
         self.audioMonitorUpdateJob = None
         self.videoMonitorUpdateJob = None
         self.audioAnalysisMonitorUpdateJob = None
+        self.triggerIndicatorUpdateJob = None
         self.autoUpdateVideoMonitors()
         self.autoUpdateAudioMonitors()
         if self.triggerModeVar.get() == "Audio":
@@ -3658,12 +3683,7 @@ class PyVAQ:
 
     def cleanupAndExit(self):
         # Cancel automatic update jobs
-        if self.audioMonitorUpdateJob is not None:
-            self.master.after_cancel(self.audioMonitorUpdateJob)
-        if self.videoMonitorUpdateJob is not None:
-            self.master.after_cancel(self.videoMonitorUpdateJob)
-        if self.audioAnalysisMonitorUpdateJob is not None:
-            self.master.after_cancel(self.audioAnalysisMonitorUpdateJob)
+        self.stopMonitors()
         print("Stopping acquisition")
         self.stopChildProcesses()
         print("Destroying master")
@@ -3679,6 +3699,107 @@ him know. Otherwise, I had nothing to do with it.
 '''.format(version=VERSION)
 
         showinfo('PyVAQ help', msg)
+
+    def selectInputs(self, *args):
+
+        availableAudioChannels = flattenList(discoverDAQAudioChannels().values())
+        availableClockChannels = flattenList(discoverDAQClockChannels().values())
+        availableCamSerials = discoverCameras()
+
+        params = []
+        if len(availableAudioChannels) > 0:
+            params.append(Param(name='Audio Channels', widgetType=Param.MULTICHOICE, options=availableAudioChannels, default=None))
+        if len(availableClockChannels) > 0:
+            params.append(Param(name='Audio Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=None))
+            params.append(Param(name='Video Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=None))
+        if len(availableCamSerials) > 0:
+            params.append(Param(name='Cameras', widgetType=Param.MULTICHOICE, options=availableCamSerials, default=None))
+
+        choices = None
+        if len(params) > 0:
+            pd = ParamDialog(self.master, params=params, title="Choose audio/video inputs to use")
+            choices = pd.results
+            if choices is not None:
+                self.stopMonitors()
+                self.updateAcquisitionButton()
+                self.destroyChildProcesses()
+
+                audioDAQChannels = choices['Audio Channels']
+                choices['Audio Sync Channel']
+                choices['Video Sync Channel']
+                camSerials = choices['Cameras']
+
+                print('Got audioDAQChannels:', audioDAQChannels)
+                print('Got camSerials:', camSerials)
+
+                self.setupInputMonitoringWidgets(camSerials=camSerials, audioDAQChannels=audioDAQChannels)
+
+                self.createChildProcesses()
+                self.startChildProcesses()
+                self.updateAcquisitionButton()
+                self.startMonitors()
+            else:
+                print('User input cancelled.')
+        else:
+            showinfo('No inputs', 'No compatible audio/video inputs found. Please connect at least one USB3 vision camera for video input and/or a NI USB DAQ for audio input and synchronization.')
+
+    def setupInputMonitoringWidgets(self, camSerials=None, audioDAQChannels=None):
+        # Set up widgets and other entities for specific selected audio and video inputs
+
+        # Destroy old video stream monitoring widgets
+        for camSerial in self.camSerials:
+            self.videoMonitorFrames[camSerial].grid_forget()
+            del self.videoMonitorFrames[camSerial]
+            self.videoMonitors[camSerial].grid_forget()
+            del self.videoMonitors[camSerial]
+            del self.imageIDs[camSerial]
+            del self.currentImages[camSerial]
+            self.cameraAttributeBrowserButtons[camSerial].grid_forget()
+            del self.cameraAttributeBrowserButtons[camSerial]
+
+        self.camSerials = camSerials
+
+        self.cameraSpeeds = dict([(camSerial, checkCameraSpeed(camSerial)) for camSerial in self.camSerials])
+        # self.updateAllCamerasAttributes()
+        # with open('attributes.txt', 'w') as f:
+        #     pp = pprint.PrettyPrinter(stream=f, indent=2)
+        #     pp.pprint(self.cameraAttributes)
+
+        # Create new video stream monitoring widgets and other entities
+        for camSerial in self.camSerials:
+            self.videoMonitorFrames[camSerial] = vFrame = ttk.LabelFrame(self.videoMonitorMasterFrame, text="{serial} ({speed})".format(serial=camSerial, speed=self.cameraSpeeds[camSerial]))
+            self.videoMonitors[camSerial] = tk.Canvas(vFrame, width=self.canvasSize[0], height=self.canvasSize[1], borderwidth=2, relief=tk.SUNKEN)
+            self.imageIDs[camSerial] = None
+            if camSerial in self.currentImages:
+                del self.currentImages[camSerial]
+            self.cameraAttributeBrowserButtons[camSerial] = ttk.Button(vFrame, text="Attribute browser", command=lambda:self.createCameraAttributeBrowser(camSerial))
+
+        # Destroy old audio monitoring widgets
+        for k, channel in enumerate(self.audioDAQChannels):
+            self.audioMonitorFrames[channel].pack_forget()
+            del self.audioMonitorFrames[channel]
+            self.audioMonitorWidgets[channel]['figureCanvas'].get_tk_widget().pack_forget()
+            del self.audioMonitorWidgets[channel]['figureCanvas']
+            del self.audioMonitorWidgets[channel]['figure']
+            del self.audioMonitorWidgets[channel]['axes']
+        self.audioMonitorFrames = {}
+        self.audioMonitorWidgets = {}
+
+        # if len(audioDAQChannels) == 0:
+        #     # If no channels are given, pick the first available in the system
+        #     availableDAQAudioChannels = discoverDAQAudioChannels()
+        #     availableDevices = list(availableDAQAudioChannels.keys())
+        #     if len(availableDAQAudioChannels) > 0:
+        #         # Find all available analog in channels and pick the first one
+        #         audioDAQChannels = [availableDAQAudioChannels[availableDevices[0]][0]] # ['Dev3/ai5']
+        self.audioDAQChannels = audioDAQChannels
+
+        # Create new audio stream monitoring widgets
+        for k, channel in enumerate(self.audioDAQChannels):
+            self.audioMonitorFrames[channel] = aFrame = ttk.LabelFrame(self.audioMonitorMasterFrame, text=channel)
+            self.createAudioMonitor(channel, k)
+
+        self.update()
 
     def updateAudioTriggerSettings(self, *args):
         if self.audioTriggerMessageQueue is not None:
@@ -3807,7 +3928,7 @@ him know. Otherwise, I had nothing to do with it.
         t = np.arange(self.audioMonitorSampleSize)
         axes = fig.add_subplot(111)
         axes.autoscale(enable=True)
-        axes.plot(t, 0 * t, PyVAQ.lineStyles[index], linewidth=1)
+        axes.plot(t, 0 * t, PyVAQ.lineStyles[index % len(PyVAQ.lineStyles)], linewidth=1)
         axes.relim()
         axes.autoscale_view(True, True, True)
         axes.margins(x=0, y=0)
@@ -3829,6 +3950,22 @@ him know. Otherwise, I had nothing to do with it.
         self.audioMonitorWidgets[channel]['figureCanvas'] = canvas
         # self.audioMonitorWidgets[channel]['figureNavToolbar'] = toolbar
         # self.audioMonitorWidgets[channel]['figureLine'] = line
+
+    def stopMonitors(self):
+        if self.audioMonitorUpdateJob is not None:
+            self.master.after_cancel(self.audioMonitorUpdateJob)
+        if self.videoMonitorUpdateJob is not None:
+            self.master.after_cancel(self.videoMonitorUpdateJob)
+        if self.audioAnalysisMonitorUpdateJob is not None:
+            self.master.after_cancel(self.audioAnalysisMonitorUpdateJob)
+        if self.triggerIndicatorUpdateJob is not None:
+            self.master.after_cancel(self.triggerIndicatorUpdateJob)
+
+    def startMonitors(self):
+        self.autoUpdateAudioMonitors()
+        self.autoUpdateVideoMonitors()
+        self.autoUpdateTriggerIndicator()
+        self.autoUpdateAudioAnalysisMonitors()
 
     def autoUpdateAudioAnalysisMonitors(self, beginAuto=True):
         if self.audioAnalysisMonitorQueue is not None:
@@ -3892,35 +4029,42 @@ him know. Otherwise, I had nothing to do with it.
 
     def autoUpdateAudioMonitors(self, beginAuto=True):
         if self.audioMonitorQueue is not None:
+            audioData = None
             try:
-                # Get audio data from monitor queue
-                channels, audioData = self.audioMonitorQueue.get(block=True, timeout=0.01)
-                if self.audioMonitorData is None:
-                    # Create monitor data
-                    self.audioMonitorData = audioData
-                else:
+                chunkCount = 0
+                while chunkCount < 1000:
+                    # Get audio data from monitor queue
+                    channels, chunkStartTime, audioData = self.audioMonitorQueue.get(block=True, timeout=0.001)
+                    # audioData = np.ones(audioData.shape) * cc
+                    chunkCount = chunkCount + 1
                     # Append new data
-                    self.audioMonitorData = np.concatenate((self.audioMonitorData, audioData), axis=1)
-                    # Trim monitor data to specified size
-                    startTrim = self.audioMonitorData.shape[1] - self.audioMonitorSampleSize
-                    if startTrim < 0:
-                        startTrim = 0
-                    self.audioMonitorData = self.audioMonitorData[:, startTrim:]
+                    if self.audioMonitorData is not None:
+                        self.audioMonitorData = np.concatenate((self.audioMonitorData, audioData), axis=1)
+                    else:
+                        self.audioMonitorData = audioData
+                print("WARNING! Audio monitor is not getting data fast enough to keep up with stream.")
+            except queue.Empty:
+                pass
+#                print('exhausted audio monitoring queue, got', chunkCount)
+
+            if self.audioMonitorData is not None:
+                # Trim monitor data to specified size
+                startTrim = self.audioMonitorData.shape[1] - self.audioMonitorSampleSize
+                if startTrim < 0:
+                    startTrim = 0
+                self.audioMonitorData = self.audioMonitorData[:, startTrim:]
                 for k, channel in enumerate(channels):
-                    del self.audioMonitorWidgets[channel]['axes'].lines[0]
-                    self.audioMonitorWidgets[channel]['axes'].plot(self.audioMonitorData[k, :].tolist(), PyVAQ.lineStyles[k], linewidth=1)
+                    self.audioMonitorWidgets[channel]['axes'].clear()
+                    self.audioMonitorWidgets[channel]['axes'].plot(self.audioMonitorData[k, :].tolist(), PyVAQ.lineStyles[k % len(PyVAQ.lineStyles)], linewidth=1)
                     self.audioMonitorWidgets[channel]['axes'].relim()
                     self.audioMonitorWidgets[channel]['axes'].autoscale_view(True, True, True)
                     self.audioMonitorWidgets[channel]['axes'].margins(x=0, y=0)
                     self.audioMonitorWidgets[channel]['figure'].canvas.draw()
                     self.audioMonitorWidgets[channel]['figure'].canvas.flush_events()
-            except queue.Empty:
-                pass
-
         if beginAuto:
             self.audioMonitorUpdateJob = self.master.after(100, self.autoUpdateAudioMonitors)
 
-    def autoUpdateVideoMonitors(self):
+    def autoUpdateVideoMonitors(self, beginAuto=True):
         if self.videoMonitorQueues is not None:
             availableImages = {}
             for camSerial in self.videoMonitorQueues:
@@ -3941,11 +4085,13 @@ him know. Otherwise, I had nothing to do with it.
                 else:
                     self.videoMonitors[camSerial].itemconfig(self.imageIDs[camSerial], image=self.currentImages[camSerial])
 
-        period = int(round(1000.0/(self.monitorFrameRate)))
-        self.videoMonitorUpdateJob = self.master.after(period, self.autoUpdateVideoMonitors)
+        if beginAuto:
+            period = int(round(1000.0/(self.monitorFrameRate)))
+            self.videoMonitorUpdateJob = self.master.after(period, self.autoUpdateVideoMonitors)
 
-    def autoUpdateTriggerIndicator(self):
-        pass
+    def autoUpdateTriggerIndicator(self, beginAuto=True):
+        if beginAuto:
+            self.triggerIndicatorUpdateJob = self.master.after(100, self.autoUpdateTriggerIndicator)
 
     def createCameraAttributeBrowser(self, camSerial):
         main = tk.Toplevel()
@@ -4069,11 +4215,17 @@ him know. Otherwise, I had nothing to do with it.
                 state = self.videoAcquireStateVars[camSerial].get(block=False)
             except (queue.Full, queue.Empty):
                 state = None
+            except (AttributeError, KeyError):
+                # No state vars set up yet, so no, not acquiring
+                state = None
             if state in activeVideoStates:
                 return True
         try:
             state = self.audioAcquireStateVar.get(block=False)
         except (queue.Full, queue.Empty):
+            state = None
+        except (AttributeError, KeyError):
+            # No state vars set up yet, so no, not acquiring
             state = None
         if state in activeAudioStates:
             return True
@@ -4083,9 +4235,14 @@ him know. Otherwise, I had nothing to do with it.
     def acquireButtonClick(self):
         if self.acquisitionActive():
             self.stopChildProcesses()
-            self.startChildProcessesButton.config(text="Start acquisition")
         else:
             self.startChildProcesses()
+        self.updateAcquisitionButton()
+
+    def updateAcquisitionButton(self):
+        if self.acquisitionActive():
+            self.startChildProcessesButton.config(text="Start acquisition")
+        else:
             self.startChildProcessesButton.config(text= "Stop acquisition")
 
     def writeButtonClick(self):
@@ -4232,9 +4389,6 @@ him know. Otherwise, I had nothing to do with it.
         self.audioTriggerMessageQueue = mp.Queue()
         self.audioAnalysisMonitorQueue = mp.Queue()
 
-        for camSerial in self.camSerials:
-            self.videoWriteStateVars[camSerial] = mp.Queue(maxsize=1)
-            self.videoAcquireStateVars[camSerial] = mp.Queue(maxsize=1)
         self.audioWriteStateVar = mp.Queue(maxsize=1)
         self.audioAcquireStateVar = mp.Queue(maxsize=1)
         self.syncStateVar = mp.Queue(maxsize=1)
@@ -4247,6 +4401,7 @@ him know. Otherwise, I had nothing to do with it.
             self.audioAcquireMessageQueue = mp.Queue()
             self.audioWriteMessageQueue = mp.Queue()
             self.audioWriteProcess = AudioWriter(
+                publishedStateVar=self.audioWriteStateVar,
                 audioDirectory=p["directory"],
                 audioBaseFileName=p["audioBaseFilename"],
                 audioQueue=audioQueue,
@@ -4259,6 +4414,7 @@ him know. Otherwise, I had nothing to do with it.
                 verbose=self.audioWriteVerbose,
                 stdoutQueue=self.stdoutQueue)
             self.audioAcquireProcess = AudioAcquirer(
+                publishedStateVar=self.audioAcquireStateVar,
                 startTime=startTime,
                 audioQueue=audioQueue,
                 audioMonitorQueue=self.audioMonitorQueue,
@@ -4278,9 +4434,12 @@ him know. Otherwise, I had nothing to do with it.
             self.videoMonitorQueues[camSerial] = mp.Queue(1)
             self.videoAcquireMessageQueues[camSerial] = mp.Queue()
             self.videoWriteMessageQueues[camSerial] = mp.Queue()
+            self.videoWriteStateVars[camSerial] = mp.Queue(maxsize=1)
+            self.videoAcquireStateVars[camSerial] = mp.Queue(maxsize=1)
             processes = {}
 
             videoAcquireProcess = VideoAcquirer(
+                publishedStateVar = self.videoAcquireStateVars[camSerial],
                 startTime=startTime,
                 camSerial=camSerial,
                 imageQueue=imageQueue,
@@ -4293,6 +4452,7 @@ him know. Otherwise, I had nothing to do with it.
                 ready=ready,
                 stdoutQueue=self.stdoutQueue)
             videoWriteProcess = VideoWriter(
+                publishedStateVar = self.videoWriteStateVars[camSerial],
                 camSerial=camSerial,
                 videoDirectory=p["directory"],
                 videoBaseFilename=p["baseVideoFilename"][camSerial],
@@ -4320,17 +4480,20 @@ him know. Otherwise, I had nothing to do with it.
             ready=ready,
             stdoutQueue=self.stdoutQueue)
 
-        # Create merge process
-        self.mergeProcess = AVMerger(
-            directory=p["directory"],
-            numFilesPerTrigger=p["numStreams"],
-            messageQueue=self.mergeMessageQueue,
-            verbose=self.mergeVerbose,
-            stdoutQueue=self.stdoutQueue,
-            baseFileName=p["baseFileName"],
-            montage=p["montageMerge"],
-            deleteMergedFiles=p["deleteMergedFiles"]
-            )
+        if p["numStreams"] >= 2:
+            # Create merge process
+            self.mergeProcess = AVMerger(
+                directory=p["directory"],
+                numFilesPerTrigger=p["numStreams"],
+                messageQueue=self.mergeMessageQueue,
+                verbose=self.mergeVerbose,
+                stdoutQueue=self.stdoutQueue,
+                baseFileName=p["baseFileName"],
+                montage=p["montageMerge"],
+                deleteMergedFiles=p["deleteMergedFiles"]
+                )
+        else:
+            self.mergeProcess = None
 
         self.audioTriggerProcess = AudioTriggerer(
             audioQueue=self.audioAnalysisQueue,
@@ -4354,27 +4517,30 @@ him know. Otherwise, I had nothing to do with it.
             stdoutQueue=self.stdoutQueue
             )
 
-        self.audioTriggerProcess.start()
-        self.audioWriteProcess.start()
-        self.audioAcquireProcess.start()
+        if len(self.audioDAQChannels) > 0:
+            self.audioTriggerProcess.start()
+            self.audioWriteProcess.start()
+            self.audioAcquireProcess.start()
+
         for camSerial in self.camSerials:
             self.videoWriteProcesses[camSerial].start()
             self.videoAcquireProcesses[camSerial].start()
-        self.syncProcess.start()
-        self.mergeProcess.start()
+        if self.syncProcess is not None: self.syncProcess.start()
+        if self.mergeProcess is not None: self.mergeProcess.start()
 
     def startChildProcesses(self):
         # Tell all child processes to start
 
-        # Start audio trigger process
-        self.audioTriggerMessageQueue.put((AudioTriggerer.START, None))
-        self.updateTriggerMode()
+        if len(self.audioDAQChannels) > 0:
+            # Start audio trigger process
+            self.audioTriggerMessageQueue.put((AudioTriggerer.START, None))
+            self.updateTriggerMode()
 
-        # Start audioWriter
-        self.audioWriteMessageQueue.put((AudioWriter.START, None))
+            # Start audioWriter
+            self.audioWriteMessageQueue.put((AudioWriter.START, None))
 
-        # Start audioAcquirer
-        self.audioAcquireMessageQueue.put((AudioAcquirer.START, None))
+            # Start audioAcquirer
+            self.audioAcquireMessageQueue.put((AudioAcquirer.START, None))
 
         # For each camera
         for camSerial in self.camSerials:
@@ -4383,11 +4549,12 @@ him know. Otherwise, I had nothing to do with it.
             # Start videoAcquirer
             self.videoAcquireMessageQueues[camSerial].put((VideoAcquirer.START, None))
 
-        # Start sync process
-        self.syncMessageQueue.put((Synchronizer.START, None))
+        if len(self.audioDAQChannels) + len(self.camSerials) >= 2:
+            # Start sync process
+            self.syncMessageQueue.put((Synchronizer.START, None))
 
-        # Start merge process
-        self.updateAVMergerState()
+            # Start merge process
+            self.updateAVMergerState()
 
     def stopChildProcesses(self):
         # Tell all child processes to stop
@@ -4429,7 +4596,7 @@ him know. Otherwise, I had nothing to do with it.
             clearQueue(self.videoWriteStateVars[camSerial])
             self.videoWriteStateVars[camSerial] = None
             clearQueue(self.videoAcquireStateVars[camSerial])
-            self.videoAcquireStateVar[camSerial] = None
+            self.videoAcquireStateVars[camSerial] = None
         clearQueue(self.audioWriteStateVar)
         self.audioWriteStateVar = None
         clearQueue(self.audioAcquireStateVar)
@@ -4459,6 +4626,7 @@ him know. Otherwise, I had nothing to do with it.
                 self.audioAcquireProcess = None
                 clearQueue(self.audioMonitorQueue)
                 clearQueue(self.audioAcquireMessageQueue)
+                self.audioMonitorData = None
                 print('1/7 audio acquire done')
             if self.audioWriteProcess is not None:
                 self.audioWriteProcess = None
@@ -4576,6 +4744,7 @@ him know. Otherwise, I had nothing to do with it.
         self.recordTimeEntry.grid()
         self.baseFileNameFrame.grid(row=2, column=2, columnspan=2, sticky=tk.EW)
         self.baseFileNameEntry.grid()
+        self.updateInputsButton.grid(row=3, column=0)
         self.directoryFrame.grid(row=3, column=2, sticky=tk.EW)
         self.directoryEntry.grid(row=0, column=0)
         self.directoryButton.grid(row=1, column=0, sticky=tk.EW)
@@ -4632,11 +4801,12 @@ him know. Otherwise, I had nothing to do with it.
         self.helpButton.grid(row=1, column=2)
 
 def clearQueue(q):
-    while True:
-        try:
-            stuff = q.get(block=True, timeout=0.1)
-        except queue.Empty:
-            break
+    if q is not None:
+        while True:
+            try:
+                stuff = q.get(block=True, timeout=0.1)
+            except queue.Empty:
+                break
 
 if __name__ == "__main__":
     root = tk.Tk()
