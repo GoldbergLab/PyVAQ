@@ -30,7 +30,7 @@ class Param():
         self.frame = ttk.LabelFrame(parent, text=self.name)
         if self.widgetType == Param.TEXT:
             self.var = tk.StringVar()
-            entry = ttk.Entry(self.frame)
+            entry = ttk.Entry(self.frame, textvariable=self.var)
             entry.grid()
             self.widgets.append(entry)
             self.var.set(self.default)
