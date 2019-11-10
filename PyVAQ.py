@@ -3446,6 +3446,8 @@ class PyVAQ:
         self.style.configure('InvalidDirectory.TEntry', fieldbackground=self.colors[3])
 #        self.style.map('Directory.TEntry.label', background=[(('!invalid',), 'green'),(('invalid',), 'red')])
 
+        self.settings = []  # A list of StringVar/IntVar/etc that are settings to save/restore
+
         self.chunkSize = 1000
 
         self.audioDAQChannels = []
@@ -3456,9 +3458,31 @@ class PyVAQ:
         self.videoSyncTerminal = 'Dev3/ctr1'
 
         ########### GUI WIDGETS #####################
-        self.settings = []  # A list of StringVar/IntVar/etc that are settings to save/restore
 
         self.mainFrame = ttk.Frame(self.master)
+
+        self.menuBar = tk.Menu(self.master)
+        self.settingsMenu = tk.Menu(self.menuBar)
+        self.settingsMenu.add_command(label='Save settings...', command=self.saveSettings)
+        self.settingsMenu.add_command(label='Load settings...', command=self.loadSettings)
+        self.settingsMenu.add_command(label='Save default settings...', command=lambda *args: self.saveSettings(path='default.pvs'))
+        self.settingsMenu.add_command(label='Save default settings...', command=lambda *args: self.loadSettings(path='default.pvs'))
+
+        self.helpMenu = tk.Menu(self.menuBar)
+        self.helpMenu.add_command(label="Help", command=self.showHelpDialog)
+        self.helpMenu.add_command(label="About", command=self.showAboutDialog)
+
+        self.menuBar.add_cascade(label="Settings", menu=self.settingsMenu)
+        self.menuBar.add_cascade(label="Help", menu=self.helpMenu)
+
+        # self.settingsFrame = ttk.LabelFrame(self.controlFrame, text="Settings")
+        # self.saveSettingsButton = ttk.Button(self.settingsFrame, text="Save settings", command=self.saveSettings)
+        # self.loadSettingsButton = ttk.Button(self.settingsFrame, text="Load settings", command=self.loadSettings)
+        # self.saveDefaultSettingsButton = ttk.Button(self.settingsFrame, text="Save defaults", command=lambda *args: self.saveSettings(path='default.pvs'))
+        # self.loadDefaultSettingsButton = ttk.Button(self.settingsFrame, text="Load defaults", command=lambda *args: self.loadSettings(path='default.pvs'))
+        # self.helpButton = ttk.Button(self.settingsFrame, text="Help", command=self.showHelpDialog)
+
+        self.master.config(menu=self.menuBar)
 
         self.titleBarFrame = ttk.Frame(self.master)
         self.closeButton = ttk.Button(self.titleBarFrame, text="X", command=self.cleanupAndExit)
@@ -3601,13 +3625,6 @@ class PyVAQ:
         self.audioAnalysisSummaryHistory = deque(maxlen=self.analysisSummaryHistoryChunkLength)
         self.createAudioAnalysisMonitor()
 
-        self.settingsFrame = ttk.LabelFrame(self.controlFrame, text="Settings")
-        self.saveSettingsButton = ttk.Button(self.settingsFrame, text="Save settings", command=self.saveSettings)
-        self.loadSettingsButton = ttk.Button(self.settingsFrame, text="Load settings", command=self.loadSettings)
-        self.saveDefaultSettingsButton = ttk.Button(self.settingsFrame, text="Save defaults", command=lambda *args: self.saveSettings(path='default.pvs'))
-        self.loadDefaultSettingsButton = ttk.Button(self.settingsFrame, text="Load defaults", command=lambda *args: self.loadSettings(path='default.pvs'))
-        self.helpButton = ttk.Button(self.settingsFrame, text="Help", command=self.showHelpDialog)
-
         self.setupInputMonitoringWidgets(camSerials=self.camSerials, audioDAQChannels=self.audioDAQChannels)
 
         ########### Child process objects #####################
@@ -3694,14 +3711,19 @@ class PyVAQ:
         self.master.quit()
         print("Everything should be closed now!")
 
-    def showHelpDialog(self):
+    def showHelpDialog(self, *args):
+        msg = 'Sorry, nothing here yet.'
+        showinfo('PyVAQ Help', msg)
+
+    def showAboutDialog(self, *args):
         msg = '''Welcome to PyVAQ version {version}!
 
 If it's working perfectly, then contact Brian Kardon (bmk27@cornell.edu) to let \
 him know. Otherwise, I had nothing to do with it.
+
 '''.format(version=VERSION)
 
-        showinfo('PyVAQ help', msg)
+        showinfo('About PyVAQ', msg)
 
     def selectInputs(self, *args):
 
@@ -4796,12 +4818,12 @@ him know. Otherwise, I had nothing to do with it.
         self.audioAnalysisMonitorFrame.grid(row=4, column=0, columnspan=3)
         self.audioAnalysisWidgets['canvas'].get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
 
-        self.settingsFrame.grid(row=2, column=0, sticky=tk.NSEW)
-        self.saveSettingsButton.grid(row=0, column=0)
-        self.loadSettingsButton.grid(row=0, column=1)
-        self.saveDefaultSettingsButton.grid(row=1, column=0)
-        self.loadDefaultSettingsButton.grid(row=1, column=1)
-        self.helpButton.grid(row=1, column=2)
+        # self.settingsFrame.grid(row=2, column=0, sticky=tk.NSEW)
+        # self.saveSettingsButton.grid(row=0, column=0)
+        # self.loadSettingsButton.grid(row=0, column=1)
+        # self.saveDefaultSettingsButton.grid(row=1, column=0)
+        # self.loadDefaultSettingsButton.grid(row=1, column=1)
+        # self.helpButton.grid(row=1, column=2)
 
 def clearQueue(q):
     if q is not None:
