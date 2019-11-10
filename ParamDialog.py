@@ -130,7 +130,7 @@ class ParamDialog(tk.Toplevel):
                 raise NotImplementedError("Box arrangement has not been implemented yet.")
             else:
                 raise NameError("Unknown arrangement type: "+str(self.arrangement))
-            param.grid(row=row, column=column, columnspan=2, sticky=tk.NSEW)
+            param.grid(row=row, column=column, sticky=tk.NSEW)
 
         okButton = ttk.Button(self.buttonFrame, text="OK", width=10, command=self.ok, default=tk.ACTIVE)
         okButton.grid(row=0, column=0)
