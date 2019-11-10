@@ -1045,9 +1045,9 @@ class Synchronizer(mp.Process):
         publishedStateVar=None,
         videoFrequency=120,                     # The frequency in Hz of the video sync signal
         audioFrequency=44100,                   # The frequency in Hz of the audio sync signal
-        videoSyncChannel="Dev3/ctr0",           # The counter channel on which to generate the video sync signal
+        videoSyncChannel=None,           # The counter channel on which to generate the video sync signal Dev3/ctr0
         videoDutyCycle=0.5,
-        audioSyncChannel="Dev3/ctr1",           # The counter channel on which to generate the audio sync signal
+        audioSyncChannel=None,           # The counter channel on which to generate the audio sync signal Dev3/ctr1
         audioDutyCycle=0.5,
         messageQueue=None,
         startTime=None,                         # Shared value that is set when sync starts, used as start time by all processes (relevant for manual triggers)
@@ -3452,10 +3452,10 @@ class PyVAQ:
 
         self.audioDAQChannels = []
 
-        self.audioSyncSource = 'PFI4'
-        self.audioSyncTerminal = 'Dev3/ctr0'
-        self.videoSyncSource = 'PFI5'
-        self.videoSyncTerminal = 'Dev3/ctr1'
+        self.audioSyncSource = None
+        self.audioSyncTerminal = None
+        self.videoSyncSource = None
+        self.videoSyncTerminal = None
 
         ########### GUI WIDGETS #####################
 
@@ -3734,11 +3734,13 @@ him know. Otherwise, I had nothing to do with it.
         params = []
         if len(availableAudioChannels) > 0:
             params.append(Param(name='Audio Channels', widgetType=Param.MULTICHOICE, options=availableAudioChannels, default=None))
+        if len(availableCamSerials) > 0:
+            params.append(Param(name='Cameras', widgetType=Param.MULTICHOICE, options=availableCamSerials, default=None))
         if len(availableClockChannels) > 0:
             params.append(Param(name='Audio Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=None))
             params.append(Param(name='Video Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=None))
-        if len(availableCamSerials) > 0:
-            params.append(Param(name='Cameras', widgetType=Param.MULTICHOICE, options=availableCamSerials, default=None))
+            params.append(Param(name='Audio Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI4"))
+            params.append(Param(name='Video Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI5"))
 
         choices = None
         if len(params) > 0:
@@ -3750,9 +3752,11 @@ him know. Otherwise, I had nothing to do with it.
                 self.destroyChildProcesses()
 
                 audioDAQChannels = choices['Audio Channels']
-                choices['Audio Sync Channel']
-                choices['Video Sync Channel']
                 camSerials = choices['Cameras']
+                self.audioSyncTerminal = choices['Audio Sync Channel']
+                self.videoSyncTerminal = choices['Video Sync Channel']
+                self.audioSyncSource = choices['Audio Sync PFI Interface']
+                self.videoSyncSource = choices['Video Sync PFI Interface']
 
                 print('Got audioDAQChannels:', audioDAQChannels)
                 print('Got camSerials:', camSerials)
