@@ -525,6 +525,11 @@ class AudioChunk():
 
 #  audioChunkBytes = b''.join(map(lambda x:struct.pack(bytePackingPattern, *x), audioChunk.transpose().tolist()))
 
+def ensureDirectoryExists(directory):
+    # Creates directory (and subdirectories if necessary) to ensure that the directory exists in the filesystem
+    if len(directory) > 0:
+        os.makedirs(directory, exist_ok=True)
+
 def generateFileName(directory, baseName, extension, trigger):
     timeString = dt.datetime.fromtimestamp(trigger.triggerTime).strftime('%Y-%m-%d-%H-%M-%S-%f')
     fileName = baseName + '_' + timeString + extension
@@ -2281,6 +2286,7 @@ class AudioWriter(mp.Process):
                         if audioFile is None:
                             # Start new audio file
                             audioFileName = generateFileName(directory=self.audioDirectory, baseName=self.audioBaseFileName, extension='.wav', trigger=triggers[0])
+                            ensureDirectoryExists(self.audioDirectory)
                             audioFile = wave.open(audioFileName, 'w')
                             audioFile.audioFileName = audioFileName
                             # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
@@ -3022,6 +3028,7 @@ class VideoWriter(mp.Process):
                         if aviRecorder is None:
                             # Start new video file
                             videoFileName = generateFileName(directory=self.videoDirectory, baseName=self.videoBaseFilename, extension='', trigger=triggers[0])
+                            ensureDirectoryExists(self.videoDirectory)
                             aviRecorder = PySpin.SpinVideo()
                             option = PySpin.AVIOption()
                             option.frameRate = self.frameRate
@@ -3535,7 +3542,7 @@ class PyVAQ:
         self.videoFrequencyEntry =  ttk.Entry(self.videoFrequencyFrame, width=15, textvariable=self.videoFrequencyVar)
 
         self.exposureTimeFrame =    ttk.LabelFrame(self.acquisitionFrame, text="Exposure time (us):", style='SingleContainer.TLabelframe')
-        self.exposureTimeVar =          tk.StringVar(); self.exposureTimeVar.set("8000"); self.settings.append('exposureTimeVar')
+        self.exposureTimeVar =      tk.StringVar(); self.exposureTimeVar.set("8000"); self.settings.append('exposureTimeVar')
         self.exposureTimeEntry =    ttk.Entry(self.exposureTimeFrame, width=18, textvariable=self.exposureTimeVar)
 
         self.preTriggerTimeFrame =  ttk.LabelFrame(self.acquisitionFrame, text="Pre-trigger record time (s)", style='SingleContainer.TLabelframe')
@@ -3551,7 +3558,7 @@ class PyVAQ:
         self.baseFileNameEntry =    ttk.Entry(self.baseFileNameFrame, width=24, textvariable=self.baseFileNameVar)
 
         self.directoryFrame =       ttk.LabelFrame(self.acquisitionFrame, text="Write directory", style='SingleContainer.TLabelframe')
-        self.directoryVar =         tk.StringVar(); self.directoryVar.set(""); self.settings.append("directoryVar")
+        self.directoryVar =         tk.StringVar(); self.directoryVar.set("Recordings"); self.settings.append("directoryVar")
         self.directoryEntry =       ttk.Entry(self.directoryFrame, width=48, textvariable=self.directoryVar, style='ValidDirectory.TEntry')
         self.directoryButton =      ttk.Button(self.directoryFrame, text="Select write directory", command=self.selectWriteDirectory)
         self.directoryEntry.bind('<FocusOut>', self.directoryChangeHandler)
