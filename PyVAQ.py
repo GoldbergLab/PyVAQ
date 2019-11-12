@@ -3431,7 +3431,7 @@ def flattenList(l):
     return [item for sublist in l for item in sublist]
 
 class PyVAQ:
-    lineStyles = [c+'-' for c in 'bgrcmyk']
+    lineStyles = [c+'-' for c in 'bykcmgr']
     def __init__(self, master):
         self.master = master
         self.customTitleBar = False
@@ -4072,7 +4072,7 @@ him know. Otherwise, I had nothing to do with it.
                 yMax = 1.1 * max([volumeTrace.max(), triggerLowLevelTrace.max(), triggerHighLevelTrace.max()])
                 # Plot volume traces for all channels
                 for c in range(numChannels):
-                    self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, volumeTrace[c, :], 'b-', linewidth=1)
+                    self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, volumeTrace[c, :], PyVAQ.lineStyles[c % len(PyVAQ.lineStyles)], linewidth=1)
                 # Plot low level trigger level demarcation
                 self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, triggerLowLevelTrace, 'r-', linewidth=1)
                 # Plot high level trigger level demarcation
