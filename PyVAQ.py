@@ -4067,10 +4067,15 @@ him know. Otherwise, I had nothing to do with it.
                 triggerLowLevelTrace  = np.array([sum['triggerLowLevel']  for sum in self.audioAnalysisSummaryHistory]).squeeze().transpose()
                 triggerHighLevelTrace = np.array([sum['triggerHighLevel'] for sum in self.audioAnalysisSummaryHistory]).squeeze().transpose()
                 t                     = np.array([sum['chunkStartTime']   for sum in self.audioAnalysisSummaryHistory]).squeeze().transpose()
+                numChannels = volumeTrace.shape[0]
+#                tMultiChannel = np.stack([t for k in range(numChannels)], axis=0)
                 yMax = 1.1 * max([volumeTrace.max(), triggerLowLevelTrace.max(), triggerHighLevelTrace.max()])
                 # Plot volume traces for all channels
-                self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, volumeTrace, 'b-', linewidth=1)
+                for c in range(numChannels):
+                    self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, volumeTrace[c, :], 'b-', linewidth=1)
+                # Plot low level trigger level demarcation
                 self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, triggerLowLevelTrace, 'r-', linewidth=1)
+                # Plot high level trigger level demarcation
                 self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, triggerHighLevelTrace, 'g-', linewidth=1)
                 try:
                     tLow  = t[-1] - (analysisSummary['triggerLowChunks'] -1)*analysisSummary['chunkSize']/analysisSummary['audioFrequency']
@@ -4079,7 +4084,9 @@ him know. Otherwise, I had nothing to do with it.
                     print('weird analysis monitoring error:')
                     traceback.print_exc()
                     print('t:', t)
+                # Plot low level time period demarcation
                 self.audioAnalysisWidgets['volumeTraceAxes'].plot([tLow,  tLow],  [0, yMax], 'r-', linewidth=1)
+                # Plot high level time period demarcation
                 self.audioAnalysisWidgets['volumeTraceAxes'].plot([tHigh, tHigh], [0, yMax], 'g-', linewidth=1)
                 self.audioAnalysisWidgets['volumeTraceAxes'].relim()
                 self.audioAnalysisWidgets['volumeTraceAxes'].autoscale_view(True, True, True)
