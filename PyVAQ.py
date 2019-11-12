@@ -70,6 +70,7 @@ VERSION='0.2.0'
 r'''
 cd "C:\Users\Brian Kardon\Dropbox\Documents\Work\Cornell Lab Tech\Projects\Video VI\PyVAQ\Source"
 python PyVAQ.py
+git add * & git commit -m "" & git push origin master
 '''
 
 #plt.style.use("dark_background")
@@ -705,7 +706,8 @@ class AVMerger(mp.Process):
 # ********************************* INITIALIZING *********************************
                 elif state == AVMerger.INITIALIZING:
                     # DO STUFF
-                    assert self.numFilesPerTrigger >= 2
+                    if self.numFilesPerTrigger < 2:
+                        raise IOError("Can't merge less than two files at a time!")
 
                     receivedFileEventList = []
                     groupedFileEventList = []
@@ -737,7 +739,8 @@ class AVMerger(mp.Process):
 # ********************************* IGNORING *********************************
                 elif state == AVMerger.IGNORING:    # ignoring merge requests
                     # DO STUFF
-                    assert self.numFilesPerTrigger >= 2
+                    if self.numFilesPerTrigger < 2:
+                        raise IOError("Can't merge less than two files at a time!")
 
                     # Clear any file events already received
                     receivedFileEventList = []
@@ -774,7 +777,8 @@ class AVMerger(mp.Process):
 # ********************************* WAITING *********************************
                 elif state == AVMerger.WAITING:    # Waiting for files to merge
                     # DO STUFF
-                    assert self.numFilesPerTrigger >= 2
+                    if self.numFilesPerTrigger < 2:
+                        raise IOError("Can't merge less than two files at a time!")
 
                     # Waiting for message of type:
                     #   (AVMerger.MERGE, {'filePath':filePath,
@@ -841,7 +845,8 @@ class AVMerger(mp.Process):
 # ********************************* MERGING *********************************
                 elif state == AVMerger.MERGING:
                     # DO STUFF
-                    assert self.numFilesPerTrigger >= 2
+                    if self.numFilesPerTrigger < 2:
+                        raise IOError("Can't merge less than two files at a time!")
                     # If a new file has been received, add it to the list
 
                     for fileEventGroup in groupedFileEventList:
@@ -1112,22 +1117,30 @@ class Synchronizer(mp.Process):
 # ********************************* INITIALIZING *********************************
                 elif state == Synchronizer.INITIALIZING:
                     # DO STUFF
+
+                    if self.audioSyncChannel is None and self.videoSyncChannel is None:
+                        raise IOError("At least one audio or video sync channel must be specified.")
+
                 # Configure and generate synchronization signal
                     trigTask = nidaqmx.Task()                       # Create task
-                    trigTask.co_channels.add_co_pulse_chan_freq(
-                        counter=self.videoSyncChannel,
-                        name_to_assign_to_channel="videoSync",
-                        units=nidaqmx.constants.FrequencyUnits.HZ,
-                        initial_delay=0.0,
-                        freq=self.videoFrequency,
-                        duty_cycle=self.videoDutyCycle)     # Prepare a counter output channel for the video sync signal
-                    trigTask.co_channels.add_co_pulse_chan_freq(
-                        counter=self.audioSyncChannel,
-                        name_to_assign_to_channel="audioSync",
-                        units=nidaqmx.constants.FrequencyUnits.HZ,
-                        initial_delay=0.0,
-                        freq=self.audioFrequency,
-                        duty_cycle=self.audioDutyCycle)     # Prepare a counter output channel for the audio sync signal
+                    if self.videoSyncChannel is not None:
+                        print("vsc:", self.videoSyncChannel)
+                        trigTask.co_channels.add_co_pulse_chan_freq(
+                            counter=self.videoSyncChannel,
+                            name_to_assign_to_channel="videoSync",
+                            units=nidaqmx.constants.FrequencyUnits.HZ,
+                            initial_delay=0.0,
+                            freq=self.videoFrequency,
+                            duty_cycle=self.videoDutyCycle)     # Prepare a counter output channel for the video sync signal
+                    if self.audioSyncChannel is not None:
+                        print("asc:", self.audioSyncChannel)
+                        trigTask.co_channels.add_co_pulse_chan_freq(
+                            counter=self.audioSyncChannel,
+                            name_to_assign_to_channel="audioSync",
+                            units=nidaqmx.constants.FrequencyUnits.HZ,
+                            initial_delay=0.0,
+                            freq=self.audioFrequency,
+                            duty_cycle=self.audioDutyCycle)     # Prepare a counter output channel for the audio sync signal
                     trigTask.timing.cfg_implicit_timing(sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS)
 
                     # CHECK FOR MESSAGES
@@ -1947,10 +1960,11 @@ class AudioAcquirer(mp.Process):
                         else:
                             if self.verbose: syncPrint(processedData, buffer=self.stdoutBuffer)
 
+                        monitorDataCopy = np.copy(data)
                         if self.audioMonitorQueue is not None:
-                            self.audioMonitorQueue.put((self.inputChannels, chunkStartTime, data))      # If a monitoring queue is provided, queue up the data
+                            self.audioMonitorQueue.put((self.inputChannels, chunkStartTime, monitorDataCopy))      # If a monitoring queue is provided, queue up the data
                         if self.audioAnalysisQueue is not None:
-                            self.audioAnalysisQueue.put((chunkStartTime, data))
+                            self.audioAnalysisQueue.put((chunkStartTime, monitorDataCopy))
                     except nidaqmx.errors.DaqError:
 #                        traceback.print_exc()
                         syncPrint("AA - Audio Chunk acquisition timed out.", buffer=self.stdoutBuffer)
@@ -3728,7 +3742,7 @@ him know. Otherwise, I had nothing to do with it.
     def selectInputs(self, *args):
 
         availableAudioChannels = flattenList(discoverDAQAudioChannels().values())
-        availableClockChannels = flattenList(discoverDAQClockChannels().values())
+        availableClockChannels = flattenList(discoverDAQClockChannels().values()) + ['None']
         availableCamSerials = discoverCameras()
 
         params = []
@@ -3737,8 +3751,8 @@ him know. Otherwise, I had nothing to do with it.
         if len(availableCamSerials) > 0:
             params.append(Param(name='Cameras', widgetType=Param.MULTICHOICE, options=availableCamSerials, default=None))
         if len(availableClockChannels) > 0:
-            params.append(Param(name='Audio Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=None))
-            params.append(Param(name='Video Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=None))
+            params.append(Param(name='Audio Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default="None"))
+            params.append(Param(name='Video Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default="None"))
             params.append(Param(name='Audio Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI4"))
             params.append(Param(name='Video Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI5"))
 
@@ -3751,12 +3765,30 @@ him know. Otherwise, I had nothing to do with it.
                 self.updateAcquisitionButton()
                 self.destroyChildProcesses()
 
-                audioDAQChannels = choices['Audio Channels']
-                camSerials = choices['Cameras']
-                self.audioSyncTerminal = choices['Audio Sync Channel']
-                self.videoSyncTerminal = choices['Video Sync Channel']
-                self.audioSyncSource = choices['Audio Sync PFI Interface']
-                self.videoSyncSource = choices['Video Sync PFI Interface']
+                if 'Audio Channels' in choices:
+                    audioDAQChannels = choices['Audio Channels']
+                else:
+                    audioDAQChannels = []
+                if 'Cameras' in choices:
+                    camSerials = choices['Cameras']
+                else:
+                    camSerials = []
+                if 'Audio Sync Channel' in choices and choices['Audio Sync Channel'] != "None":
+                    self.audioSyncTerminal = choices['Audio Sync Channel']
+                else:
+                    self.audioSyncTerminal = None
+                if 'Video Sync Channel' in choices and choices['Video Sync Channel'] != "None":
+                    self.videoSyncTerminal = choices['Video Sync Channel']
+                else:
+                    self.videoSyncTerminal = None
+                if 'Audio Sync PFI Interface' in choices and len(choices['Audio Sync PFI Interface']) > 0:
+                    self.audioSyncSource = choices['Audio Sync PFI Interface']
+                else:
+                    self.audioSyncSource = None
+                if 'Video Sync PFI Interface' in choices and len(choices['Video Sync PFI Interface']) > 0:
+                    self.videoSyncSource = choices['Video Sync PFI Interface']
+                else:
+                    self.videoSyncSource = None
 
                 print('Got audioDAQChannels:', audioDAQChannels)
                 print('Got camSerials:', camSerials)

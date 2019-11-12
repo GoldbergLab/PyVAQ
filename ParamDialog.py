@@ -31,14 +31,14 @@ class Param():
         if self.widgetType == Param.TEXT:
             self.var = tk.StringVar()
             entry = ttk.Entry(self.frame, textvariable=self.var)
-            entry.grid()
+            entry.grid(sticky=tk.NW)
             self.widgets.append(entry)
             self.var.set(self.default)
         elif self.widgetType == Param.MONOCHOICE:
             self.var = tk.StringVar()
             for k, option in enumerate(self.options):
                 rbutton = ttk.Radiobutton(self.frame, text=option, variable=self.var, value=option)
-                rbutton.grid(row=k, column=0)
+                rbutton.grid(row=k, column=0, sticky=tk.NW)
                 self.widgets.append(rbutton)
                 self.var.set(self.default)
         elif self.widgetType == Param.MULTICHOICE:
@@ -47,12 +47,12 @@ class Param():
                 var = tk.StringVar()
                 self.var.append(var)
                 cbutton = ttk.Checkbutton(self.frame, text=option, variable=var, onvalue=option, offvalue='')
-                cbutton.grid(row=k+1, column=0)
+                cbutton.grid(row=k+1, column=0, sticky=tk.NW)
                 self.widgets.append(cbutton)
 
             self.selectAllVar = tk.IntVar()
             self.selectAllButton = ttk.Checkbutton(self.frame, text="Select all", variable=self.selectAllVar, onvalue=1, offvalue=0)
-            self.selectAllButton.grid(row=0, column=0)
+            self.selectAllButton.grid(row=0, column=0, sticky=tk.NW)
             self.selectAllVar.set(0)
             def selectAllOrNoneCallbackFactory(savar, cbuttons, vars):
                 def callback(*args):
@@ -144,6 +144,7 @@ class ParamDialog(tk.Toplevel):
         self.results = {}
         for param in self.params:
             self.results[param.name] = param.get()
+            # print("Got", param.name, "=", self.results[param.name], type(self.results[param.name]))
 
     def ok(self, event=None):
         # if not self.validate():
