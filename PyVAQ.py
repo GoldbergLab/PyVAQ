@@ -3612,15 +3612,15 @@ class PyVAQ:
 
         # Audio trigger controls
         self.triggerHighLevelFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="High volume threshold", style='SingleContainer.TLabelframe')
-        self.triggerHighLevelVar = tk.StringVar(); self.triggerHighLevelVar.set("0.25"); self.settings.append('triggerHighLevelVar')
+        self.triggerHighLevelVar = tk.StringVar(); self.triggerHighLevelVar.set("0.1"); self.settings.append('triggerHighLevelVar')
         self.triggerHighLevelEntry = ttk.Entry(self.triggerHighLevelFrame, textvariable=self.triggerHighLevelVar); self.triggerHighLevelEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
         self.triggerLowLevelFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Low volume threshold", style='SingleContainer.TLabelframe')
-        self.triggerLowLevelVar = tk.StringVar(); self.triggerLowLevelVar.set("0.1"); self.settings.append('triggerLowLevelVar')
+        self.triggerLowLevelVar = tk.StringVar(); self.triggerLowLevelVar.set("0.05"); self.settings.append('triggerLowLevelVar')
         self.triggerLowLevelEntry = ttk.Entry(self.triggerLowLevelFrame, textvariable=self.triggerLowLevelVar); self.triggerLowLevelEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
         self.triggerHighTimeFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="High threshold time", style='SingleContainer.TLabelframe')
-        self.triggerHighTimeVar = tk.StringVar(); self.triggerHighTimeVar.set("1.0"); self.settings.append('triggerHighTimeVar')
+        self.triggerHighTimeVar = tk.StringVar(); self.triggerHighTimeVar.set("0.5"); self.settings.append('triggerHighTimeVar')
         self.triggerHighTimeEntry = ttk.Entry(self.triggerHighTimeFrame, textvariable=self.triggerHighTimeVar); self.triggerHighTimeEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
         self.triggerLowTimeFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Low threshold time", style='SingleContainer.TLabelframe')
@@ -3628,11 +3628,11 @@ class PyVAQ:
         self.triggerLowTimeEntry = ttk.Entry(self.triggerLowTimeFrame, textvariable=self.triggerLowTimeVar); self.triggerLowTimeEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
         self.triggerHighFractionFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Frac. of time above high threshold", style='SingleContainer.TLabelframe')
-        self.triggerHighFractionVar = tk.StringVar(); self.triggerHighFractionVar.set("0.7"); self.settings.append('triggerHighFractionVar')
+        self.triggerHighFractionVar = tk.StringVar(); self.triggerHighFractionVar.set("0.1"); self.settings.append('triggerHighFractionVar')
         self.triggerHighFractionEntry = ttk.Entry(self.triggerHighFractionFrame, textvariable=self.triggerHighFractionVar); self.triggerHighFractionEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
         self.triggerLowFractionFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Frac. of time below low threshold", style='SingleContainer.TLabelframe')
-        self.triggerLowFractionVar = tk.StringVar(); self.triggerLowFractionVar.set("0.4"); self.settings.append('triggerLowFractionVar')
+        self.triggerLowFractionVar = tk.StringVar(); self.triggerLowFractionVar.set("0.99"); self.settings.append('triggerLowFractionVar')
         self.triggerLowFractionEntry = ttk.Entry(self.triggerLowFractionFrame, textvariable=self.triggerLowFractionVar); self.triggerLowFractionEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
         self.maxAudioTriggerTimeFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Max. audio trigger record time", style='SingleContainer.TLabelframe')
@@ -3658,7 +3658,7 @@ class PyVAQ:
 
         self.audioMonitorSampleSize = 44100*2
         self.audioMonitorAutoscale = False
-        self.audioMonitorAmplitude = 10
+        self.audioMonitorAmplitude = 5
         self.setupInputMonitoringWidgets(camSerials=self.camSerials, audioDAQChannels=self.audioDAQChannels)
 
         ########### Child process objects #####################
@@ -3807,8 +3807,8 @@ him know. Otherwise, I had nothing to do with it.
         if len(availableClockChannels) > 0:
             params.append(Param(name='Audio Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default="None"))
             params.append(Param(name='Video Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default="None"))
-            params.append(Param(name='Audio Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI4"))
-            params.append(Param(name='Video Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI5"))
+            params.append(Param(name='Audio Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI4", description="This must match your selection for Audio Sync Channel. Check DAQ pinout for matching PFI channel."))
+            params.append(Param(name='Video Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI5", description="This must match your selection for Video Sync Channel. Check DAQ pinout for matching PFI channel."))
 
         choices = None
         if len(params) > 0:

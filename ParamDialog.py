@@ -6,7 +6,7 @@ class Param():
     MONOCHOICE='monochoice'
     MULTICHOICE='multichoice'
 
-    def __init__(self, name='unnamedParam', widgetType=TEXT, options=[], default='default', parser=lambda x:x, explanationText=''):
+    def __init__(self, name='unnamedParam', widgetType=TEXT, options=[], default='default', parser=lambda x:x, description=None):
         # parent = a tkinter container that widgets should belong to
         # name = the name of the parameter
         # widgetType = one of Param.TEXT, Param.MONOCHOICE, Param.MULTICHOICE
@@ -20,6 +20,7 @@ class Param():
         self.name = name
         self.widgetType = widgetType
         self.options = options
+        self.description = description
         self.default = default
         self.parser = parser
         self.var = None
@@ -30,8 +31,9 @@ class Param():
     def createWidgets(self, parent):
         self.frame = ttk.LabelFrame(parent, text=self.name)
         startRow = 0
-        if len(explanationText) > 0:
-            self.label = ttk.Label(self.frame, text=explanationText)
+        if self.description is not None and len(self.description) > 0:
+            labelWidth = max([len(self.name), 10]) * 6
+            self.label = ttk.Label(self.frame, text=self.description, wraplength=labelWidth)
             self.label.grid(row=0, sticky=tk.NW)
             startRow = 1
         if self.widgetType == Param.TEXT:
