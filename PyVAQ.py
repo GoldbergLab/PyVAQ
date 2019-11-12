@@ -4057,11 +4057,6 @@ him know. Otherwise, I had nothing to do with it.
                     print("WARNING, high analysis monitoring lag:", lag, 's')
 
                 # Update bar charts using last received analysis summary
-                print("Updating bars:")
-                print("# of low bars:", len(self.audioAnalysisWidgets['lowFracBars']))
-                print("# of high bars:", len(self.audioAnalysisWidgets['highFracBars']))
-                print("analysisSummary['lowFrac']", analysisSummary['lowFrac'])
-                print("analysisSummary['highFrac']", analysisSummary['highFrac'])
 
                 self.audioAnalysisWidgets['volumeFracAxes'].clear()
                 self.audioAnalysisWidgets['lowFracBars'] = []
@@ -4076,7 +4071,6 @@ him know. Otherwise, I had nothing to do with it.
                         ) # High frac bar
 
                 self.audioAnalysisWidgets['volumeFracAxes'].axis(xmin=0, xmax=len(self.audioDAQChannels), ymin=0, ymax=1)
-                print("Done updating bars")
 
             if len(self.audioAnalysisSummaryHistory) > 0:
                 # Update volume plot
