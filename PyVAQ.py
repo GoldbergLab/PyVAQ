@@ -1118,11 +1118,13 @@ class Synchronizer(mp.Process):
                 elif state == Synchronizer.INITIALIZING:
                     # DO STUFF
 
+                    # Configure and generate synchronization signal
                     if self.audioSyncChannel is None and self.videoSyncChannel is None:
+                        trigTask = None
                         raise IOError("At least one audio or video sync channel must be specified.")
+                    else:
+                        trigTask = nidaqmx.Task()                       # Create task
 
-                # Configure and generate synchronization signal
-                    trigTask = nidaqmx.Task()                       # Create task
                     if self.videoSyncChannel is not None:
                         print("vsc:", self.videoSyncChannel)
                         trigTask.co_channels.add_co_pulse_chan_freq(
@@ -1211,7 +1213,8 @@ class Synchronizer(mp.Process):
 # ********************************* STOPPING *********************************
                 elif state == Synchronizer.STOPPING:
                     # DO STUFF
-                    trigTask.close()
+                    if trigTask is not None:
+                        trigTask.close()
 
                     # CHECK FOR MESSAGES
                     try: msg, arg = self.messageQueue.get(block=False)
