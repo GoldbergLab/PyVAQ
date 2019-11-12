@@ -1602,8 +1602,8 @@ class AudioTriggerer(mp.Process):
                                     high=high,
                                     lowChunks=lowChunks,
                                     highChunks=highChunks,
-                                    triggerLowChunks=self.triggerHighChunks,
-                                    triggerHighChunks=self.triggerLowChunks,
+                                    triggerLowChunks=self.triggerLowChunks,
+                                    triggerHighChunks=self.triggerHighChunks,
                                     highFrac=highFrac,
                                     lowFrac=lowFrac,
                                     lowTrigger=lowTrigger,
@@ -3496,7 +3496,15 @@ class PyVAQ:
         self.helpMenu.add_command(label="Help", command=self.showHelpDialog)
         self.helpMenu.add_command(label="About", command=self.showAboutDialog)
 
+        self.debugMenu = tk.Menu(self.menuBar)
+        self.debugMenu.add_command(label="Debug", command=self.setVerbosity)
+
+        self.monitoringMenu = tk.Menu(self.menuBar)
+        self.monitoringMenu.add_command(label="Configure audio monitoring", command=self.configureAudioMonitoring)
+
         self.menuBar.add_cascade(label="Settings", menu=self.settingsMenu)
+        self.menuBar.add_cascade(label="Monitoring", menu=self.monitoringMenu)
+        self.menuBar.add_cascade(label="Debug", menu=self.debugMenu)
         self.menuBar.add_cascade(label="Help", menu=self.helpMenu)
 
         # self.settingsFrame = ttk.LabelFrame(self.controlFrame, text="Settings")
@@ -3514,7 +3522,6 @@ class PyVAQ:
         self.monitorFrame = ttk.Frame(self.mainFrame)
         self.videoMonitorMasterFrame = ttk.Frame(self.monitorFrame)
         self.canvasSize = (300, 300)
-        self.audioMonitorSampleSize = 44100*2
         self.audioMonitorMasterFrame = ttk.Frame(self.monitorFrame)
 
         self.audioMonitorWidgets = {}
@@ -3649,6 +3656,9 @@ class PyVAQ:
         self.audioAnalysisSummaryHistory = deque(maxlen=self.analysisSummaryHistoryChunkLength)
         self.createAudioAnalysisMonitor()
 
+        self.audioMonitorSampleSize = 44100*2
+        self.audioMonitorAutoscale = False
+        self.audioMonitorRange = [-10, 10]
         self.setupInputMonitoringWidgets(camSerials=self.camSerials, audioDAQChannels=self.audioDAQChannels)
 
         ########### Child process objects #####################
@@ -3735,6 +3745,9 @@ class PyVAQ:
         self.master.quit()
         print("Everything should be closed now!")
 
+    def setVerbosity(self):
+        pass  # Set verbosity levels for child processes
+
     def showHelpDialog(self, *args):
         msg = 'Sorry, nothing here yet.'
         showinfo('PyVAQ Help', msg)
@@ -3748,6 +3761,42 @@ him know. Otherwise, I had nothing to do with it.
 '''.format(version=VERSION)
 
         showinfo('About PyVAQ', msg)
+
+    def configureAudioMonitoring(self):
+        p = self.getParams()
+        audioMonitorSampleLength = self.audioMonitorSampleSize / p['audioFrequency']
+        params = [
+            Param(name='Audio autoscale', widgetType=Param.MONOCHOICE, options=['Auto', 'Manual'], default='Manual'),
+            Param(name='Audio min', widgetType=Param.TEXT, options=None, default=str(self.audioMonitorRange[0])),
+            Param(name='Audio max', widgetType=Param.TEXT, options=None, default=str(self.audioMonitorRange[1])),
+            Param(name='Audio history length (s)', widgetType=Param.TEXT, options=None, default=str(audioMonitorSampleLength))
+        ]
+        pd = ParamDialog(self.master, params=params, title="Configure audio monitoring")
+        choices = pd.results
+        if choices is not None:
+            if 'Audio autoscale' in choices and len(choices['Audio autoscale']) > 0:
+                try:
+                    if choices['Audio autoscale'] == "Manual":
+                        self.audioMonitorAutoscale = False
+                    elif choices['Audio autoscale'] == "Auto":
+                        self.audioMonitorAutoscale = True
+                except ValueError:
+                    pass
+            if 'Audio min' in choices and len(choices['Audio min']) > 0:
+                try:
+                    self.audioMonitorRange[0] = float(choices['Audio min'])
+                except ValueError:
+                    pass
+            if 'Audio max' in choices and len(choices['Audio max']) > 0:
+                try:
+                    self.audioMonitorRange[1] = float(choices['Audio max'])
+                except ValueError:
+                    pass
+            if 'Audio history length' in choices and len(choices['Audio history length']) > 0:
+                try:
+                    self.audioMonitorSampleSize = float(choices['Audio history length']) * p['audioFrequency']
+                except ValueError:
+                    pass
 
     def selectInputs(self, *args):
 
@@ -3946,15 +3995,17 @@ him know. Otherwise, I had nothing to do with it.
 
     def updateTriggerMode(self, *args):
         newMode = self.triggerModeVar.get()
-        self.update()
+
+        if self.audioAnalysisMonitorUpdateJob is not None:
+            self.master.after_cancel(self.audioAnalysisMonitorUpdateJob)
 
         if newMode == "Audio":
             self.audioTriggerMessageQueue.put((AudioTriggerer.STARTANALYZE, None))
             self.autoUpdateAudioAnalysisMonitors()
         else:
-            if self.audioAnalysisMonitorUpdateJob is not None:
-                self.master.after_cancel(self.audioAnalysisMonitorUpdateJob)
             self.audioTriggerMessageQueue.put((AudioTriggerer.STOPANALYZE, None))
+
+        self.update()
 
     def createAudioAnalysisMonitor(self):
         # Set up matplotlib axes and plots to display audio analysis data from AudioTriggerer object
@@ -4072,44 +4123,44 @@ him know. Otherwise, I had nothing to do with it.
 
                 self.audioAnalysisWidgets['volumeFracAxes'].axis(xmin=0, xmax=len(self.audioDAQChannels), ymin=0, ymax=1)
 
-            if len(self.audioAnalysisSummaryHistory) > 0:
-                # Update volume plot
+                if len(self.audioAnalysisSummaryHistory) > 0:
+                    # Update volume plot
 
-                # Remove old lines
-                self.audioAnalysisWidgets['volumeTraceAxes'].clear()
+                    # Remove old lines
+                    self.audioAnalysisWidgets['volumeTraceAxes'].clear()
 
-                # Construct a c x n array of volume measurements
-                volumeTrace           = np.array([sum['volume']           for sum in self.audioAnalysisSummaryHistory]).squeeze().transpose()
-                triggerLowLevelTrace  = np.array([sum['triggerLowLevel']  for sum in self.audioAnalysisSummaryHistory]).squeeze().transpose()
-                triggerHighLevelTrace = np.array([sum['triggerHighLevel'] for sum in self.audioAnalysisSummaryHistory]).squeeze().transpose()
-                t                     = np.array([sum['chunkStartTime']   for sum in self.audioAnalysisSummaryHistory]).squeeze().transpose()
-                numChannels = volumeTrace.shape[0]
-#                tMultiChannel = np.stack([t for k in range(numChannels)], axis=0)
-                yMax = 1.1 * max([volumeTrace.max(), triggerLowLevelTrace.max(), triggerHighLevelTrace.max()])
-                # Plot volume traces for all channels
-                for c in range(numChannels):
-                    self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, volumeTrace[c, :], PyVAQ.lineStyles[c % len(PyVAQ.lineStyles)], linewidth=1)
-                # Plot low level trigger level demarcation
-                self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, triggerLowLevelTrace, 'r-', linewidth=1)
-                # Plot high level trigger level demarcation
-                self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, triggerHighLevelTrace, 'g-', linewidth=1)
-                try:
-                    tLow  = t[-1] - (analysisSummary['triggerLowChunks'] -1)*analysisSummary['chunkSize']/analysisSummary['audioFrequency']
-                    tHigh = t[-1] - (analysisSummary['triggerHighChunks']-1)*analysisSummary['chunkSize']/analysisSummary['audioFrequency']
-                except TypeError:
-                    print('weird analysis monitoring error:')
-                    traceback.print_exc()
-                    print('t:', t)
-                # Plot low level time period demarcation
-                self.audioAnalysisWidgets['volumeTraceAxes'].plot([tLow,  tLow],  [0, yMax], 'r-', linewidth=1)
-                # Plot high level time period demarcation
-                self.audioAnalysisWidgets['volumeTraceAxes'].plot([tHigh, tHigh], [0, yMax], 'g-', linewidth=1)
-                self.audioAnalysisWidgets['volumeTraceAxes'].relim()
-                self.audioAnalysisWidgets['volumeTraceAxes'].autoscale_view(True, True, True)
-                self.audioAnalysisWidgets['volumeTraceAxes'].axis(ymin=0, ymax=yMax)
-                self.audioAnalysisWidgets['volumeTraceAxes'].margins(x=0, y=0)
-                self.audioAnalysisWidgets['canvas'].draw()
-                self.audioAnalysisWidgets['canvas'].flush_events()
+                    # Construct a c x n array of volume measurements
+                    volumeTrace           = np.array([sum['volume']           for sum in self.audioAnalysisSummaryHistory]).squeeze().transpose()
+                    triggerLowLevelTrace  = np.array([sum['triggerLowLevel']  for sum in self.audioAnalysisSummaryHistory]).squeeze().transpose()
+                    triggerHighLevelTrace = np.array([sum['triggerHighLevel'] for sum in self.audioAnalysisSummaryHistory]).squeeze().transpose()
+                    t                     = np.array([sum['chunkStartTime']   for sum in self.audioAnalysisSummaryHistory]).squeeze().transpose()
+                    numChannels = volumeTrace.shape[0]
+    #                tMultiChannel = np.stack([t for k in range(numChannels)], axis=0)
+                    yMax = 1.1 * max([volumeTrace.max(), triggerLowLevelTrace.max(), triggerHighLevelTrace.max()])
+                    # Plot volume traces for all channels
+                    for c in range(numChannels):
+                        self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, volumeTrace[c, :], PyVAQ.lineStyles[c % len(PyVAQ.lineStyles)], linewidth=1)
+                    # Plot low level trigger level demarcation
+                    self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, triggerLowLevelTrace, 'r-', linewidth=1)
+                    # Plot high level trigger level demarcation
+                    self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, triggerHighLevelTrace, 'g-', linewidth=1)
+                    try:
+                        tLow  = t[-1] - (analysisSummary['triggerLowChunks'] -1)*analysisSummary['chunkSize']/analysisSummary['audioFrequency']
+                        tHigh = t[-1] - (analysisSummary['triggerHighChunks']-1)*analysisSummary['chunkSize']/analysisSummary['audioFrequency']
+                    except TypeError:
+                        print('weird analysis monitoring error:')
+                        traceback.print_exc()
+                        print('t:', t)
+                    # Plot low level time period demarcation
+                    self.audioAnalysisWidgets['volumeTraceAxes'].plot([tLow,  tLow],  [0, yMax], 'r-', linewidth=1)
+                    # Plot high level time period demarcation
+                    self.audioAnalysisWidgets['volumeTraceAxes'].plot([tHigh, tHigh], [0, yMax], 'g-', linewidth=1)
+                    self.audioAnalysisWidgets['volumeTraceAxes'].relim()
+                    self.audioAnalysisWidgets['volumeTraceAxes'].autoscale_view(True, True, True)
+                    self.audioAnalysisWidgets['volumeTraceAxes'].axis(ymin=0, ymax=yMax)
+                    self.audioAnalysisWidgets['volumeTraceAxes'].margins(x=0, y=0)
+                    self.audioAnalysisWidgets['canvas'].draw()
+                    self.audioAnalysisWidgets['canvas'].flush_events()
 
         if beginAuto:
             self.audioAnalysisMonitorUpdateJob = self.master.after(100, self.autoUpdateAudioAnalysisMonitors)
@@ -4143,8 +4194,11 @@ him know. Otherwise, I had nothing to do with it.
                 for k, channel in enumerate(channels):
                     self.audioMonitorWidgets[channel]['axes'].clear()
                     self.audioMonitorWidgets[channel]['axes'].plot(self.audioMonitorData[k, :].tolist(), PyVAQ.lineStyles[k % len(PyVAQ.lineStyles)], linewidth=1)
-                    self.audioMonitorWidgets[channel]['axes'].relim()
-                    self.audioMonitorWidgets[channel]['axes'].autoscale_view(True, True, True)
+                    if self.audioMonitorAutoscale:
+                        self.audioMonitorWidgets[channel]['axes'].relim()
+                        self.audioMonitorWidgets[channel]['axes'].autoscale_view(True, True, True)
+                    else:
+                        self.audioMonitorWidgets[channel]['axes'].set_ylim(self.audioMonitorRange)
                     self.audioMonitorWidgets[channel]['axes'].margins(x=0, y=0)
                     self.audioMonitorWidgets[channel]['figure'].canvas.draw()
                     self.audioMonitorWidgets[channel]['figure'].canvas.flush_events()
