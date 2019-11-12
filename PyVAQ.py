@@ -3982,8 +3982,8 @@ him know. Otherwise, I had nothing to do with it.
         xValues = [k for k in range(len(self.audioDAQChannels))]
         zeroChannelValues = [0 for k in range(len(self.audioDAQChannels))]
         oneChannelValues = [1 for k in range(len(self.audioDAQChannels))]
-        self.audioAnalysisWidgets['lowFracBars'] =  vfaxes.bar(x=xValues, bottom=zeroChannelValues, height=oneChannelValues, color='r') # low frac bar
-        self.audioAnalysisWidgets['highFracbars'] = vfaxes.bar(x=xValues, bottom=oneChannelValues, height=zeroChannelValues, color='g') # High frac bar
+        self.audioAnalysisWidgets['lowFracBars'] = []
+        self.audioAnalysisWidgets['highFracBars'] = []
         vfaxes.relim()
         vfaxes.autoscale_view(True, True, True)
         vfaxes.margins(x=0, y=0)
@@ -4057,11 +4057,26 @@ him know. Otherwise, I had nothing to do with it.
                     print("WARNING, high analysis monitoring lag:", lag, 's')
 
                 # Update bar charts using last received analysis summary
-                for k, (lowRect, lowFrac) in enumerate(zip(self.audioAnalysisWidgets['lowFracBars'], analysisSummary['lowFrac'])):
-                    lowRect.set_bounds(k, 0, 0.5, lowFrac)
-                for highRect, highFrac in zip(self.audioAnalysisWidgets['highFracbars'], analysisSummary['highFrac']):
-                    highRect.set_bounds(k+0.5, 0, 0.5, highFrac)
+                print("Updating bars:")
+                print("# of low bars:", len(self.audioAnalysisWidgets['lowFracBars']))
+                print("# of high bars:", len(self.audioAnalysisWidgets['highFracBars']))
+                print("analysisSummary['lowFrac']", analysisSummary['lowFrac'])
+                print("analysisSummary['highFrac']", analysisSummary['highFrac'])
+
+                self.audioAnalysisWidgets['volumeFracAxes'].clear()
+                self.audioAnalysisWidgets['lowFracBars'] = []
+                self.audioAnalysisWidgets['highFracBars'] = []
+
+                for c in range(len(self.audioDAQChannels)):
+                    self.audioAnalysisWidgets['lowFracBars'].append(
+                        self.audioAnalysisWidgets['volumeFracAxes'].bar(x=c,      width=0.5, bottom=0, height=analysisSummary['lowFrac'][c],  color='r', align='edge')
+                        ) # low frac bar
+                    self.audioAnalysisWidgets['highFracBars'].append(
+                        self.audioAnalysisWidgets['volumeFracAxes'].bar(x=c+0.5, width=0.5, bottom=0,  height=analysisSummary['highFrac'][c], color='g', align='edge')
+                        ) # High frac bar
+
                 self.audioAnalysisWidgets['volumeFracAxes'].axis(xmin=0, xmax=len(self.audioDAQChannels), ymin=0, ymax=1)
+                print("Done updating bars")
 
             if len(self.audioAnalysisSummaryHistory) > 0:
                 # Update volume plot
