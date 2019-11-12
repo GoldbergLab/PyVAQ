@@ -3952,9 +3952,9 @@ him know. Otherwise, I had nothing to do with it.
             self.audioTriggerMessageQueue.put((AudioTriggerer.STARTANALYZE, None))
             self.autoUpdateAudioAnalysisMonitors()
         else:
-            self.audioTriggerMessageQueue.put((AudioTriggerer.STOPANALYZE, None))
             if self.audioAnalysisMonitorUpdateJob is not None:
                 self.master.after_cancel(self.audioAnalysisMonitorUpdateJob)
+            self.audioTriggerMessageQueue.put((AudioTriggerer.STOPANALYZE, None))
 
     def createAudioAnalysisMonitor(self):
         # Set up matplotlib axes and plots to display audio analysis data from AudioTriggerer object
