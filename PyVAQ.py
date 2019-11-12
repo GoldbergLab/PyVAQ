@@ -3658,7 +3658,7 @@ class PyVAQ:
 
         self.audioMonitorSampleSize = 44100*2
         self.audioMonitorAutoscale = False
-        self.audioMonitorRange = [-10, 10]
+        self.audioMonitorAmplitude = 10
         self.setupInputMonitoringWidgets(camSerials=self.camSerials, audioDAQChannels=self.audioDAQChannels)
 
         ########### Child process objects #####################
@@ -3764,11 +3764,11 @@ him know. Otherwise, I had nothing to do with it.
 
     def configureAudioMonitoring(self):
         p = self.getParams()
-        audioMonitorSampleLength = self.audioMonitorSampleSize / p['audioFrequency']
+        audioMonitorSampleLength = round(self.audioMonitorSampleSize / p['audioFrequency'], 2)
         params = [
             Param(name='Audio autoscale', widgetType=Param.MONOCHOICE, options=['Auto', 'Manual'], default='Manual'),
-            Param(name='Audio min', widgetType=Param.TEXT, options=None, default=str(self.audioMonitorRange[0])),
-            Param(name='Audio max', widgetType=Param.TEXT, options=None, default=str(self.audioMonitorRange[1])),
+            Param(name='Audio range', widgetType=Param.TEXT, options=None, default=str(-self.audioMonitorAmplitude)),
+            Param(name='Audio max', widgetType=Param.TEXT, options=None, default=str(self.audioMonitorAmplitude)),
             Param(name='Audio history length (s)', widgetType=Param.TEXT, options=None, default=str(audioMonitorSampleLength))
         ]
         pd = ParamDialog(self.master, params=params, title="Configure audio monitoring")
@@ -3782,14 +3782,9 @@ him know. Otherwise, I had nothing to do with it.
                         self.audioMonitorAutoscale = True
                 except ValueError:
                     pass
-            if 'Audio min' in choices and len(choices['Audio min']) > 0:
+            if 'Audio range' in choices and len(choices['Audio range']) > 0:
                 try:
-                    self.audioMonitorRange[0] = float(choices['Audio min'])
-                except ValueError:
-                    pass
-            if 'Audio max' in choices and len(choices['Audio max']) > 0:
-                try:
-                    self.audioMonitorRange[1] = float(choices['Audio max'])
+                    self.audioMonitorAmplitude = abs(float(choices['Audio range']))
                 except ValueError:
                     pass
             if 'Audio history length' in choices and len(choices['Audio history length']) > 0:
@@ -4198,7 +4193,7 @@ him know. Otherwise, I had nothing to do with it.
                         self.audioMonitorWidgets[channel]['axes'].relim()
                         self.audioMonitorWidgets[channel]['axes'].autoscale_view(True, True, True)
                     else:
-                        self.audioMonitorWidgets[channel]['axes'].set_ylim(self.audioMonitorRange)
+                        self.audioMonitorWidgets[channel]['axes'].set_ylim([-self.audioMonitorAmplitude, self.audioMonitorAmplitude])
                     self.audioMonitorWidgets[channel]['axes'].margins(x=0, y=0)
                     self.audioMonitorWidgets[channel]['figure'].canvas.draw()
                     self.audioMonitorWidgets[channel]['figure'].canvas.flush_events()

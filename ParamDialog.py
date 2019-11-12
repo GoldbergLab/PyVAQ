@@ -6,7 +6,7 @@ class Param():
     MONOCHOICE='monochoice'
     MULTICHOICE='multichoice'
 
-    def __init__(self, name='unnamedParam', widgetType=TEXT, options=[], default='default', parser=lambda x:x):
+    def __init__(self, name='unnamedParam', widgetType=TEXT, options=[], default='default', parser=lambda x:x, explanationText=''):
         # parent = a tkinter container that widgets should belong to
         # name = the name of the parameter
         # widgetType = one of Param.TEXT, Param.MONOCHOICE, Param.MULTICHOICE
@@ -25,20 +25,26 @@ class Param():
         self.var = None
         self.widgets = []
         self.frame = None
+        self.label = None
 
     def createWidgets(self, parent):
         self.frame = ttk.LabelFrame(parent, text=self.name)
+        startRow = 0
+        if len(explanationText) > 0:
+            self.label = ttk.Label(self.frame, text=explanationText)
+            self.label.grid(row=0, sticky=tk.NW)
+            startRow = 1
         if self.widgetType == Param.TEXT:
             self.var = tk.StringVar()
             entry = ttk.Entry(self.frame, textvariable=self.var)
-            entry.grid(sticky=tk.NW)
+            entry.grid(row=startRow, sticky=tk.NW)
             self.widgets.append(entry)
             self.var.set(self.default)
         elif self.widgetType == Param.MONOCHOICE:
             self.var = tk.StringVar()
             for k, option in enumerate(self.options):
                 rbutton = ttk.Radiobutton(self.frame, text=option, variable=self.var, value=option)
-                rbutton.grid(row=k, column=0, sticky=tk.NW)
+                rbutton.grid(row=startRow+k, column=0, sticky=tk.NW)
                 self.widgets.append(rbutton)
                 self.var.set(self.default)
         elif self.widgetType == Param.MULTICHOICE:
@@ -47,12 +53,12 @@ class Param():
                 var = tk.StringVar()
                 self.var.append(var)
                 cbutton = ttk.Checkbutton(self.frame, text=option, variable=var, onvalue=option, offvalue='')
-                cbutton.grid(row=k+1, column=0, sticky=tk.NW)
+                cbutton.grid(row=startRow+k+1, column=0, sticky=tk.NW)
                 self.widgets.append(cbutton)
 
             self.selectAllVar = tk.IntVar()
             self.selectAllButton = ttk.Checkbutton(self.frame, text="Select all", variable=self.selectAllVar, onvalue=1, offvalue=0)
-            self.selectAllButton.grid(row=0, column=0, sticky=tk.NW)
+            self.selectAllButton.grid(row=startRow, column=0, sticky=tk.NW)
             self.selectAllVar.set(0)
             def selectAllOrNoneCallbackFactory(savar, cbuttons, vars):
                 def callback(*args):
