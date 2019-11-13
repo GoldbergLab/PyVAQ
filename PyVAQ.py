@@ -1598,7 +1598,7 @@ class AudioTriggerer(mp.Process):
                             lowFrac = lowChunks / self.triggerLowChunks
                             # Check if levels have been high/low for long enough
                             highTrigger = highFrac >= self.triggerHighFraction
-                            lowTrigger = lowFrac <= self.triggerLowFraction
+                            lowTrigger = lowFrac >= self.triggerLowFraction
                             # Combine channel outcomes into a single trigger outcome using specified behavior
                             if self.multiChannelStartBehavior == "OR":
                                 highTrigger = highTrigger.any()
@@ -1609,14 +1609,20 @@ class AudioTriggerer(mp.Process):
                             elif self.multiChannelStopBehavior == "AND":
                                 lowTrigger = lowTrigger.all()
 
+                            # print("highTrigger = ", highTrigger, "lowTrigger = ", lowTrigger)
+
                             # Check if current active trigger is expired, and delete it if it is
+                            # print("Chunk bounds:  ", chunkStartTime, '-', chunkEndTime)
                             if activeTrigger is not None:
+                                # print("Trigger bounds:", activeTrigger.startTime, '-', activeTrigger.endTime)
                                 if activeTrigger.state(chunkStartTime) > 0 and activeTrigger.state(chunkEndTime) > 0:
                                     # Entire chunk is after the end of the trigger period
+                                    # print("Deleting active trigger (it's out of range)")
                                     activeTrigger = None
                             if activeTrigger is None and highTrigger:
                                 # Send new trigger! Set to record preTriggerTime before the chunk start, and end maxAudioTriggerTime later.
                                 #   If volumes go low enough for long enough, we will send an updated trigger with a new stop time
+                                # print("Sending new trigger")
                                 activeTrigger = Trigger(
                                     startTime = chunkStartTime - self.preTriggerTime,
                                     triggerTime = chunkStartTime,
@@ -1625,7 +1631,9 @@ class AudioTriggerer(mp.Process):
                                 if self.verbose: syncPrint("Send new trigger!", buffer=self.stdoutBuffer)
                             elif activeTrigger is not None and lowTrigger:
                                 # Send updated trigger
-                                activeTrigger.stopTime = chunkStartTime
+                                # print("Sending updated stop trigger")
+                                activeTrigger.endTime = chunkStartTime
+                                # print("Setting trigger stop time to", activeTrigger.endTime)
                                 self.sendTrigger(activeTrigger)
                                 if self.verbose: syncPrint("Update trigger to stop now", buffer=self.stdoutBuffer)
 
