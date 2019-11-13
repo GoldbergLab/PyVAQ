@@ -4653,7 +4653,7 @@ him know. Otherwise, I had nothing to do with it.
             ('TriggerSelector', 'FrameStart', 'enum'),
             ('TriggerSource', 'Line0', 'enum'),
             ('TriggerActivation', 'RisingEdge', 'enum'),
-            ('PixelFormat', 'RGB8_Packed', 'enum'),
+            ('PixelFormat', 'BGR8', 'enum'),
             # ('ExposureMode', 'TriggerWidth'),
             # ('Width', 800, 'integer'),
             # ('Height', 800, 'integer'),
