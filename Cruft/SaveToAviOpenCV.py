@@ -261,7 +261,7 @@ def acquire_images(cam, nodemap):
         for i in range(NUM_IMAGES):
             try:
                 #  Retrieve next received image
-                image_result = cam.GetNextImage()
+                image_result = cam.GetNextImage().Convert(PySpin.PixelFormat_BGR8)
 
                 #  Ensure image completion
                 if image_result.IsIncomplete():
