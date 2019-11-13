@@ -1187,9 +1187,14 @@ class Synchronizer(mp.Process):
                     try:
                         if self.ready is not None:
                             self.ready.wait()
+                        # To give audio and video processes a chance to get totally set up for acquiring, wait a second.
+                        print("Sync waiting for a/v to get set up")
+                        time.sleep(1)
+                        print("Sync starting")
                         preTime = time.time_ns()
                         trigTask.start()
                         postTime = time.time_ns()
+                        print("Sync started")
                         self.startTime.value = (preTime + postTime) / 2000000000
                     except BrokenBarrierError:
                         syncPrint("S - Simultaneous start failure", buffer=self.stdoutBuffer)
@@ -1843,7 +1848,7 @@ class AudioAcquirer(mp.Process):
             self.bufferSize = chunkSize / samplingRate  # Device buffer size defaults to One second's worth of buffer
         else:
             self.bufferSize = bufferSize
-        self.acquireTimeout = 2*chunkSize / samplingRate
+        self.acquireTimeout = 10 #2*chunkSize / samplingRate
         self.audioQueue = audioQueue
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
@@ -1879,7 +1884,7 @@ class AudioAcquirer(mp.Process):
         state = AudioAcquirer.STOPPED
         nextState = AudioAcquirer.STOPPED
         lastState = AudioAcquirer.STOPPED
-
+        scount = 0
         while True:
             # Publish updated state
             if state != lastState and self.publishedStateVar is not None:
@@ -1986,10 +1991,15 @@ class AudioAcquirer(mp.Process):
                 elif state == AudioAcquirer.ACQUIRING:
                     # DO STUFF
                     try:
+                        if scount == 0:
+                            print("starting audio read")
                         reader.read_many_sample(                            # Read a chunk of audio data
                             data,
                             number_of_samples_per_channel=self.chunkSize,
                             timeout=self.acquireTimeout)
+                        if scount == 0:
+                            print("first audio read done")
+                            scount = 1
 
                         # Get timestamp of first audio chunk acquisition
                         if startTime is None:
@@ -2598,6 +2608,8 @@ class VideoAcquirer(mp.Process):
         state = VideoAcquirer.STOPPED
         nextState = VideoAcquirer.STOPPED
         lastState = VideoAcquirer.STOPPED
+        scount = 0
+
         while True:
             # Publish updated state
             if state != lastState and self.publishedStateVar is not None:
@@ -2705,8 +2717,13 @@ class VideoAcquirer(mp.Process):
                     if self.verbose > 1: profiler.enable()
                     # DO STUFF
                     try:
+                        if scount == 0:
+                            print("starting first frame grab")
                         #  Retrieve next received image
                         imageResult = cam.GetNextImage()
+                        if scount == 0:
+                            print("Grabbed first frame")
+                            scount = 1
                         # Get timestamp of first image acquisition
                         if startTime is None:
                             if self.verbose: syncPrint(self.ID+" - Getting start time from sync process...", buffer=self.stdoutBuffer)
