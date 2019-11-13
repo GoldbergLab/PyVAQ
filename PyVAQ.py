@@ -2740,13 +2740,13 @@ class VideoAcquirer(mp.Process):
                         if imageResult.IsIncomplete():
                             syncPrint('VA - Image incomplete with image status %d...' % imageResult.GetImageStatus(), buffer=self.stdoutBuffer)
                         else:
-                            imageConverted = imageResult.Convert(PySpin.PixelFormat_BGR8)
+#                            imageConverted = imageResult.Convert(PySpin.PixelFormat_BGR8)
                             imageCount += 1
                             frameTime = startTime + imageCount / self.frameRate
 
                             if self.verbose: syncPrint(self.ID + " Got image from camera, t="+str(frameTime), buffer=self.stdoutBuffer)
 
-                            imp = PickleableImage(imageConverted.GetWidth(), imageConverted.GetHeight(), 0, 0, imageConverted.GetPixelFormat(), imageConverted.GetData(), frameTime)
+                            imp = PickleableImage(imageResult.GetWidth(), imageResult.GetHeight(), 0, 0, imageResult.GetPixelFormat(), imageResult.GetData(), frameTime)
 
                             # Put image into image queue
                             self.imageQueue.put(imp)
@@ -4653,6 +4653,7 @@ him know. Otherwise, I had nothing to do with it.
             ('TriggerSelector', 'FrameStart', 'enum'),
             ('TriggerSource', 'Line0', 'enum'),
             ('TriggerActivation', 'RisingEdge', 'enum'),
+            ('PixelFormat', 'BGR8', 'enum'),
             # ('ExposureMode', 'TriggerWidth'),
             # ('Width', 800, 'integer'),
             # ('Height', 800, 'integer'),
