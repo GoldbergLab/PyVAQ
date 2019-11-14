@@ -863,7 +863,7 @@ class AVMerger(mp.Process):
                         audioFileInputText = ' '.join(['-i "{{audioFile{k}}}"'.format(k=k) for k in range(len(audioFileEvents))])
                         if not self.montage:  # Make a separate file for each video stream
                             # Construct command template
-                            mergeCommandTemplate = 'ffmpeg -i "{videoFile}" ' + audioFileInputText + ' -c:v copy -shortest -nostdin -y "{outputFile}"'
+                            mergeCommandTemplate = 'ffmpeg -i "{videoFile}" ' + audioFileInputText + ' -c:v libx264 -preset veryfast -shortest -nostdin -y "{outputFile}"'
                             # Set up dictionary of strings to substitute into command template
                             kwargs = dict([('audioFile{k}'.format(k=k), audioFileEvents[k]['filePath']) for k in range(len(audioFileEvents))])
                             for videoFileEvent in videoFileEvents:
