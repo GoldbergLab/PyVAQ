@@ -4271,7 +4271,7 @@ him know. Otherwise, I had nothing to do with it.
                 # print(analysisSummary)
                 lag = time.time_ns()/1000000000 - analysisSummary['chunkStartTime']
                 if lag > 1.5:
-                    print("WARNING, high analysis monitoring lag:", lag, 's')
+                    print("WARNING, high analysis monitoring lag:", lag, 's', 'qsize:', self.audioAnalysisMonitoringQueue.qsize())
 
                 # Update bar charts using last received analysis summary
 
