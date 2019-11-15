@@ -28,6 +28,8 @@ import PySpin
 import cv2
 import numpy as np
 import cProfile, pstats, io
+import ffmpegWriter as fw
+import array
 
 class AviType:
     """'Enum' to select AVI video type to be created and saved"""
@@ -36,10 +38,11 @@ class AviType:
     H264 = 2
 
 chosenAviType = AviType.UNCOMPRESSED  # change me!
-NUM_IMAGES = 1000  # number of images to use in AVI file
+NUM_IMAGES = 100  # number of images to use in AVI file
 
 profiler = cProfile.Profile()
 profiler2 = cProfile.Profile()
+profiler3 = cProfile.Profile()
 
 def save_list_to_avi(nodemap, nodemap_tldevice, images):
     """
@@ -129,8 +132,9 @@ def save_list_to_avi(nodemap, nodemap_tldevice, images):
             print('Error: Unknown AviType. Aborting...')
             return False
 
-        saveAVI(avi_filename, images, option, framerate_to_set)
-        saveAVIOld(avi_filename+'_old', images, option, framerate_to_set)
+        saveAVI_OpenCV(avi_filename+'_openCV', images, option, framerate_to_set)
+        saveAVI_PySpin(avi_filename+'_PySpin', images, option, framerate_to_set)
+        saveAVI_ffmpeg(avi_filename+'_ffmpeg', images, option, framerate_to_set)
 
         print('Video saved at %s.avi' % avi_filename)
 
@@ -140,7 +144,21 @@ def save_list_to_avi(nodemap, nodemap_tldevice, images):
 
     return result
 
-def saveAVI(avi_filename, images, option, fps):
+def saveAVI_ffmpeg(avi_filename, images, option, fps):
+    profiler3.enable()
+    width = images[0].GetWidth()
+    height = images[0].GetHeight()
+    videoWriter = fw.ffmpegWriter(filename=avi_filename+'.AVI', frameType='numpy', shape=(width, height), fps=fps)
+    k = 0
+    print('Appending %d images to AVI file using opencv: %s.avi...' % (len(images), avi_filename))
+    for image in images:
+        k = k + 1
+        rawFrame = np.array(image.Convert(PySpin.PixelFormat_BGR8, PySpin.HQ_LINEAR).GetData(), dtype="uint8").reshape( (height, width, 3) );
+        videoWriter.write(rawFrame)
+    videoWriter.close()
+    profiler3.disable()
+
+def saveAVI_OpenCV(avi_filename, images, option, fps):
     profiler.enable()
     width = images[0].GetWidth()
     height = images[0].GetHeight()
@@ -149,15 +167,15 @@ def saveAVI(avi_filename, images, option, fps):
     print('Appending %d images to AVI file using opencv: %s.avi...' % (len(images), avi_filename))
     for image in images:
         k = k + 1
-        row_bytes = float(len(image.GetData()))/float(width);
-        rawFrame = np.array(image.GetData(), dtype="uint8").reshape( (height, width) );
-        imageCV = cv2.cvtColor(rawFrame, cv2.COLOR_BAYER_BG2BGR)
+        # row_bytes = float(len(image.GetData()))/float(width);
+        rawFrame = np.array(image.GetData(), dtype="uint8").reshape( (height, width, 3) );
+        imageCV = rawFrame #cv2.cvtColor(rawFrame, cv2.COLOR_BAYER_BG2BGR)
         videoWriter.write(imageCV)
         # image_conv = image.Convert(PySpin.PixelFormat_BGR8, PySpin.HQ_LINEAR)
         # videoWriter.write(image_conv.GetNDArray())
     profiler.disable()
 
-def saveAVIOld(avi_filename, images, option, fps):
+def saveAVI_PySpin(avi_filename, images, option, fps):
     profiler2.enable()
     avi_recorder = PySpin.SpinVideo()
     avi_recorder.Open(avi_filename, option)
@@ -170,7 +188,8 @@ def saveAVIOld(avi_filename, images, option, fps):
     print('Appending %d images to AVI file using pyspin: %s.avi...' % (len(images), avi_filename))
 
     for i in range(len(images)):
-        avi_recorder.Append(images[i])
+        image_conv = images[i].Convert(PySpin.PixelFormat_BGR8, PySpin.HQ_LINEAR)
+        avi_recorder.Append(image_conv)
 
     # Close AVI file
     #
@@ -271,14 +290,14 @@ def acquire_images(cam, nodemap):
                     #  Print image information; height and width recorded in pixels
                     width = image_result.GetWidth()
                     height = image_result.GetHeight()
+                    print(image_result.GetData())
                     print('Grabbed Image %d, width = %d, height = %d' % (i, width, height))
 
                     #  Convert image to mono 8 and append to list
-                    images.append(image_result.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR))
+                    images.append(image_result) #.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR))
 
                     #  Release image
                     image_result.Release()
-                    print('')
 
             except PySpin.SpinnakerException as ex:
                 print('Error: %s' % ex)
@@ -308,6 +327,7 @@ def run_single_camera(cam):
     try:
         result = True
 
+        print("Initializing")
         # Retrieve TL device nodemap and print device information
         nodemap_tldevice = cam.GetTLDeviceNodeMap()
 
@@ -319,11 +339,13 @@ def run_single_camera(cam):
         # Retrieve GenICam nodemap
         nodemap = cam.GetNodeMap()
 
+        print("Acquiring")
         # Acquire list of images
         err, images = acquire_images(cam, nodemap)
         if err < 0:
             return err
 
+        print("Saving")
         result &= save_list_to_avi(nodemap, nodemap_tldevice, images)
 
         # Deinitialize camera
@@ -397,8 +419,9 @@ def main():
 
 if __name__ == '__main__':
     main()
-    for profiler in [profiler, profiler2]:
-        print('**********************************************************************************************')
+    names = ['OpenCV', 'PySpin', 'ffmpeg']
+    for name, profiler in zip(names, [profiler, profiler2, profiler3]):
+        print('************************************* {name} **********************************************'.format(name=name))
         s = io.StringIO()
         ps = pstats.Stats(profiler, stream=s)
         ps.print_stats()

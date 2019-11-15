@@ -44,6 +44,7 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.lines import Line2D
+import ffmpegWriter as fw
 
 VERSION='0.2.0'
 
@@ -863,7 +864,7 @@ class AVMerger(mp.Process):
                         audioFileInputText = ' '.join(['-i "{{audioFile{k}}}"'.format(k=k) for k in range(len(audioFileEvents))])
                         if not self.montage:  # Make a separate file for each video stream
                             # Construct command template
-                            mergeCommandTemplate = 'ffmpeg -i "{videoFile}" ' + audioFileInputText + ' -c:v libx264 -preset veryfast -shortest -nostdin -y "{outputFile}"'
+                            mergeCommandTemplate = 'ffmpeg -i "{videoFile}" ' + audioFileInputText + ' -c:v libx264 -preset veryfast -crf 0 -shortest -nostdin -y "{outputFile}"'
                             # Set up dictionary of strings to substitute into command template
                             kwargs = dict([('audioFile{k}'.format(k=k), audioFileEvents[k]['filePath']) for k in range(len(audioFileEvents))])
                             for videoFileEvent in videoFileEvents:
@@ -2970,6 +2971,7 @@ class VideoWriter(mp.Process):
         self.verbose = verbose
         self.stdoutQueue = stdoutQueue
         self.stdoutBuffer = []
+        self.videoWriteMethod = 'PySpin'   # options are ffmpeg, PySpin, OpenCV
 
     def setParams(self, **params):
         for key in params:
@@ -3023,7 +3025,7 @@ class VideoWriter(mp.Process):
                     # DO STUFF
                     triggers = []
                     imp = None
-                    aviRecorder = None
+                    videoFileInterface = None
 
                     # CHECK FOR MESSAGES
                     try:
@@ -3111,32 +3113,39 @@ class VideoWriter(mp.Process):
                         syncPrint("Image queue size: ", self.imageQueue.qsize(), buffer=self.stdoutBuffer)
                         syncPrint("Images in buffer: ", len(self.buffer), buffer=self.stdoutBuffer)
                     if imp is not None:
-                        if aviRecorder is None:
+                        if videoFileInterface is None:
                             # Start new video file
                             videoFileName = generateFileName(directory=self.videoDirectory, baseName=self.videoBaseFilename, extension='', trigger=triggers[0])
                             ensureDirectoryExists(self.videoDirectory)
-                            aviRecorder = PySpin.SpinVideo()
-                            option = PySpin.AVIOption()
-                            option.frameRate = self.frameRate
-                            if self.verbose: syncPrint(self.ID + " - Opening file to save video with frameRate ", option.frameRate, buffer=self.stdoutBuffer)
-                            aviRecorder.Open(videoFileName, option)
-                            stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
-                            aviRecorder.videoFileName = stupidChangedVideoNameThanksABunchFLIR
+                            if self.videoWriteMethod == "PySpin":
+                                videoFileInterface = PySpin.SpinVideo()
+                                option = PySpin.AVIOption()
+                                option.frameRate = self.frameRate
+                                if self.verbose: syncPrint(self.ID + " - Opening file to save video with frameRate ", option.frameRate, buffer=self.stdoutBuffer)
+                                videoFileInterface.Open(videoFileName, option)
+                                stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
+                                videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
+                            elif self.videoWriteMethod == "ffmpeg":
+                                videoFileInterface = fw.ffmpegWriter(videoFileName+'.avi', fps=self.frameRate)
 
-                        # Reconstitute PySpin image from PickleableImage
-                        im = PySpin.Image.Create(imp.width, imp.height, imp.offsetX, imp.offsetY, imp.pixelFormat, imp.data)
-                        # Convert image to desired format
-                        im = im.Convert(PySpin.PixelFormat_RGB8, PySpin.HQ_LINEAR)
                         # Write video frame to file that was previously retrieved from the buffer
                         if self.verbose:
                             timeWrote += 1/self.frameRate
                             syncPrint(self.ID + " - Writing video frame, dt="+str(timeWrote), buffer=self.stdoutBuffer)
-                        aviRecorder.Append(im)
-                        # try:
-                        #     im.Release()
-                        # except PySpin.SpinnakerException:
-                        #     if self.verbose: syncPrint("Error releasing PySpin image after appending to AVI.", buffer=self.stdoutBuffer)
-                        del im
+
+                        if self.videoWriteMethod == "PySpin":
+                            # Reconstitute PySpin image from PickleableImage
+                            im = PySpin.Image.Create(imp.width, imp.height, imp.offsetX, imp.offsetY, imp.pixelFormat, imp.data)
+                            # Convert image to desired format
+                            im = im.Convert(PySpin.PixelFormat_RGB8, PySpin.HQ_LINEAR)
+                            videoFileInterface.Append(im)
+                            # try:
+                            #     im.Release()
+                            # except PySpin.SpinnakerException:
+                            #     if self.verbose: syncPrint("Error releasing PySpin image after appending to AVI.", buffer=self.stdoutBuffer)
+                            del im
+                        elif self.videoWriteMethod == "ffmpeg":
+                            videoFileInterface.write(imp.data, shape=(imp.width, imp.height))
 
                     try:
                         # Pop the oldest image frame from the back of the buffer.
@@ -3179,20 +3188,31 @@ class VideoWriter(mp.Process):
                                 if self.verbose: syncPrint(self.ID + " - Frame does not overlap trigger. Switching to buffering.", buffer=self.stdoutBuffer)
                                 nextState = VideoWriter.BUFFERING
                                 # Remove current trigger
-                                if aviRecorder is not None:
+                                if videoFileInterface is not None:
                                     # Done with trigger, close file and clear video file
-                                    aviRecorder.Close()
+                                    if self.videoWriteMethod == "PySpin":
+                                        videoFileInterface.Close()
+                                    elif self.videoWriteMethod == "ffmpeg":
+                                        videoFileInterface.close()
                                     if self.mergeMessageQueue is not None:
                                         # Send file for AV merging:
-                                        fileEvent = dict(
-                                            filePath=aviRecorder.videoFileName,
-                                            streamType=AVMerger.VIDEO,
-                                            trigger=triggers[0],
-                                            streamID=self.camSerial
-                                        )
+                                        if self.videoWriteMethod == "PySpin":
+                                            fileEvent = dict(
+                                                filePath=videoFileInterface.videoFileName,
+                                                streamType=AVMerger.VIDEO,
+                                                trigger=triggers[0],
+                                                streamID=self.camSerial
+                                            )
+                                        else:
+                                            fileEvent = dict(
+                                                filePath=videoFileName+'.avi',
+                                                streamType=AVMerger.VIDEO,
+                                                trigger=triggers[0],
+                                                streamID=self.camSerial
+                                            )
                                         if self.verbose: syncPrint(self.ID + " - Sending video filename to merger", buffer=self.stdoutBuffer)
                                         self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
-                                    aviRecorder = None
+                                    videoFileInterface = None
                                 triggers.pop(0)
                             else:
                                 # Frame is in trigger period - continue writing
@@ -3203,18 +3223,29 @@ class VideoWriter(mp.Process):
 # ********************************* STOPPING *********************************
                 elif state == VideoWriter.STOPPING:
                     # DO STUFF
-                    if aviRecorder is not None:
-                        aviRecorder.Close()
+                    if videoFileInterface is not None:
+                        if self.videoWriteMethod == "PySpin":
+                            videoFileInterface.Close()
+                        elif self.videoWriteMethod == "ffmpeg":
+                            videoFileInterface.close()
                         if self.mergeMessageQueue is not None:
                             # Send file for AV merging:
-                            fileEvent = dict(
-                                filePath=aviRecorder.videoFileName,
-                                streamType=AVMerger.VIDEO,
-                                trigger=triggers[0],
-                                streamID=self.camSerial
-                            )
+                            if self.videoWriteMethod == "PySpin":
+                                fileEvent = dict(
+                                    filePath=videoFileInterface.videoFileName,
+                                    streamType=AVMerger.VIDEO,
+                                    trigger=triggers[0],
+                                    streamID=self.camSerial
+                                )
+                            else:
+                                fileEvent = dict(
+                                    filePath=videoFileName+'.avi',
+                                    streamType=AVMerger.VIDEO,
+                                    trigger=triggers[0],
+                                    streamID=self.camSerial
+                                )
                             self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
-                        aviRecorder = None
+                        videoFileInterface = None
                     triggers = []
 
                     # CHECK FOR MESSAGES
