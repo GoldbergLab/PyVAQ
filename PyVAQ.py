@@ -870,7 +870,7 @@ class AVMerger(mp.Process):
                             for videoFileEvent in videoFileEvents:
                                 # Add/update dictionary to reflect this video file
                                 kwargs['videoFile'] = videoFileEvent['filePath']
-                                baseVideoName = self.baseFileName + '_' + videoFileEvent['streamID']
+                                baseVideoName = self.baseFileName + '_' + videoFileEvent['streamID'] + '_merged'
                                 kwargs['outputFile'] = generateFileName(directory=self.directory, baseName=baseVideoName, extension='.avi', trigger=videoFileEvent['trigger'])
                                 # Substitute strings into command template
                                 mergeCommand = mergeCommandTemplate.format(**kwargs)
@@ -1059,8 +1059,10 @@ class Synchronizer(mp.Process):
 
     def __init__(self,
         publishedStateVar=None,
-        videoFrequency=120,                     # The frequency in Hz of the video sync signal
-        audioFrequency=44100,                   # The frequency in Hz of the audio sync signal
+        actualVideoFrequency=None,          # A shared value for publishing the actual video frequencies obtained from DAQ
+        actualAudioFrequency=None,          # A shared value for publishing the actual audio frequencies obtained from DAQ
+        requestedVideoFrequency=120,                     # The frequency in Hz of the video sync signal
+        requestedAudioFrequency=44100,                   # The frequency in Hz of the audio sync signal
         videoSyncChannel=None,           # The counter channel on which to generate the video sync signal Dev3/ctr0
         videoDutyCycle=0.5,
         audioSyncChannel=None,           # The counter channel on which to generate the audio sync signal Dev3/ctr1
@@ -1073,9 +1075,11 @@ class Synchronizer(mp.Process):
         mp.Process.__init__(self, daemon=True)
         # Store inputs in instance variables for later access
         self.publishedStateVar = publishedStateVar
+        self.actualAudioFrequency = actualAudioFrequency
+        self.actualVideoFrequency = actualVideoFrequency
         self.startTime = startTime
-        self.videoFrequency = videoFrequency
-        self.audioFrequency = audioFrequency
+        self.videoFrequency = requestedVideoFrequency
+        self.audioFrequency = requestedAudioFrequency
         self.videoSyncChannel = videoSyncChannel
         self.audioSyncChannel = audioSyncChannel
         self.videoDutyCycle = videoDutyCycle
@@ -1149,7 +1153,7 @@ class Synchronizer(mp.Process):
                     if self.videoSyncChannel is not None:
                         trigTask.co_channels.add_co_pulse_chan_freq(
                             counter=self.videoSyncChannel,
-                            name_to_assign_to_channel="videoSync",
+                            name_to_assign_to_channel="videoFrequency",
                             units=nidaqmx.constants.FrequencyUnits.HZ,
                             initial_delay=0.0,
                             freq=self.videoFrequency,
@@ -1157,12 +1161,19 @@ class Synchronizer(mp.Process):
                     if self.audioSyncChannel is not None:
                         trigTask.co_channels.add_co_pulse_chan_freq(
                             counter=self.audioSyncChannel,
-                            name_to_assign_to_channel="audioSync",
+                            name_to_assign_to_channel="audioFrequency",
                             units=nidaqmx.constants.FrequencyUnits.HZ,
                             initial_delay=0.0,
                             freq=self.audioFrequency,
                             duty_cycle=self.audioDutyCycle)     # Prepare a counter output channel for the audio sync signal
                     trigTask.timing.cfg_implicit_timing(sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS)
+
+                    if self.actualAudioFrequency is not None:
+                        # Set shared values so other processes can get actual a/v frequencies
+                        if self.actualAudioFrequency is not None:
+                            self.actualAudioFrequency.value = trigTask.co_channels['audioFrequency']
+                        if self.actualVideoFrequency is not None:
+                            self.actualVideoFrequency.value = trigTask.co_channels['videoFrequency']
 
                     # CHECK FOR MESSAGES
                     try:
@@ -1245,6 +1256,10 @@ class Synchronizer(mp.Process):
                     # DO STUFF
                     if trigTask is not None:
                         trigTask.close()
+                    if self.actualAudioFrequency is not None:
+                        self.actualAudioFrequency.value = =1
+                    if self.actualVideoFrequency is not None:
+                        self.actualVideoFrequency.value = -1
 
                     # CHECK FOR MESSAGES
                     try:
@@ -1354,7 +1369,6 @@ class AudioTriggerer(mp.Process):
     multiChannelBehaviors = ['OR', 'AND']
 
     settableParams = [
-        'audioFrequency',
         'chunkSize',
         'triggerHighLevel',
         'triggerLowLevel',
@@ -1377,7 +1391,7 @@ class AudioTriggerer(mp.Process):
                 publishedStateVar=None,
                 audioQueue=None,
                 audioAnalysisMonitorQueue=None,  # A queue to send analysis results to GUI for monitoring
-                audioFrequency=44100,               # Number of audio samples per second
+                audioFrequency=None,                # Shared var: Number of audio samples per second
                 chunkSize=1000,                     # Number of audio samples per audio chunk
                 triggerHighLevel=0.5,               # Volume level above which the audio must stay for triggerHighTime seconds to generate a start trigger
                 triggerLowLevel=0.1,                # Volume level below which the audio must stay for triggerLowTime seconds to generate an updated (stop) trigger
@@ -1407,6 +1421,9 @@ class AudioTriggerer(mp.Process):
         self.audioMessageQueue = audioMessageQueue
         self.videoMessageQueues = videoMessageQueues
         self.audioFrequency = audioFrequency
+        while self.audioFrequency.value == -1:
+            # Wait for shared value audioFrequency to be set by the Synchronizer process
+            time.sleep(0.1)
         self.chunkSize = chunkSize
         self.triggerHighLevel = triggerHighLevel
         self.triggerLowLevel = triggerLowLevel
@@ -1446,7 +1463,7 @@ class AudioTriggerer(mp.Process):
         self.updateLowBuffer()
 
     def updateHighBuffer(self):
-        self.triggerHighChunks = int(self.triggerHighTime * self.audioFrequency / self.chunkSize)
+        self.triggerHighChunks = int(self.triggerHighTime * self.audioFrequency.value / self.chunkSize)
         if self.highLevelBuffer is not None:
             previousHighLevelBuffer = list(self.highLevelBuffer)
         else:
@@ -1455,7 +1472,7 @@ class AudioTriggerer(mp.Process):
         self.highLevelBuffer.extend(previousHighLevelBuffer)
 
     def updateLowBuffer(self):
-        self.triggerLowChunks = int(self.triggerLowTime * self.audioFrequency / self.chunkSize)
+        self.triggerLowChunks = int(self.triggerLowTime * self.audioFrequency.value / self.chunkSize)
         if self.lowLevelBuffer is not None:
             previousLowLevelBuffer = list(self.lowLevelBuffer)
         else:
@@ -1467,9 +1484,9 @@ class AudioTriggerer(mp.Process):
         for key in params:
             if key in AudioTriggerer.settableParams:
                 setattr(self, key, params[key])
-                if key in ["triggerHighTime", 'chunkSize', 'audioFrequency']:
+                if key in ["triggerHighTime", 'chunkSize']:
                     self.updateHighBuffer()
-                if key in ["triggerLowTime", 'chunkSize', 'audioFrequency']:
+                if key in ["triggerLowTime", 'chunkSize']:
                     self.updateLowBuffer()
                 if key == 'bandpassFrequencies' or key == 'butterworthOrder':
                     self.updateFilter()
@@ -1578,7 +1595,7 @@ class AudioTriggerer(mp.Process):
                     # Get audio chunk from audio acquirer (c x n)
                     try:
                         chunkStartTime, audioChunk = self.audioQueue.get(block=True, timeout=0.1)
-                        chunkEndTime = chunkStartTime + self.chunkSize / self.audioFrequency
+                        chunkEndTime = chunkStartTime + self.chunkSize / self.audioFrequency.value
 
                         currentTimeOfDay = dt.datetime.now()
                         if not self.scheduleEnabled or (self.scheduleStartTime <= currentTimeOfDay and self.scheduleStopTime <= currentTimeOfDay):
@@ -1663,7 +1680,7 @@ class AudioTriggerer(mp.Process):
                                     triggerHightFrac=self.triggerHighFraction,
                                     chunkStartTime=chunkStartTime,
                                     chunkSize = self.chunkSize,
-                                    audioFrequency = self.audioFrequency,
+                                    audioFrequency = self.audioFrequency.value,
                                     activeTrigger = activeTrigger
                                 )
                                 self.audioAnalysisMonitorQueue.put(summary)
@@ -1784,7 +1801,7 @@ class AudioTriggerer(mp.Process):
         self.stdoutBuffer = []
 
     def updateFilter(self):
-        self.filter = generateButterBandpassCoeffs(self.bandpassFrequencies[0], self.bandpassFrequencies[1], self.audioFrequency, order=self.butterworthOrder)
+        self.filter = generateButterBandpassCoeffs(self.bandpassFrequencies[0], self.bandpassFrequencies[1], self.audioFrequency.value, order=self.butterworthOrder)
 
     def thresholds(self, audioChunk):
         # Return (belowLow, belowHigh) where belowLow is true if the audioChunk
@@ -2168,7 +2185,7 @@ class AudioWriter(mp.Process):
                 audioBaseFileName='audioFile',
                 audioDirectory='.',
                 audioQueue=None,
-                audioFrequency=44100,
+                audioFrequency=None,
                 numChannels=1,
                 bufferSizeSeconds=4,     # Buffer size in chunks - must be equal to the buffer size of associated videowriters, and equal to an integer # of audio chunks
                 chunkSize=None,
@@ -2184,10 +2201,13 @@ class AudioWriter(mp.Process):
         self.audioQueue = audioQueue
         self.audioQueue.cancel_join_thread()
         self.audioFrequency = audioFrequency
+        while self.audioFrequency.value == -1:
+            # Wait for shared value audioFrequency to be set by the Synchronizer process
+            time.sleep(0.1)
         self.numChannels = numChannels
         self.messageQueue = messageQueue
         self.mergeMessageQueue = mergeMessageQueue
-        self.bufferSize = round(bufferSizeSeconds * self.audioFrequency / chunkSize)
+        self.bufferSize = round(bufferSizeSeconds * self.audioFrequency.value / chunkSize)
         self.buffer = deque(maxlen=self.bufferSize)
         self.errorMessages = []
         self.exitFlag = False
@@ -2347,7 +2367,7 @@ class AudioWriter(mp.Process):
                             audioFile = wave.open(audioFileName, 'w')
                             audioFile.audioFileName = audioFileName
                             # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
-                            audioFile.setparams((self.numChannels, self.audioDepthBytes, self.audioFrequency, 0, 'NONE', 'not compressed'))
+                            audioFile.setparams((self.numChannels, self.audioDepthBytes, self.audioFrequency.value, 0, 'NONE', 'not compressed'))
                         #     padStart = True  # Because this is the first chunk, pad the start of the chunk if it starts after the trigger period start
                         # else:
                         #     padStart = False
@@ -2719,7 +2739,7 @@ class VideoAcquirer(mp.Process):
                     # DO STUFF
                     try:
                         if scount == 0:
-                            print("starting first frame grab")
+                            print("Starting first frame grab")
                         #  Retrieve next received image
                         imageResult = cam.GetNextImage()
                         if scount == 0:
@@ -3820,6 +3840,10 @@ class PyVAQ:
         self.syncStateVar = None
         self.mergeStateVar = None
 
+        # Actual a/v frequency shared vars
+        self.actualVideoFrequency = None
+        self.actualAudioFrequency = None
+
         # Verbosity of child processes
         self.audioAcquireVerbose = False
         self.audioWriteVerbose = False
@@ -4100,7 +4124,7 @@ him know. Otherwise, I had nothing to do with it.
                 'multiChannelStartBehavior',
                 'multiChannelStopBehavior'
             ]
-            params = self.getParams(paramList=paramList)
+            params = self.getParams(*paramList)
             # params = dict(
             #     triggerHighLevel=float(self.triggerHighLevelVar.get()),
             #     triggerLowLevel=float(self.triggerLowLevelVar.get()),
@@ -4182,7 +4206,7 @@ him know. Otherwise, I had nothing to do with it.
         gs = gridspec.GridSpec(1, 2, width_ratios=[6, 1])
 
         # Create plot for volume vs time trace
-        chunkSize = self.getParams()['chunkSize']
+        chunkSize = self.getParams('chunkSize')
         t = np.arange(int(self.analysisSummaryHistoryChunkLength))
         self.audioAnalysisWidgets['volumeTraceAxes'] = vtaxes = fig.add_subplot(gs[0])  # Axes to display
         vtaxes.autoscale(enable=True)
@@ -4271,7 +4295,7 @@ him know. Otherwise, I had nothing to do with it.
                 # print(analysisSummary)
                 lag = time.time_ns()/1000000000 - analysisSummary['chunkStartTime']
                 if lag > 1.5:
-                    print("WARNING, high analysis monitoring lag:", lag, 's', 'qsize:', self.audioAnalysisMonitoringQueue.qsize())
+                    print("WARNING, high analysis monitoring lag:", lag, 's', 'qsize:', self.audioAnalysisMonitorQueue.qsize())
 
                 # Update bar charts using last received analysis summary
 
@@ -4601,7 +4625,7 @@ him know. Otherwise, I had nothing to do with it.
             print(params)
             self.setParams(params)
 
-    def setParams(self, params):
+    def setParams(self, **params):
         self.audioFrequencyVar.set(params['audioFrequency'])
         self.videoFrequencyVar.set(params['videoFrequency'])
         self.exposureTimeVar.set(params['exposureTime'])
@@ -4627,35 +4651,36 @@ him know. Otherwise, I had nothing to do with it.
         self.multiChannelStopBehaviorVar.set(params['multiChannelStopBehavior'])
 #        params['chunkSize'] = 1000
 
-    def getParams(self, paramList=None):
+    def getParams(self, *paramList):
         # Extract parameters from GUI, and calculate a few derived parameters
         params = {}
-        if paramList is None or 'audioFrequency' in paramList: params['audioFrequency'] = int(self.audioFrequencyVar.get())
-        if paramList is None or 'videoFrequency' in paramList: params['videoFrequency'] = int(self.videoFrequencyVar.get())
-        if paramList is None or 'exposureTime' in paramList: params['exposureTime'] = float(self.exposureTimeVar.get())
-        if paramList is None or 'preTriggerTime' in paramList: params['preTriggerTime'] = float(self.preTriggerTimeVar.get())
-        if paramList is None or 'recordTime' in paramList: params['recordTime'] = float(self.recordTimeVar.get())
-        if paramList is None or 'baseFileName' in paramList: params['baseFileName'] = self.baseFileNameVar.get()
-        if paramList is None or 'directory' in paramList: params['directory'] = self.directoryVar.get()
-        if paramList is None or 'mergeFiles' in paramList: params['mergeFiles'] = self.mergeFilesVar.get()
-        if paramList is None or 'deleteMergedFiles' in paramList: params['deleteMergedFiles'] = self.deleteMergedFilesVar.get()
-        if paramList is None or 'montageMerge' in paramList: params['montageMerge'] = self.montageMergeVar.get()
-        if paramList is None or 'scheduleEnabled' in paramList: params['scheduleEnabled'] = self.scheduleEnabledVar.get()
-        if paramList is None or 'scheduleStart' in paramList: params['scheduleStart'] = self.scheduleStartVar.get()
-        if paramList is None or 'scheduleStop' in paramList: params['scheduleStop'] = self.scheduleStopVar.get()
-        if paramList is None or 'triggerMode' in paramList: params['triggerMode'] = self.triggerModeVar.get()
-        if paramList is None or 'triggerHighLevel' in paramList: params['triggerHighLevel'] = float(self.triggerHighLevelVar.get())
-        if paramList is None or 'triggerLowLevel' in paramList: params['triggerLowLevel'] = float(self.triggerLowLevelVar.get())
-        if paramList is None or 'triggerHighTime' in paramList: params['triggerHighTime'] = float(self.triggerHighTimeVar.get())
-        if paramList is None or 'triggerLowTime' in paramList: params['triggerLowTime'] = float(self.triggerLowTimeVar.get())
-        if paramList is None or 'triggerHighFraction' in paramList: params['triggerHighFraction'] = float(self.triggerHighFractionVar.get())
-        if paramList is None or 'triggerLowFraction' in paramList: params['triggerLowFraction'] = float(self.triggerLowFractionVar.get())
-        if paramList is None or 'maxAudioTriggerTime' in paramList: params['maxAudioTriggerTime'] = float(self.maxAudioTriggerTimeVar.get())
-        if paramList is None or 'multiChannelStartBehavior' in paramList: params['multiChannelStartBehavior'] = self.multiChannelStartBehaviorVar.get()
-        if paramList is None or 'multiChannelStopBehavior' in paramList: params['multiChannelStopBehavior'] = self.multiChannelStopBehaviorVar.get()
-        if paramList is None or 'chunkSize' in paramList: params['chunkSize'] = self.chunkSize
+        getAllParams = (len(paramList) == 0)
+        if getAllParams or 'audioFrequency' in paramList: params['audioFrequency'] = int(self.audioFrequencyVar.get())
+        if getAllParams or 'videoFrequency' in paramList: params['videoFrequency'] = int(self.videoFrequencyVar.get())
+        if getAllParams or 'exposureTime' in paramList: params['exposureTime'] = float(self.exposureTimeVar.get())
+        if getAllParams or 'preTriggerTime' in paramList: params['preTriggerTime'] = float(self.preTriggerTimeVar.get())
+        if getAllParams or 'recordTime' in paramList: params['recordTime'] = float(self.recordTimeVar.get())
+        if getAllParams or 'baseFileName' in paramList: params['baseFileName'] = self.baseFileNameVar.get()
+        if getAllParams or 'directory' in paramList: params['directory'] = self.directoryVar.get()
+        if getAllParams or 'mergeFiles' in paramList: params['mergeFiles'] = self.mergeFilesVar.get()
+        if getAllParams or 'deleteMergedFiles' in paramList: params['deleteMergedFiles'] = self.deleteMergedFilesVar.get()
+        if getAllParams or 'montageMerge' in paramList: params['montageMerge'] = self.montageMergeVar.get()
+        if getAllParams or 'scheduleEnabled' in paramList: params['scheduleEnabled'] = self.scheduleEnabledVar.get()
+        if getAllParams or 'scheduleStart' in paramList: params['scheduleStart'] = self.scheduleStartVar.get()
+        if getAllParams or 'scheduleStop' in paramList: params['scheduleStop'] = self.scheduleStopVar.get()
+        if getAllParams or 'triggerMode' in paramList: params['triggerMode'] = self.triggerModeVar.get()
+        if getAllParams or 'triggerHighLevel' in paramList: params['triggerHighLevel'] = float(self.triggerHighLevelVar.get())
+        if getAllParams or 'triggerLowLevel' in paramList: params['triggerLowLevel'] = float(self.triggerLowLevelVar.get())
+        if getAllParams or 'triggerHighTime' in paramList: params['triggerHighTime'] = float(self.triggerHighTimeVar.get())
+        if getAllParams or 'triggerLowTime' in paramList: params['triggerLowTime'] = float(self.triggerLowTimeVar.get())
+        if getAllParams or 'triggerHighFraction' in paramList: params['triggerHighFraction'] = float(self.triggerHighFractionVar.get())
+        if getAllParams or 'triggerLowFraction' in paramList: params['triggerLowFraction'] = float(self.triggerLowFractionVar.get())
+        if getAllParams or 'maxAudioTriggerTime' in paramList: params['maxAudioTriggerTime'] = float(self.maxAudioTriggerTimeVar.get())
+        if getAllParams or 'multiChannelStartBehavior' in paramList: params['multiChannelStartBehavior'] = self.multiChannelStartBehaviorVar.get()
+        if getAllParams or 'multiChannelStopBehavior' in paramList: params['multiChannelStopBehavior'] = self.multiChannelStopBehaviorVar.get()
+        if getAllParams or 'chunkSize' in paramList: params['chunkSize'] = self.chunkSize
 
-        if paramList is None or 'exposureTime' in paramList:
+        if getAllParams or 'exposureTime' in paramList:
             if params["exposureTime"] >= 1000000 * 0.95/params["videoFrequency"]:
                 oldExposureTime = params["exposureTime"]
                 params["exposureTime"] = 1000000*0.95/params["videoFrequency"]
@@ -4668,17 +4693,17 @@ him know. Otherwise, I had nothing to do with it.
                 print("********************")
                 print()
 
-        if paramList is None or "baseVideoFilename" in paramList: params["baseVideoFilename"] = dict([(camSerial, slugify(params["baseFileName"] + '_' + camSerial)) for camSerial in self.camSerials])
-        if paramList is None or "bufferSizeSeconds" in paramList: params["bufferSizeSeconds"] = params["preTriggerTime"] * 2 + 1   # Twice the pretrigger time to make sure we don't miss stuff, plus one second for good measure
+        if getAllParams or "baseVideoFilename" in paramList: params["baseVideoFilename"] = dict([(camSerial, slugify(params["baseFileName"] + '_' + camSerial)) for camSerial in self.camSerials])
+        if getAllParams or "bufferSizeSeconds" in paramList: params["bufferSizeSeconds"] = params["preTriggerTime"] * 2 + 1   # Twice the pretrigger time to make sure we don't miss stuff, plus one second for good measure
 
-        if paramList is None or "bufferSizeAudioChunks" in paramList: params["bufferSizeAudioChunks"] = params["bufferSizeSeconds"] * params['audioFrequency'] / params["chunkSize"]   # Will be rounded up to nearest integer
-        if paramList is None or "audioBaseFilename" in paramList: params["audioBaseFilename"] = slugify(params["baseFileName"]+'_'+','.join(self.audioDAQChannels))
+        if getAllParams or "bufferSizeAudioChunks" in paramList: params["bufferSizeAudioChunks"] = params["bufferSizeSeconds"] * params['audioFrequency'] / params["chunkSize"]   # Will be rounded up to nearest integer
+        if getAllParams or "audioBaseFilename" in paramList: params["audioBaseFilename"] = slugify(params["baseFileName"]+'_'+','.join(self.audioDAQChannels))
 
-        if paramList is None or "numStreams" in paramList: params["numStreams"] = (len(self.audioDAQChannels)>0) + len(self.camSerials)
-        if paramList is None or "numProcesses" in paramList: params["numProcesses"] = (len(self.audioDAQChannels)>0) + len(self.camSerials)*2 + 2
-        if paramList is None or "numSyncedProcesses" in paramList: params["numSyncedProcesses"] = (len(self.audioDAQChannels)>0) + len(self.camSerials) + 1  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
+        if getAllParams or "numStreams" in paramList: params["numStreams"] = (len(self.audioDAQChannels)>0) + len(self.camSerials)
+        if getAllParams or "numProcesses" in paramList: params["numProcesses"] = (len(self.audioDAQChannels)>0) + len(self.camSerials)*2 + 2
+        if getAllParams or "numSyncedProcesses" in paramList: params["numSyncedProcesses"] = (len(self.audioDAQChannels)>0) + len(self.camSerials) + 1  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
 
-        if paramList is None or "acquireSettings" in paramList: params["acquireSettings"] = [
+        if getAllParams or "acquireSettings" in paramList: params["acquireSettings"] = [
             ('AcquisitionMode', 'Continuous', 'enum'),
             ('TriggerMode', 'Off', 'enum'),
             ('TriggerSelector', 'FrameStart', 'enum'),
@@ -4717,7 +4742,30 @@ him know. Otherwise, I had nothing to do with it.
         self.syncStateVar = mp.Queue(maxsize=1)
         self.mergeStateVar = mp.Queue(maxsize=1)
 
+        # Shared values so all processes can access actual DAQ frequencies
+        #   determined by Synchronizer process. This value should only change
+        #   once when the Synchronizer is initialized, and not again until
+        #   all child processes are stopped and restarted.
+        self.actualVideoFrequency = mp.Value('d', -1)
+        self.actualAudioFrequency = mp.Value('d', -1)
+
         startTime = mp.Value('d', -1)
+
+        # Create sync process
+        self.syncMessageQueue = mp.Queue()
+        self.syncProcess = Synchronizer(
+            publishedStateVar = self.syncStateVar,
+            actualVideoFrequency=self.actualVideoFrequency,
+            actualAudioFrequency=self.actualAudioFrequency,
+            startTime=startTime,
+            audioSyncChannel=self.audioSyncTerminal,
+            videoSyncChannel=self.videoSyncTerminal,
+            requestedAudioFrequency=p["audioFrequency"],
+            requestedVideoFrequency=p["videoFrequency"],
+            messageQueue=self.syncMessageQueue,
+            verbose=self.syncVerbose,
+            ready=ready,
+            stdoutQueue=self.stdoutQueue)
 
         if len(self.audioDAQChannels) > 0:
             audioQueue = mp.Queue()
@@ -4732,7 +4780,7 @@ him know. Otherwise, I had nothing to do with it.
                 mergeMessageQueue=self.mergeMessageQueue,
                 chunkSize=p["chunkSize"],
                 bufferSizeSeconds=p["bufferSizeSeconds"],
-                audioFrequency=p['audioFrequency'],
+                audioFrequency=self.actualVideoFrequency,
                 numChannels=len(self.audioDAQChannels),
                 verbose=self.audioWriteVerbose,
                 stdoutQueue=self.stdoutQueue)
@@ -4744,7 +4792,7 @@ him know. Otherwise, I had nothing to do with it.
                 audioAnalysisQueue=self.audioAnalysisQueue,
                 messageQueue=self.audioAcquireMessageQueue,
                 chunkSize=p["chunkSize"],
-                samplingRate=p["audioFrequency"],
+                samplingRate=self.actualAudioFrequency,
                 bufferSize=None,
                 channelNames=self.audioDAQChannels,
                 syncChannel=self.audioSyncSource,
@@ -4790,19 +4838,6 @@ him know. Otherwise, I had nothing to do with it.
             self.videoAcquireProcesses[camSerial] = videoAcquireProcess
             self.videoWriteProcesses[camSerial] = videoWriteProcess
 
-        # Create sync process
-        self.syncMessageQueue = mp.Queue()
-        self.syncProcess = Synchronizer(
-            startTime=startTime,
-            audioSyncChannel=self.audioSyncTerminal,
-            videoSyncChannel=self.videoSyncTerminal,
-            audioFrequency=p["audioFrequency"],
-            videoFrequency=p["videoFrequency"],
-            messageQueue=self.syncMessageQueue,
-            verbose=self.syncVerbose,
-            ready=ready,
-            stdoutQueue=self.stdoutQueue)
-
         if p["numStreams"] >= 2:
             # Create merge process
             self.mergeProcess = AVMerger(
@@ -4821,7 +4856,7 @@ him know. Otherwise, I had nothing to do with it.
         self.audioTriggerProcess = AudioTriggerer(
             audioQueue=self.audioAnalysisQueue,
             audioAnalysisMonitorQueue=self.audioAnalysisMonitorQueue,
-            audioFrequency=44100,
+            audioFrequency=self.actualAudioFrequency,
             chunkSize=p["chunkSize"],
             triggerHighLevel=p["triggerHighLevel"],
             triggerLowLevel=p["triggerLowLevel"],
@@ -4928,6 +4963,9 @@ him know. Otherwise, I had nothing to do with it.
         self.syncStateVar = None
         clearQueue(self.mergeStateVar)
         self.mergeStateVar = None
+
+        self.actualVideoFrequency = None
+        self.actualAudioFrequency = None
 
         # Give children a chance to register exit message
         time.sleep(0.5)
