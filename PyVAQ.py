@@ -1171,9 +1171,9 @@ class Synchronizer(mp.Process):
                     if self.actualAudioFrequency is not None:
                         # Set shared values so other processes can get actual a/v frequencies
                         if self.actualAudioFrequency is not None:
-                            self.actualAudioFrequency.value = trigTask.co_channels['audioFrequency']
+                            self.actualAudioFrequency.value = trigTask.co_channels['audioFrequency'].co_pulse_freq
                         if self.actualVideoFrequency is not None:
-                            self.actualVideoFrequency.value = trigTask.co_channels['videoFrequency']
+                            self.actualVideoFrequency.value = trigTask.co_channels['videoFrequency'].co_pulse_freq
 
                     # CHECK FOR MESSAGES
                     try:
