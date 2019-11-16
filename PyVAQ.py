@@ -1952,7 +1952,7 @@ class AudioAcquirer(mp.Process):
                             max_val=10,
                             min_val=-10)
                     readTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
-                        rate=self.audioFrequency,
+                        rate=self.audioFrequency.value,
                         source=self.syncChannel,                            # Specify a timing source!
                         active_edge=nidaqmx.constants.Edge.RISING,
                         sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
@@ -2028,10 +2028,10 @@ class AudioAcquirer(mp.Process):
                             if self.verbose: syncPrint("AA - Got start time from sync process:"+str(startTime), buffer=self.stdoutBuffer)
 #                            startTime = time.time_ns() / 1000000000 - self.chunkSize / self.audioFrequency
 
-                        chunkStartTime = startTime + sampleCount / self.audioFrequency
+                        chunkStartTime = startTime + sampleCount / self.audioFrequency.value
                         sampleCount += self.chunkSize
                         processedData = AudioAcquirer.rescaleAudio(data)
-                        audioChunk = AudioChunk(chunkStartTime = chunkStartTime, audioFrequency = self.audioFrequency, data = processedData)
+                        audioChunk = AudioChunk(chunkStartTime = chunkStartTime, audioFrequency = self.audioFrequency.value, data = processedData)
                         if self.audioQueue is not None:
                             self.audioQueue.put(audioChunk)              # If a data queue is provided, queue up the new data
                         else:
