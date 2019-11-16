@@ -4751,6 +4751,7 @@ him know. Otherwise, I had nothing to do with it.
 
         startTime = mp.Value('d', -1)
 
+        print(1)
         # Create sync process
         self.syncMessageQueue = mp.Queue()
         self.syncProcess = Synchronizer(
@@ -4767,6 +4768,7 @@ him know. Otherwise, I had nothing to do with it.
             ready=ready,
             stdoutQueue=self.stdoutQueue)
 
+        print(2)
         if len(self.audioDAQChannels) > 0:
             audioQueue = mp.Queue()
             self.audioAcquireMessageQueue = mp.Queue()
@@ -4799,6 +4801,7 @@ him know. Otherwise, I had nothing to do with it.
                 verbose=self.audioAcquireVerbose,
                 ready=ready,
                 stdoutQueue=self.stdoutQueue)
+        print(3)
 
         for camSerial in self.camSerials:
             imageQueue = mp.Queue()
@@ -4837,6 +4840,7 @@ him know. Otherwise, I had nothing to do with it.
                 )
             self.videoAcquireProcesses[camSerial] = videoAcquireProcess
             self.videoWriteProcesses[camSerial] = videoWriteProcess
+        print(4)
 
         if p["numStreams"] >= 2:
             # Create merge process
@@ -4853,6 +4857,7 @@ him know. Otherwise, I had nothing to do with it.
         else:
             self.mergeProcess = None
 
+        print(5)
         self.audioTriggerProcess = AudioTriggerer(
             audioQueue=self.audioAnalysisQueue,
             audioAnalysisMonitorQueue=self.audioAnalysisMonitorQueue,
@@ -4874,11 +4879,13 @@ him know. Otherwise, I had nothing to do with it.
             messageQueue=self.audioTriggerMessageQueue,
             stdoutQueue=self.stdoutQueue
             )
+        print(6)
 
         if len(self.audioDAQChannels) > 0:
             self.audioTriggerProcess.start()
             self.audioWriteProcess.start()
             self.audioAcquireProcess.start()
+        print(7)
 
         for camSerial in self.camSerials:
             self.videoWriteProcesses[camSerial].start()
