@@ -463,14 +463,14 @@ class AudioChunk():
     # and functions for manipulating and querying time info about the data
     def __init__(self,
                 chunkStartTime=None,    # Time of first sample, in seconds since something
-                samplingRate=None,      # Audio sampling rate, in Hz
+                audioFrequency=None,      # Audio sampling rate, in Hz
                 data=None               # Audio data as a CxN numpy array, C=# of channels, N=# of samples
                 ):
         self.data = data
         self.chunkStartTime = chunkStartTime
-        self.samplingRate = samplingRate
+        self.audioFrequency = audioFrequency
         self.channelNumber, self.chunkSize = self.data.shape
-        self.chunkEndTime = chunkStartTime + (self.chunkSize / self.samplingRate)
+        self.chunkEndTime = chunkStartTime + (self.chunkSize / self.audioFrequency)
 
     def getTriggerState(self, trigger):
         chunkStartTriggerState = trigger.state(self.chunkStartTime)
@@ -485,7 +485,7 @@ class AudioChunk():
         # Trim chunk start:
         if chunkStartTriggerState < 0:
             # Start of chunk is before start of trigger - truncate start of chunk.
-            startSample = abs(int(chunkStartTriggerState * self.samplingRate))
+            startSample = abs(int(chunkStartTriggerState * self.audioFrequency))
             self.chunkStartTime = trigger.startTime
         elif chunkStartTriggerState == 0:
             # Start of chunk is in trigger period, do not trim start of chunk, pad if padStart=True
@@ -505,7 +505,7 @@ class AudioChunk():
             endSample = self.chunkSize
         else:
             # End of chunk is after trigger period - trim chunk to end of trigger period
-            endSample = self.chunkSize - (chunkEndTriggerState * self.samplingRate)
+            endSample = self.chunkSize - (chunkEndTriggerState * self.audioFrequency)
             self.chunkEndTime = trigger.endTime
 
         startSample = round(startSample)
@@ -513,7 +513,7 @@ class AudioChunk():
 #        print("Trim samples: {first}|{start} --> {end}|{last}".format(start=startSample, end=endSample, first=0, last=self.chunkSize))
         self.data = self.data[:, startSample:endSample]
         if padStart is True and startSample == 0:
-            padLength = round((self.chunkStartTime - trigger.startTime) * self.samplingRate)
+            padLength = round((self.chunkStartTime - trigger.startTime) * self.audioFrequency)
             pad = np.zeros((self.channelNumber, padLength), dtype='int16')
             self.data = np.concatenate((pad, self.data), axis=1)
         self.chunkSize = self.data.shape[1]
@@ -1850,7 +1850,7 @@ class AudioAcquirer(mp.Process):
                 audioMonitorQueue = None,           # A multiprocessing queue to send data to the UI to monitor the audio
                 audioAnalysisQueue = None,          # A multiprocessing queue to send data to the audio triggerer process for analysis
                 chunkSize = 4410,                   # Size of the read chunk in samples
-                samplingRate = 44100,               # Maximum expected rate of the specified synchronization channel
+                audioFrequency = 44100,               # Maximum expected rate of the specified synchronization channel
                 bufferSize = None,                  # Size of device buffer. Defaults to 1 second's worth of data
                 channelNames = [],                  # Channel name for analog input (microphone signal)
                 syncChannel = None,                 # Channel name for synchronization source
@@ -1862,11 +1862,8 @@ class AudioAcquirer(mp.Process):
         self.publishedStateVar = publishedStateVar
         # Store inputs in instance variables for later access
         self.startTimeSharedValue = startTime
-        if bufferSize is None:
-            self.bufferSize = chunkSize / samplingRate  # Device buffer size defaults to One second's worth of buffer
-        else:
-            self.bufferSize = bufferSize
-        self.acquireTimeout = 10 #2*chunkSize / samplingRate
+        self.audioFrequency = audioFrequency
+        self.acquireTimeout = 10 #2*chunkSize / self.audioFrequency
         self.audioQueue = audioQueue
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
@@ -1875,7 +1872,6 @@ class AudioAcquirer(mp.Process):
         # if len(self.audioMonitorQueue) > 0:
         #     self.audioMonitorQueue.cancel_join_thread()
         self.chunkSize = chunkSize
-        self.samplingRate = samplingRate
         self.inputChannels = channelNames
         self.syncChannel = syncChannel
         self.ready = ready
@@ -1940,6 +1936,11 @@ class AudioAcquirer(mp.Process):
 # ********************************* INITIALIZING *********************************
                 elif state == AudioAcquirer.INITIALIZING:
                     # DO STUFF
+                    # Read actual audio frequency from the Synchronizer process
+                    while self.audioFrequency.value == -1:
+                        # Wait for shared value audioFrequency to be set by the Synchronizer process
+                        time.sleep(0.1)
+
                     data = np.zeros((len(self.inputChannels), self.chunkSize), dtype='float')   # A pre-allocated array to receive audio data
                     processedData = data.copy()
                     readTask = nidaqmx.Task(new_task_name="audioTask!")                            # Create task
@@ -1951,7 +1952,7 @@ class AudioAcquirer(mp.Process):
                             max_val=10,
                             min_val=-10)
                     readTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
-                        rate=self.samplingRate,
+                        rate=self.audioFrequency,
                         source=self.syncChannel,                            # Specify a timing source!
                         active_edge=nidaqmx.constants.Edge.RISING,
                         sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
@@ -2025,12 +2026,12 @@ class AudioAcquirer(mp.Process):
                             while startTime == -1 or startTime is None:
                                 startTime = self.startTimeSharedValue.value
                             if self.verbose: syncPrint("AA - Got start time from sync process:"+str(startTime), buffer=self.stdoutBuffer)
-#                            startTime = time.time_ns() / 1000000000 - self.chunkSize / self.samplingRate
+#                            startTime = time.time_ns() / 1000000000 - self.chunkSize / self.audioFrequency
 
-                        chunkStartTime = startTime + sampleCount / self.samplingRate
+                        chunkStartTime = startTime + sampleCount / self.audioFrequency
                         sampleCount += self.chunkSize
                         processedData = AudioAcquirer.rescaleAudio(data)
-                        audioChunk = AudioChunk(chunkStartTime = chunkStartTime, samplingRate = self.samplingRate, data = processedData)
+                        audioChunk = AudioChunk(chunkStartTime = chunkStartTime, audioFrequency = self.audioFrequency, data = processedData)
                         if self.audioQueue is not None:
                             self.audioQueue.put(audioChunk)              # If a data queue is provided, queue up the new data
                         else:
@@ -2382,7 +2383,7 @@ class AudioWriter(mp.Process):
                         # Write chunk of audio to file that was previously retrieved from the buffer
                         if self.verbose:
                             syncPrint("AW - Writing audio", buffer=self.stdoutBuffer)
-                            timeWrote += (audioChunk.data.shape[1] / audioChunk.samplingRate)
+                            timeWrote += (audioChunk.data.shape[1] / audioChunk.audioFrequency)
                             syncPrint("AW - Time wrote: {time}".format(time=timeWrote), buffer=self.stdoutBuffer)
                         audioFile.writeframes(audioChunk.getAsBytes())
 
@@ -4799,7 +4800,7 @@ him know. Otherwise, I had nothing to do with it.
                 audioAnalysisQueue=self.audioAnalysisQueue,
                 messageQueue=self.audioAcquireMessageQueue,
                 chunkSize=p["chunkSize"],
-                samplingRate=self.actualAudioFrequency,
+                audioFrequency=self.actualAudioFrequency,
                 bufferSize=None,
                 channelNames=self.audioDAQChannels,
                 syncChannel=self.audioSyncSource,
