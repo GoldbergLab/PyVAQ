@@ -1257,7 +1257,7 @@ class Synchronizer(mp.Process):
                     if trigTask is not None:
                         trigTask.close()
                     if self.actualAudioFrequency is not None:
-                        self.actualAudioFrequency.value = =1
+                        self.actualAudioFrequency.value = -1
                     if self.actualVideoFrequency is not None:
                         self.actualVideoFrequency.value = -1
 
