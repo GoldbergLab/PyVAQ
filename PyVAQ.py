@@ -2203,6 +2203,7 @@ class AudioWriter(mp.Process):
         self.audioQueue.cancel_join_thread()
         self.audioFrequency = audioFrequency
         self.numChannels = numChannels
+        self.requestedBufferSizeSeconds = bufferSizeSeconds
         self.messageQueue = messageQueue
         self.mergeMessageQueue = mergeMessageQueue
         self.bufferSize = None
@@ -2273,7 +2274,7 @@ class AudioWriter(mp.Process):
                         # Wait for shared value audioFrequency to be set by the Synchronizer process
                         time.sleep(0.1)
                     # Calculate buffer size and create buffer
-                    self.bufferSize = round(bufferSizeSeconds * self.audioFrequency.value / chunkSize)
+                    self.bufferSize = round(self.requestedBufferSizeSeconds * self.audioFrequency.value / chunkSize)
                     self.buffer = deque(maxlen=self.bufferSize)
 
                     # CHECK FOR MESSAGES
