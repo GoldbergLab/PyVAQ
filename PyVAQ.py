@@ -1421,9 +1421,6 @@ class AudioTriggerer(mp.Process):
         self.audioMessageQueue = audioMessageQueue
         self.videoMessageQueues = videoMessageQueues
         self.audioFrequency = audioFrequency
-        while self.audioFrequency.value == -1:
-            # Wait for shared value audioFrequency to be set by the Synchronizer process
-            time.sleep(0.1)
         self.chunkSize = chunkSize
         self.triggerHighLevel = triggerHighLevel
         self.triggerLowLevel = triggerLowLevel
@@ -1458,9 +1455,6 @@ class AudioTriggerer(mp.Process):
 
         self.highLevelBuffer = None
         self.lowLevelBuffer = None
-        self.updateFilter()
-        self.updateHighBuffer()
-        self.updateLowBuffer()
 
     def updateHighBuffer(self):
         self.triggerHighChunks = int(self.triggerHighTime * self.audioFrequency.value / self.chunkSize)
@@ -1538,6 +1532,12 @@ class AudioTriggerer(mp.Process):
                 elif state == AudioTriggerer.INITIALIZING:
                     # DO STUFF
                     activeTrigger = None
+                    while self.audioFrequency.value == -1:
+                        # Wait for shared value audioFrequency to be set by the Synchronizer process
+                        time.sleep(0.1)
+                    self.updateFilter()
+                    self.updateHighBuffer()
+                    self.updateLowBuffer()
 
                     # CHECK FOR MESSAGES
                     try:
@@ -2201,14 +2201,11 @@ class AudioWriter(mp.Process):
         self.audioQueue = audioQueue
         self.audioQueue.cancel_join_thread()
         self.audioFrequency = audioFrequency
-        while self.audioFrequency.value == -1:
-            # Wait for shared value audioFrequency to be set by the Synchronizer process
-            time.sleep(0.1)
         self.numChannels = numChannels
         self.messageQueue = messageQueue
         self.mergeMessageQueue = mergeMessageQueue
-        self.bufferSize = round(bufferSizeSeconds * self.audioFrequency.value / chunkSize)
-        self.buffer = deque(maxlen=self.bufferSize)
+        self.bufferSize = None
+        self.buffer = None
         self.errorMessages = []
         self.exitFlag = False
         self.verbose = verbose
@@ -2269,6 +2266,14 @@ class AudioWriter(mp.Process):
                     triggers = []
                     audioChunk = None
                     audioFile = None
+
+                    # Read actual audio frequency from the Synchronizer process
+                    while self.audioFrequency.value == -1:
+                        # Wait for shared value audioFrequency to be set by the Synchronizer process
+                        time.sleep(0.1)
+                    # Calculate buffer size and create buffer
+                    self.bufferSize = round(bufferSizeSeconds * self.audioFrequency.value / chunkSize)
+                    self.buffer = deque(maxlen=self.bufferSize)
 
                     # CHECK FOR MESSAGES
                     try:
