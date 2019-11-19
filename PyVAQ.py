@@ -3072,12 +3072,12 @@ class VideoWriter(mp.Process):
     EXITING = 6
 
     stateList = [
-        'state_stopped'
-        'state_initializing'
-        'state_writing'
-        'state_buffering'
-        'state_stopping'
-        'state_error'
+        'state_stopped',
+        'state_initializing',
+        'state_writing',
+        'state_buffering',
+        'state_stopping',
+        'state_error',
         'state_exiting'
     ]
 
