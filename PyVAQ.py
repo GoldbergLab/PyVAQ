@@ -2288,7 +2288,7 @@ class AudioWriter(mp.Process):
                         # Wait for shared value audioFrequency to be set by the Synchronizer process
                         time.sleep(0.1)
                     # Calculate buffer size and create buffer
-                    self.bufferSize = 2*(self.requestedBufferSizeSeconds * self.audioFrequency.value / self.chunkSize)
+                    self.bufferSize = int(2*(self.requestedBufferSizeSeconds * self.audioFrequency.value / self.chunkSize))
                     self.buffer = deque(maxlen=self.bufferSize)
 
                     # CHECK FOR MESSAGES
@@ -3002,7 +3002,7 @@ class VideoWriter(mp.Process):
         self.frameRate = frameRate
         self.messageQueue = messageQueue
         self.mergeMessageQueue = mergeMessageQueue
-        self.bufferSize = int(bufferSizeSeconds * self.frameRate)
+        self.bufferSize = int(2*bufferSizeSeconds * self.frameRate)
         self.buffer = deque(maxlen=self.bufferSize)
         self.errorMessages = []
         self.exitFlag = False
