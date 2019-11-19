@@ -4933,10 +4933,10 @@ him know. Otherwise, I had nothing to do with it.
         self.audioTriggerMessageQueue = mp.Queue()
         self.audioAnalysisMonitorQueue = mp.Queue()
 
-        self.audioWriteStateVar = mp.Queue(maxsize=1)
-        self.audioAcquireStateVar = mp.Queue(maxsize=1)
-        self.syncStateVar = mp.Queue(maxsize=1)
-        self.mergeStateVar = mp.Queue(maxsize=1)
+        self.audioWriteStateVar = mp.Value('d', -1)
+        self.audioAcquireStateVar = mp.Value('d', -1)
+        self.syncStateVar = mp.Value('d', -1)
+        self.mergeStateVar = mp.Value('d', -1)
 
         # Shared values so all processes can access actual DAQ frequencies
         #   determined by Synchronizer process. This value should only change
