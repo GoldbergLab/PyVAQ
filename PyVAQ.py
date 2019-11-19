@@ -4681,12 +4681,12 @@ him know. Otherwise, I had nothing to do with it.
             system.ReleaseInstance()
 
     def checkStates(self):
-        self.videoWriteStates = {}
-        self.videoAcquireStates = {}
-        self.audioWriteState = None
-        self.audioAcquireState = None
-        self.syncState = None
-        self.mergeState = None
+        videoWriteStates = {}
+        videoAcquireStates = {}
+        audioWriteState = None
+        audioAcquireState = None
+        syncState = None
+        mergeState = None
 
         for camSerial in self.videoWriteStateVars:
             videoWriteStates[camSerial] = self.videoWriteStateVars[camSerial].value
