@@ -1245,13 +1245,10 @@ class Synchronizer(mp.Process):
                         if self.ready is not None:
                             self.ready.wait()
                         # To give audio and video processes a chance to get totally set up for acquiring, wait a second.
-                        print("Sync waiting for a/v to get set up")
                         time.sleep(1)
-                        print("Sync starting")
                         preTime = time.time_ns()
                         trigTask.start()
                         postTime = time.time_ns()
-                        print("Sync started")
                         self.startTime.value = (preTime + postTime) / 2000000000
                     except BrokenBarrierError:
                         if self.verbose >= 0: syncPrint("S - Simultaneous start failure", buffer=self.stdoutBuffer)
@@ -1983,7 +1980,6 @@ class AudioAcquirer(mp.Process):
         state = AudioAcquirer.STOPPED
         nextState = AudioAcquirer.STOPPED
         lastState = AudioAcquirer.STOPPED
-        scount = 0
         while True:
             # Publish updated state
             if state != lastState:
@@ -2091,15 +2087,10 @@ class AudioAcquirer(mp.Process):
                 elif state == AudioAcquirer.ACQUIRING:
                     # DO STUFF
                     try:
-                        if scount == 0:
-                            print("starting audio read")
                         reader.read_many_sample(                            # Read a chunk of audio data
                             data,
                             number_of_samples_per_channel=self.chunkSize,
                             timeout=self.acquireTimeout)
-                        if scount == 0:
-                            print("first audio read done")
-                            scount = 1
 
                         # Get timestamp of first audio chunk acquisition
                         if startTime is None:
@@ -2755,7 +2746,6 @@ class VideoAcquirer(mp.Process):
         state = VideoAcquirer.STOPPED
         nextState = VideoAcquirer.STOPPED
         lastState = VideoAcquirer.STOPPED
-        scount = 0
 
         while True:
             # Publish updated state
@@ -2859,13 +2849,8 @@ class VideoAcquirer(mp.Process):
 #                    if self.verbose > 1: profiler.enable()
                     # DO STUFF
                     try:
-                        if scount == 0:
-                            print("Starting first frame grab")
                         #  Retrieve next received image
                         imageResult = cam.GetNextImage()
-                        if scount == 0:
-                            print("Grabbed first frame")
-                            scount = 1
                         # Get timestamp of first image acquisition
                         if startTime is None:
                             if self.verbose >= 1: syncPrint(self.ID+" - Getting start time from sync process...", buffer=self.stdoutBuffer)
@@ -2908,7 +2893,7 @@ class VideoAcquirer(mp.Process):
 
                         imageResult.Release()
                     except PySpin.SpinnakerException:
-                        print(traceback.format_exc())
+                        syncPrint(traceback.format_exc(), buffer=self.stdoutBuffer)
                         if self.verbose >= 0: syncPrint(self.ID + " Video frame acquisition timeed out.", buffer=self.stdoutBuffer)
 
                     # CHECK FOR MESSAGES
@@ -3059,7 +3044,7 @@ class VideoAcquirer(mp.Process):
         for attribute, value, type in attributeValueTriplets:
             result = self.setCameraAttribute(nodemap, attribute, value, type=type)
             if not result:
-                print("Failed to set", str(attribute), " to ", str(value))
+                syncPrint("Failed to set", str(attribute), " to ", str(value), buffer=self.stdoutBuffer)
 
 class VideoWriter(mp.Process):
     # States:
@@ -3513,7 +3498,7 @@ def getCameraAttribute(nodemap, attributeName, attributeTypePtrFunction):
     nodeAttribute = attributeTypePtrFunction(nodemap.GetNode(attributeName))
 
     if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsReadable(nodeAttribute):
-        print('Unable to retrieve '+attributeName+'. Aborting...')
+        raise AttributeError('Unable to retrieve '+attributeName+'. Aborting...')
         return None
 
     try:
@@ -4024,12 +4009,12 @@ class PyVAQ:
     def cleanupAndExit(self):
         # Cancel automatic update jobs
         self.stopMonitors()
-        print("Stopping acquisition")
+        print("main>> Stopping acquisition")
         self.stopChildProcesses()
-        print("Destroying master")
+        print("main>> Destroying master")
         self.master.destroy()
         self.master.quit()
-        print("Everything should be closed now!")
+        print("main>> Everything should be closed now!")
 
     def setVerbosity(self):
         verbosityOptions = ['0', '1', '2', '3']
@@ -4180,8 +4165,8 @@ him know. Otherwise, I had nothing to do with it.
                 else:
                     self.videoSyncSource = None
 
-                print('Got audioDAQChannels:', audioDAQChannels)
-                print('Got camSerials:', camSerials)
+                print('main>> Got audioDAQChannels:', audioDAQChannels)
+                print('main>> Got camSerials:', camSerials)
 
                 self.setupInputMonitoringWidgets(camSerials=camSerials, audioDAQChannels=audioDAQChannels)
 
@@ -4191,7 +4176,7 @@ him know. Otherwise, I had nothing to do with it.
                 self.updateAcquisitionButton()
                 self.startMonitors()
             else:
-                print('User input cancelled.')
+                print('main>> User input cancelled.')
         else:
             showinfo('No inputs', 'No compatible audio/video inputs found. Please connect at least one USB3 vision camera for video input and/or a NI USB DAQ for audio input and synchronization.')
 
@@ -4437,7 +4422,7 @@ him know. Otherwise, I had nothing to do with it.
                 # print(analysisSummary)
                 lag = time.time_ns()/1000000000 - analysisSummary['chunkStartTime']
                 if lag > 1.5:
-                    print("WARNING, high analysis monitoring lag:", lag, 's', 'qsize:', self.audioAnalysisMonitorQueue.qsize())
+                    print("main>> WARNING, high analysis monitoring lag:", lag, 's', 'qsize:', self.audioAnalysisMonitorQueue.qsize())
 
                 # Update bar charts using last received analysis summary
 
@@ -4480,9 +4465,9 @@ him know. Otherwise, I had nothing to do with it.
                         tLow  = t[-1] - (analysisSummary['triggerLowChunks'] -1)*analysisSummary['chunkSize']/analysisSummary['audioFrequency']
                         tHigh = t[-1] - (analysisSummary['triggerHighChunks']-1)*analysisSummary['chunkSize']/analysisSummary['audioFrequency']
                     except TypeError:
-                        print('weird analysis monitoring error:')
+                        print('main>> weird analysis monitoring error:')
                         traceback.print_exc()
-                        print('t:', t)
+                        print('main>> t:', t)
                     # Plot low level time period demarcation
                     self.audioAnalysisWidgets['volumeTraceAxes'].plot([tLow,  tLow],  [0, yMax], 'r-', linewidth=1)
                     # Plot high level time period demarcation
@@ -4524,7 +4509,7 @@ him know. Otherwise, I had nothing to do with it.
                         self.audioMonitorData = np.concatenate((self.audioMonitorData, audioData), axis=1)
                     else:
                         self.audioMonitorData = audioData
-                print("WARNING! Audio monitor is not getting data fast enough to keep up with stream.")
+                print("main>> WARNING! Audio monitor is not getting data fast enough to keep up with stream.")
             except queue.Empty:
                 pass
 #                print('exhausted audio monitoring queue, got', chunkCount)
@@ -4691,48 +4676,48 @@ him know. Otherwise, I had nothing to do with it.
         for camSerial in self.videoWriteStateVars:
             videoWriteStates[camSerial] = self.videoWriteStateVars[camSerial].value
             if videoWriteStates[camSerial] == -1:
-                print("videoWriteStates["+camSerial+"]: Unknown")
+                print("main>> videoWriteStates["+camSerial+"]: Unknown")
             else:
-                print("videoWriteStates["+camSerial+"]:", videoWriteStates[camSerial])
+                print("main>> videoWriteStates["+camSerial+"]:", videoWriteStates[camSerial])
         for camSerial in self.videoAcquireStateVars:
             videoAcquireStates[camSerial] = self.videoAcquireStateVars[camSerial].get(block=True, timeout=0.1)
             if videoAcquireStates[camSerial] == -1:
-                print("videoAcquireStates["+camSerial+"]: Unknown")
+                print("main>> videoAcquireStates["+camSerial+"]: Unknown")
             else:
-                print("videoAcquireStates["+camSerial+"]:", videoAcquireStates[camSerial])
+                print("main>> videoAcquireStates["+camSerial+"]:", videoAcquireStates[camSerial])
         if self.audioWriteStateVar is not None:
             audioWriteState = self.audioWriteStateVar.get(block=True, timeout=0.1)
             if audioWriteState == -1:
-                print("audioWriteState: Unknown")
+                print("main>> audioWriteState: Unknown")
             else:
-                print("audioWriteState:", audioWriteState)
+                print("main>> audioWriteState:", audioWriteState)
         if self.audioAcquireStateVar is not None:
             audioAcquireState = self.audioAcquireStateVar.get(block=True, timeout=0.1)
             if audioAcquireState == -1:
-                print("audioAcquireState: Unknown")
+                print("main>> audioAcquireState: Unknown")
             else:
-                print("audioAcquireState:", audioAcquireState)
+                print("main>> audioAcquireState:", audioAcquireState)
         if self.syncStateVar is not None:
             syncState = self.syncStateVar.get(block=True, timeout=0.1)
             if syncState == -1:
-                print("syncState: Unknown")
+                print("main>> syncState: Unknown")
             else:
-                print("syncState:", syncState)
+                print("main>> syncState:", syncState)
         if self.mergeStateVar is not None:
             mergeState = self.mergeStateVar.get(block=True, timeout=0.1)
             if mergeState == -1:
-                print("mergeState: Unknown")
+                print("main>> mergeState: Unknown")
             else:
-                print("mergeState:", mergeState)
+                print("main>> mergeState:", mergeState)
 
         for camSerial in videoWriteStates:
-            print("videoWriteStates[", camSerial, "]:", videoWriteStates[camSerial])
+            print("main>> videoWriteStates[", camSerial, "]:", videoWriteStates[camSerial])
         for camSerial in videoAcquireStates:
-            print("videoAcquireStates[", camSerial, "]:", videoAcquireStates[camSerial])
-        print("audioWriteState:", audioWriteState)
-        print("audioAcquireState:", audioAcquireState)
-        print("syncState:", syncState)
-        print("mergeState:", mergeState)
+            print("main>> videoAcquireStates[", camSerial, "]:", videoAcquireStates[camSerial])
+        print("main>> audioWriteState:", audioWriteState)
+        print("main>> audioAcquireState:", audioAcquireState)
+        print("main>> syncState:", syncState)
+        print("main>> mergeState:", mergeState)
 
     def acquisitionActive(self):
         # Check if at least one audio or video process is acquiring
@@ -4757,7 +4742,6 @@ him know. Otherwise, I had nothing to do with it.
             except (AttributeError, KeyError):
                 # No state vars set up yet, so no, not acquiring
                 state = None
-            print("VA state:", state)
             if state in activeVideoStates:
                 return True
         try:
@@ -4767,7 +4751,6 @@ him know. Otherwise, I had nothing to do with it.
         except (AttributeError, KeyError):
             # No state vars set up yet, so no, not acquiring
             state = None
-        print("AA state:", state)
         if state in activeAudioStates:
             return True
 
@@ -4818,6 +4801,7 @@ him know. Otherwise, I had nothing to do with it.
                 params = json.loads(f.read())
             params["scheduleStart"] = serializableToTime(params["scheduleStart"])
             params["scheduleStop"] = serializableToTime(params["scheduleStop"])
+            print("main>> Loaded settings:")
             print(params)
             self.setParams(params)
 
@@ -4880,14 +4864,14 @@ him know. Otherwise, I had nothing to do with it.
             if params["exposureTime"] >= 1000000 * 0.95/params["videoFrequency"]:
                 oldExposureTime = params["exposureTime"]
                 params["exposureTime"] = 1000000*0.95/params["videoFrequency"]
-                print()
-                print("******WARNING*******")
-                print()
-                print("Exposure time is too long to achieve requested frame rate!")
-                print("Shortening exposure time from {a}us to {b}us".format(a=oldExposureTime, b=params["exposureTime"]))
-                print()
-                print("********************")
-                print()
+                print('main>> ')
+                print("main>> ******WARNING*******")
+                print('main>> ')
+                print("main>> Exposure time is too long to achieve requested frame rate!")
+                print("main>> Shortening exposure time from {a}us to {b}us".format(a=oldExposureTime, b=params["exposureTime"]))
+                print('main>> ')
+                print("main>> ********************")
+                print('main>> ')
 
         if getAllParams or "baseVideoFilename" in paramList: params["baseVideoFilename"] = dict([(camSerial, slugify(params["baseFileName"] + '_' + camSerial)) for camSerial in self.camSerials])
         if getAllParams or "bufferSizeSeconds" in paramList: params["bufferSizeSeconds"] = params["preTriggerTime"] * 2 + 1   # Twice the pretrigger time to make sure we don't miss stuff, plus one second for good measure
@@ -4917,7 +4901,7 @@ him know. Otherwise, I had nothing to do with it.
         return params
 
     def createChildProcesses(self):
-        print("Creating child processes")
+        print("main>> Creating child processes")
         p = self.getParams()
 
         ready = mp.Barrier(p["numSyncedProcesses"])
@@ -4947,7 +4931,6 @@ him know. Otherwise, I had nothing to do with it.
 
         startTime = mp.Value('d', -1)
 
-        print(1)
         # Create sync process
         self.syncMessageQueue = mp.Queue()
         self.syncProcess = Synchronizer(
@@ -4964,7 +4947,6 @@ him know. Otherwise, I had nothing to do with it.
             ready=ready,
             stdoutQueue=self.stdoutQueue)
 
-        print(2)
         if len(self.audioDAQChannels) > 0:
             audioQueue = mp.Queue()
             self.audioAcquireMessageQueue = mp.Queue()
@@ -4997,7 +4979,6 @@ him know. Otherwise, I had nothing to do with it.
                 verbose=self.audioAcquireVerbose,
                 ready=ready,
                 stdoutQueue=self.stdoutQueue)
-        print(3)
 
         for camSerial in self.camSerials:
             imageQueue = mp.Queue()
@@ -5036,7 +5017,6 @@ him know. Otherwise, I had nothing to do with it.
                 )
             self.videoAcquireProcesses[camSerial] = videoAcquireProcess
             self.videoWriteProcesses[camSerial] = videoWriteProcess
-        print(4)
 
         if p["numStreams"] >= 2:
             # Create merge process
@@ -5053,7 +5033,6 @@ him know. Otherwise, I had nothing to do with it.
         else:
             self.mergeProcess = None
 
-        print(5)
         self.audioTriggerProcess = AudioTriggerer(
             audioQueue=self.audioAnalysisQueue,
             audioAnalysisMonitorQueue=self.audioAnalysisMonitorQueue,
@@ -5075,13 +5054,11 @@ him know. Otherwise, I had nothing to do with it.
             messageQueue=self.audioTriggerMessageQueue,
             stdoutQueue=self.stdoutQueue
             )
-        print(6)
 
         if len(self.audioDAQChannels) > 0:
             self.audioTriggerProcess.start()
             self.audioWriteProcess.start()
             self.audioAcquireProcess.start()
-        print(7)
 
         for camSerial in self.camSerials:
             self.videoWriteProcesses[camSerial].start()
@@ -5181,47 +5158,38 @@ him know. Otherwise, I had nothing to do with it.
             s = io.StringIO()
             ps = pstats.Stats(self.profiler, stream=s)
             ps.print_stats()
-            print(s.getvalue())
+            print('main>> ', s.getvalue())
         except:
-            print('Error printing profiler stats')
+            print('main>> Error printing profiler stats')
 
         try:
             if self.audioTriggerProcess is not None:
                 self.audioTriggerProcess = None
                 clearQueue(self.audioTriggerMessageQueue)
-                print('0/7 audio trigger done')
             if self.audioAcquireProcess is not None:
                 self.audioAcquireProcess = None
                 clearQueue(self.audioMonitorQueue)
                 clearQueue(self.audioAcquireMessageQueue)
                 self.audioMonitorData = None
-                print('1/7 audio acquire done')
             if self.audioWriteProcess is not None:
                 self.audioWriteProcess = None
                 clearQueue(self.audioWriteMessageQueue)
-                print('2/7 audio write done')
             for camSerial in self.camSerials:
                 self.videoAcquireProcesses = {}
                 self.videoWriteProcesses = {}
                 clearQueue(self.videoMonitorQueues[camSerial])
                 clearQueue(self.videoAcquireMessageQueues[camSerial])
                 clearQueue(self.videoWriteMessageQueues[camSerial])
-                print('3/7 video write/acquire done for', camSerial)
             if self.mergeProcess is not None:
                 clearQueue(self.mergeMessageQueue)
-                print('4/7 merge done')
             if self.syncProcess is not None:
                 self.syncProcess = None
                 clearQueue(self.syncMessageQueue)
-                print('5/7 sync done')
             if self.StdoutManager is not None:
                 self.stdoutQueue.put(StdoutManager.EXIT)
-                print('clearing queue')
                 clearQueue(self.stdoutQueue)
-                print('done clearing queue')
                 self.stdoutQueue = None
                 self.StdoutManager = None
-            print('6/7 stdout manager done')
 
             # Clear/destroy monitoring queues
             if self.videoMonitorQueues is not None:
@@ -5234,7 +5202,6 @@ him know. Otherwise, I had nothing to do with it.
             if self.mergeMessageQueue is not None:
                 clearQueue(self.mergeMessageQueue)
                 self.mergeMessageQueue = None
-            print('7/7 monitoring queues done')
         except:
             traceback.print_exc()
 
@@ -5242,13 +5209,13 @@ him know. Otherwise, I had nothing to do with it.
         if t is None:
             t = time.time_ns()/1000000000
         trig = Trigger(t-2, t, t+2)
-        print("Sending manual trigger!")
+        print("main>> Sending manual trigger!")
         for camSerial in self.camSerials:
             self.videoWriteMessageQueues[camSerial].put((VideoWriter.TRIGGER, trig))
-            print("...sent to", camSerial, "video writer")
+            print("main>> ...sent to", camSerial, "video writer")
         if self.audioWriteProcess is not None:
             self.audioWriteMessageQueue.put((AudioWriter.TRIGGER, trig))
-            print("...sent to audio writer")
+            print("main>> ...sent to audio writer")
 
     def update(self):
         # root window
