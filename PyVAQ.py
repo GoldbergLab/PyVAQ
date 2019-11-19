@@ -3862,13 +3862,15 @@ class PyVAQ:
         self.actualAudioFrequency = None
 
         # Verbosity of child processes
-        self.audioAcquireVerbose = False
-        self.audioWriteVerbose = False
-        self.videoAcquireVerbose = False
-        self.videoWriteVerbose = False
-        self.syncVerbose = False
-        self.mergeVerbose = False
-        self.audioTriggerVerbose = False
+        #   0=Errors, 1=Occasional important status updates
+        #   2=Minor status updates, 3=Continuous status messages
+        self.audioAcquireVerbose = 1
+        self.audioWriteVerbose = 1
+        self.videoAcquireVerbose = 1
+        self.videoWriteVerbose = 1
+        self.syncVerbose = 1
+        self.mergeVerbose = 1
+        self.audioTriggerVerbose = 1
 
         self.profiler =  cProfile.Profile()
 
