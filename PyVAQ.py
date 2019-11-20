@@ -4662,15 +4662,6 @@ him know. Otherwise, I had nothing to do with it.
             system.ReleaseInstance()
 
     def getPIDs(self):
-        self.videoWriteProcesses = {}
-        self.videoAcquireProcesses = {}
-        self.audioWriteProcess = None
-        self.audioAcquireProcess = None
-        self.audioTriggerProcess = None
-        self.syncProcess = None
-        self.mergeProcess = None
-        self.StdoutManager = None
-
         videoWritePIDs = {}
         videoAcquirePIDs = {}
         audioWritePID = None
