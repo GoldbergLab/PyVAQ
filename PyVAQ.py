@@ -4921,11 +4921,6 @@ him know. Otherwise, I had nothing to do with it.
         self.audioTriggerMessageQueue = mp.Queue()
         self.audioAnalysisMonitorQueue = mp.Queue()
 
-        self.audioWriteProcess.publishedStateVar = mp.Value('d', -1)
-        self.audioAcquireProcess.publishedStateVar = mp.Value('d', -1)
-        self.syncProcess.publishedStateVar = mp.Value('d', -1)
-        self.mergeProcess.publishedStateVar = mp.Value('d', -1)
-
         # Shared values so all processes can access actual DAQ frequencies
         #   determined by Synchronizer process. This value should only change
         #   once when the Synchronizer is initialized, and not again until
@@ -5130,18 +5125,18 @@ him know. Otherwise, I had nothing to do with it.
     def destroyChildProcesses(self):
         self.exitChildProcesses()
 
-        # Clear and destroy published state variables
-        for camSerial in self.camSerials:
-            self.videoWriteProcesses[camSerial].publishedStateVar.value = -1
-            self.videoAcquireProcesses[camSerial].publishedStateVar.value = -1
-        if self.audioWriteProcess is not None:
-            self.audioWriteProcess.publishedStateVar.value = -1
-        if self.audioAcquireProcess is not None:
-            self.audioAcquireProcess.publishedStateVar.value = -1
-        if self.syncProcess is not None:
-            self.syncProcess.publishedStateVar.value = -1
-        if self.mergeProcess is not None:
-            self.mergeProcess.publishedStateVar.value = -1
+        # # Clear and destroy published state variables
+        # for camSerial in self.camSerials:
+        #     self.videoWriteProcesses[camSerial].publishedStateVar.value = -1
+        #     self.videoAcquireProcesses[camSerial].publishedStateVar.value = -1
+        # if self.audioWriteProcess is not None:
+        #     self.audioWriteProcess.publishedStateVar.value = -1
+        # if self.audioAcquireProcess is not None:
+        #     self.audioAcquireProcess.publishedStateVar.value = -1
+        # if self.syncProcess is not None:
+        #     self.syncProcess.publishedStateVar.value = -1
+        # if self.mergeProcess is not None:
+        #     self.mergeProcess.publishedStateVar.value = -1
 
         self.actualVideoFrequency = None
         self.actualAudioFrequency = None
