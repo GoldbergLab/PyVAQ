@@ -4678,20 +4678,26 @@ him know. Otherwise, I had nothing to do with it.
         syncPID = None
         mergePID = None
 
+        print("main>> PIDs...")
         for camSerial in self.videoWriteProcesses:
             videoWritePIDs[camSerial] = self.videoWriteProcesses[camSerial].PID.value
             print("main>> videoWritePIDs["+camSerial+"]:", videoWritePIDs[camSerial])
         for camSerial in self.videoAcquireProcesses:
             videoAcquirePIDs[camSerial] = self.videoAcquireProcesses[camSerial].PID.value
             print("main>> videoAcquirePIDs["+camSerial+"]:", videoAcquirePIDs[camSerial])
-        audioWritePID = self.audioWriteProcess.PID.value
-        print("main>> audioWritePID:", audioWritePID)
-        audioAcquirePID = self.audioAcquirePIDVar.get(block=True, timeout=0.1)
-        print("main>> audioAcquirePID:", audioAcquirePID)
-        syncPID = self.syncPIDVar.get(block=True, timeout=0.1)
-        print("main>> syncPID:", syncPID)
-        mergePID = self.mergePIDVar.get(block=True, timeout=0.1)
-        print("main>> mergePID:", mergePID)
+        if self.audioWriteProcess is not None:
+            audioWritePID = self.audioWriteProcess.PID.value
+            print("main>> audioWritePID:", audioWritePID)
+        if self.audioAcquireProcess is not None:
+            audioAcquirePID = self.audioAcquireProcess.PID.value
+            print("main>> audioAcquirePID:", audioAcquirePID)
+        if self.syncProcess is not None:
+            syncPID = self.syncProcess.PID.value
+            print("main>> syncPID:", syncPID)
+        if self.mergeProcess is not None:
+            mergePID = self.mergeProcess.PID.value
+            print("main>> mergePID:", mergePID)
+        print("main>> ...PIDs:")
 
     def checkStates(self):
         videoWriteStates = {}
