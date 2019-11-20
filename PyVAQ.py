@@ -700,6 +700,7 @@ class AVMerger(mp.Process):
         state = AVMerger.STOPPED
         nextState = AVMerger.STOPPED
         lastState = AVMerger.STOPPED
+        msg = ''; arg = None
 
         while True:
             # Publish updated state
@@ -1154,6 +1155,7 @@ class Synchronizer(mp.Process):
         state = Synchronizer.STOPPED
         nextState = Synchronizer.STOPPED
         lastState = Synchronizer.STOPPED
+        msg = ''; arg = None
 
         while True:
             # Publish updated state
@@ -1470,7 +1472,8 @@ class AudioTriggerer(mp.Process):
         mp.Process.__init__(self, daemon=True)
         self.publishedStateVar = mp.Value('i', -1)
         self.audioQueue = audioQueue
-        if self.audioQueue is not None: self.audioQueue.cancel_join_thread()
+        if self.audioQueue is not None:
+            self.audioQueue.cancel_join_thread()
         self.audioAnalysisMonitorQueue = audioAnalysisMonitorQueue
         self.audioMessageQueue = audioMessageQueue
         self.videoMessageQueues = videoMessageQueues
@@ -1557,6 +1560,7 @@ class AudioTriggerer(mp.Process):
         state = AudioTriggerer.STOPPED
         nextState = AudioTriggerer.STOPPED
         lastState = AudioTriggerer.STOPPED
+        msg = ''; arg = None
 
         while True:
             # Publish updated state
@@ -1981,6 +1985,8 @@ class AudioAcquirer(mp.Process):
         state = AudioAcquirer.STOPPED
         nextState = AudioAcquirer.STOPPED
         lastState = AudioAcquirer.STOPPED
+        msg = ''; arg = None
+
         while True:
             # Publish updated state
             if state != lastState:
@@ -2285,7 +2291,8 @@ class AudioWriter(mp.Process):
         self.audioDirectory = audioDirectory
         self.audioBaseFileName = audioBaseFileName
         self.audioQueue = audioQueue
-        self.audioQueue.cancel_join_thread()
+        if self.audioQueue is not None:
+            self.audioQueue.cancel_join_thread()
         self.audioFrequency = audioFrequency
         self.numChannels = numChannels
         self.requestedBufferSizeSeconds = bufferSizeSeconds
@@ -2324,6 +2331,7 @@ class AudioWriter(mp.Process):
         state = AudioWriter.STOPPED
         nextState = AudioWriter.STOPPED
         lastState = AudioWriter.STOPPED
+        msg = ''; arg = None
 
         while True:
             # Publish updated state
@@ -2747,6 +2755,7 @@ class VideoAcquirer(mp.Process):
         state = VideoAcquirer.STOPPED
         nextState = VideoAcquirer.STOPPED
         lastState = VideoAcquirer.STOPPED
+        msg = ''; arg = None
 
         while True:
             # Publish updated state
@@ -3099,7 +3108,8 @@ class VideoWriter(mp.Process):
         self.videoDirectory=videoDirectory
         self.videoBaseFilename = videoBaseFilename
         self.imageQueue = imageQueue
-        if self.imageQueue is not None: self.imageQueue.cancel_join_thread()
+        if self.imageQueue is not None:
+            self.imageQueue.cancel_join_thread()
         self.frameRate = frameRate
         self.messageQueue = messageQueue
         self.mergeMessageQueue = mergeMessageQueue
@@ -3122,11 +3132,15 @@ class VideoWriter(mp.Process):
                 if self.verbose >= 0: syncPrint(self.ID + " - Param not settable: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
 
     def updatePublishedState(self, state):
+        print("VW: Attempting to update published state")
         if self.publishedStateVar is not None:
+            print("VW: published var is not None")
             L = self.publishedStateVar.get_lock()
             locked = L.acquire(block=False)
             if locked:
+                print("VW: Value is locked and loaded")
                 self.publishedStateVar.value = state
+                print("VW: set state to", state)
                 L.release()
 
     def run(self):
@@ -3136,6 +3150,8 @@ class VideoWriter(mp.Process):
         state = VideoWriter.STOPPED
         nextState = VideoWriter.STOPPED
         lastState = VideoWriter.STOPPED
+        msg = ''; arg = None
+
         while True:
             # Publish updated state
             if state != lastState:
