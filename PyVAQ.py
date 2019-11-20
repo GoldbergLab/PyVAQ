@@ -4981,8 +4981,6 @@ him know. Otherwise, I had nothing to do with it.
             self.videoMonitorQueues[camSerial] = mp.Queue(maxsize=1)
             self.videoAcquireMessageQueues[camSerial] = mp.Queue()
             self.videoWriteMessageQueues[camSerial] = mp.Queue()
-            self.videoWriteProcesses[camSerial].publishedStateVar = mp.Value('d', -1)
-            self.videoAcquireProcesses[camSerial].publishedStateVar = mp.Value('d', -1)
             processes = {}
 
             videoAcquireProcess = VideoAcquirer(
