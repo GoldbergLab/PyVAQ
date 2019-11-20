@@ -4681,7 +4681,7 @@ him know. Otherwise, I had nothing to do with it.
         for camSerial in self.videoWriteProcesses:
             videoWritePIDs[camSerial] = self.videoWriteProcesses[camSerial].PID.value
             print("main>> videoWritePIDs["+camSerial+"]:", videoWritePIDs[camSerial])
-        for camSerial in self.videoAcquirePIDVars:
+        for camSerial in self.videoAcquireProcesses:
             videoAcquirePIDs[camSerial] = self.videoAcquireProcesses[camSerial].PID.value
             print("main>> videoAcquirePIDs["+camSerial+"]:", videoAcquirePIDs[camSerial])
         audioWritePID = self.audioWriteProcess.PID.value
