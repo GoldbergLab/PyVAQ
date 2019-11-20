@@ -588,7 +588,7 @@ class StdoutManager(mp.Process):
         self.PID = mp.Value('i', -1)
 
     def run(self):
-        self.PID = os.getpid()
+        self.PID.value = os.getpid()
         while True:
             msgBundles = []
             try:
@@ -695,7 +695,7 @@ class AVMerger(mp.Process):
                 L.release()
 
     def run(self):
-        self.PID = os.getpid()
+        self.PID.value = os.getpid()
         if self.verbose >= 1: syncPrint("M - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
         state = AVMerger.STOPPED
         nextState = AVMerger.STOPPED
@@ -1150,7 +1150,7 @@ class Synchronizer(mp.Process):
                 L.release()
 
     def run(self):
-        self.PID = os.getpid()
+        self.PID.value = os.getpid()
         if self.verbose >= 1: syncPrint("S - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
         state = Synchronizer.STOPPED
         nextState = Synchronizer.STOPPED
@@ -1555,7 +1555,7 @@ class AudioTriggerer(mp.Process):
                 L.release()
 
     def run(self):
-        self.PID = os.getpid()
+        self.PID.value = os.getpid()
         if self.verbose >= 1: syncPrint("AT - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
         state = AudioTriggerer.STOPPED
         nextState = AudioTriggerer.STOPPED
@@ -1980,7 +1980,7 @@ class AudioAcquirer(mp.Process):
                 L.release()
 
     def run(self):
-        self.PID = os.getpid()
+        self.PID.value = os.getpid()
         if self.verbose >= 1: syncPrint("AA - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
         state = AudioAcquirer.STOPPED
         nextState = AudioAcquirer.STOPPED
@@ -2326,7 +2326,7 @@ class AudioWriter(mp.Process):
                 L.release()
 
     def run(self):
-        self.PID = os.getpid()
+        self.PID.value = os.getpid()
         if self.verbose >= 1: syncPrint("AW - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
         state = AudioWriter.STOPPED
         nextState = AudioWriter.STOPPED
@@ -2748,7 +2748,7 @@ class VideoAcquirer(mp.Process):
                 L.release()
 
     def run(self):
-        self.PID = os.getpid()
+        self.PID.value = os.getpid()
 #        if self.verbose >= 1: profiler = cProfile.Profile()
         if self.verbose >= 1: syncPrint(self.ID + " PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
 
@@ -3132,19 +3132,15 @@ class VideoWriter(mp.Process):
                 if self.verbose >= 0: syncPrint(self.ID + " - Param not settable: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
 
     def updatePublishedState(self, state):
-        print("VW: Attempting to update published state")
         if self.publishedStateVar is not None:
-            print("VW: published var is not None")
             L = self.publishedStateVar.get_lock()
             locked = L.acquire(block=False)
             if locked:
-                print("VW: Value is locked and loaded")
                 self.publishedStateVar.value = state
-                print("VW: set state to", state)
                 L.release()
 
     def run(self):
-        self.PID = os.getpid()
+        self.PID.value = os.getpid()
 #        if self.verbose >= 1: profiler = cProfile.Profile()
         if self.verbose >= 1: syncPrint(self.ID + " - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
         state = VideoWriter.STOPPED
