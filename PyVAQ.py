@@ -585,8 +585,10 @@ class StdoutManager(mp.Process):
         mp.Process.__init__(self, daemon=True)
         self.queue = queue
         self.timeout = 0.1
+        self.PID = mp.Value('i', -1)
 
     def run(self):
+        self.PID = os.getpid()
         while True:
             msgBundles = []
             try:
@@ -615,18 +617,17 @@ class AVMerger(mp.Process):
     ERROR = 6
     EXITING = 7
 
-    stateList = [
-        'state_stopped',
-        'state_initializing',
-        'state_ignoring',
-        'state_waiting',
-        'state_merging',
-        'state_stopping',
-        'state_error',
-        'state_exiting'
-    ]
-
-    def stateName(self, state): return self.stateList[state]
+    stateList = {
+        -1:'unknown',
+        0 :'state_stopped',
+        1 :'state_initializing',
+        2 :'state_ignoring',
+        3 :'state_waiting',
+        4 :'state_merging',
+        5 :'state_stopping',
+        6 :'state_error',
+        7 :'state_exiting'
+    }
 
     #messages:
     START = 'msg_start'
@@ -650,7 +651,6 @@ class AVMerger(mp.Process):
     ]
 
     def __init__(self,
-        publishedStateVar=None,
         messageQueue=None,
         verbose=False,
         numFilesPerTrigger=2,       # Number of files expected per trigger event (audio + video)
@@ -661,7 +661,7 @@ class AVMerger(mp.Process):
         montage=False):             # Combine videos side by side
         mp.Process.__init__(self, daemon=True)
         # Store inputs in instance variables for later access
-        self.publishedStateVar = publishedStateVar
+        self.publishedStateVar = mp.Value('i', -1)
         self.messageQueue = messageQueue
         self.verbose = verbose
         self.exitFlag = False
@@ -674,6 +674,7 @@ class AVMerger(mp.Process):
         self.baseFileName = baseFileName
         self.montage = montage
         self.deleteMergedFiles = deleteMergedFiles
+        self.PID = mp.Value('i', -1)
         if self.numFilesPerTrigger < 2:
             if self.verbose >= 0: syncPrint("Warning! AVMerger can't merge less than 2 files!", buffer=self.stdoutBuffer)
 
@@ -694,6 +695,7 @@ class AVMerger(mp.Process):
                 L.release()
 
     def run(self):
+        self.PID = os.getpid()
         if self.verbose >= 1: syncPrint("M - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
         state = AVMerger.STOPPED
         nextState = AVMerger.STOPPED
@@ -734,7 +736,7 @@ class AVMerger(mp.Process):
                         self.exitFlag = True
                         nextState = AVMerger.EXITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* INITIALIZING *********************************
                 elif state == AVMerger.INITIALIZING:
                     # DO STUFF
@@ -767,7 +769,7 @@ class AVMerger(mp.Process):
                         self.exitFlag = True
                         nextState = AVMerger.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* IGNORING *********************************
                 elif state == AVMerger.IGNORING:    # ignoring merge requests
                     # DO STUFF
@@ -805,7 +807,7 @@ class AVMerger(mp.Process):
                         self.exitFlag = True
                         nextState = AVMergers.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* WAITING *********************************
                 elif state == AVMerger.WAITING:    # Waiting for files to merge
                     # DO STUFF
@@ -873,7 +875,7 @@ class AVMerger(mp.Process):
                         self.exitFlag = True
                         nextState = AVMergers.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* MERGING *********************************
                 elif state == AVMerger.MERGING:
                     # DO STUFF
@@ -912,7 +914,7 @@ class AVMerger(mp.Process):
                             # Construct the video part of the ffmpeg command template
                             videoFileInputText = ' '.join(['-i "{{videoFile{k}}}"'.format(k=k) for k in range(len(videoFileEvents))])
                             # Construct command template
-                            mergeCommandTemplate = "ffmpeg " + videoFileInputText + " " + audioFileInputText + ' -shortest -nostdin -y -filter_complex hstack "{outputFile}"'
+                            mergeCommandTemplate = "ffmpeg " + videoFileInputText + " " + audioFileInputText + ' -c:v libx264 -preset veryfast -crf 0 -shortest -nostdin -y -filter_complex hstack "{outputFile}"'
                             # Set up dictionary of strings to substitute into command template
                             kwargs = dict(
                                 [('audioFile{k}'.format(k=k), audioFileEvents[k]['filePath']) for k in range(len(audioFileEvents))] + \
@@ -963,7 +965,7 @@ class AVMerger(mp.Process):
                         self.exitFlag = True
                         nextState = AVMerger.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* STOPPING *********************************
                 elif state == AVMerger.STOPPING:
                     # DO STUFF
@@ -987,7 +989,7 @@ class AVMerger(mp.Process):
                         self.exitFlag = True
                         nextState = AVMerger.STOPPED
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* ERROR *********************************
                 elif state == AVMerger.ERROR:
                     # DO STUFF
@@ -1024,12 +1026,12 @@ class AVMerger(mp.Process):
                         else:
                             nextState = AVMerger.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* EXIT *********************************
                 elif state == AVMerger.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateName(state))
+                    raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: syncPrint("S - Keyboard interrupt received - exiting", buffer=self.stdoutBuffer)
@@ -1037,12 +1039,12 @@ class AVMerger(mp.Process):
                 nextState = AVMerger.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateName(state)+" state\n\n"+traceback.format_exc())
+                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
                 nextState = AVMerger.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 syncPrint("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag), buffer=self.stdoutBuffer)
-                syncPrint('*********************************** /\ M ' + self.stateName(state) + ' /\ ********************************************', buffer=self.stdoutBuffer)
+                syncPrint('*********************************** /\ M ' + self.stateList[state] + ' /\ ********************************************', buffer=self.stdoutBuffer)
 
             # Prepare to advance to next state
             lastState = state
@@ -1074,18 +1076,16 @@ class Synchronizer(mp.Process):
     ERROR = 5
     EXITING = 6
 
-    stateList = [
-        'state_stopped',
-        'state_initializing',
-        'state_synchronizing',
-        'state_stopping',
-        'state_sync_ready',
-        'state_error',
-        'state_exiting'
-    ]
-
-    def stateName(self, state): return self.stateList[state]
-
+    stateList = {
+        -1:'unknown',
+        0 :'state_stopped',
+        1 :'state_initializing',
+        2 :'state_synchronizing',
+        3 :'state_stopping',
+        4 :'state_sync_ready',
+        5 :'state_error',
+        6 :'state_exiting'
+    }
 
     #messages:
     START = 'msg_start'
@@ -1098,7 +1098,6 @@ class Synchronizer(mp.Process):
     ]
 
     def __init__(self,
-        publishedStateVar=None,
         actualVideoFrequency=None,          # A shared value for publishing the actual video frequencies obtained from DAQ
         actualAudioFrequency=None,          # A shared value for publishing the actual audio frequencies obtained from DAQ
         requestedVideoFrequency=120,                     # The frequency in Hz of the video sync signal
@@ -1114,7 +1113,7 @@ class Synchronizer(mp.Process):
         stdoutQueue=None):                            # Synchronization barrier to ensure everyone's ready before beginning
         mp.Process.__init__(self, daemon=True)
         # Store inputs in instance variables for later access
-        self.publishedStateVar = publishedStateVar
+        self.publishedStateVar = mp.Value('i', -1)
         self.actualAudioFrequency = actualAudioFrequency
         self.actualVideoFrequency = actualVideoFrequency
         self.startTime = startTime
@@ -1131,6 +1130,7 @@ class Synchronizer(mp.Process):
         self.verbose = verbose
         self.stdoutQueue = stdoutQueue
         self.stdoutBuffer = []
+        self.PID = mp.Value('i', -1)
 
     def setParams(self, **params):
         for key in params:
@@ -1149,6 +1149,7 @@ class Synchronizer(mp.Process):
                 L.release()
 
     def run(self):
+        self.PID = os.getpid()
         if self.verbose >= 1: syncPrint("S - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
         state = Synchronizer.STOPPED
         nextState = Synchronizer.STOPPED
@@ -1183,7 +1184,7 @@ class Synchronizer(mp.Process):
                         self.exitFlag = True
                         nextState = Synchronizer.EXITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* INITIALIZING *********************************
                 elif state == Synchronizer.INITIALIZING:
                     # DO STUFF
@@ -1237,7 +1238,7 @@ class Synchronizer(mp.Process):
                         self.exitFlag = True
                         nextState = Synchronizer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* SYNC_READY *********************************
                 elif state == Synchronizer.SYNC_READY:
                     # DO STUFF
@@ -1269,7 +1270,7 @@ class Synchronizer(mp.Process):
                         self.exitFlag = True
                         nextState = Synchronizer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 
 # ********************************* SYNCHRONIZING *********************************
                 elif state == Synchronizer.SYNCHRONIZING:
@@ -1292,7 +1293,7 @@ class Synchronizer(mp.Process):
                         self.exitFlag = True
                         nextState = Synchronizer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* STOPPING *********************************
                 elif state == Synchronizer.STOPPING:
                     # DO STUFF
@@ -1322,7 +1323,7 @@ class Synchronizer(mp.Process):
                         self.exitFlag = True
                         nextState = Synchronizer.STOPPED
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* ERROR *********************************
                 elif state == Synchronizer.ERROR:
                     # DO STUFF
@@ -1359,12 +1360,12 @@ class Synchronizer(mp.Process):
                         else:
                             nextState = Synchronizer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* EXIT *********************************
                 elif state == Synchronizer.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateName(state))
+                    raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: syncPrint("S - Keyboard interrupt received - exiting", buffer=self.stdoutBuffer)
@@ -1372,12 +1373,12 @@ class Synchronizer(mp.Process):
                 nextState = Synchronizer.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateName(state)+" state\n\n"+traceback.format_exc())
+                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
                 nextState = Synchronizer.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 syncPrint("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag), buffer=self.stdoutBuffer)
-                syncPrint('*********************************** /\ S ' + self.stateName(state) + ' /\ ********************************************', buffer=self.stdoutBuffer)
+                syncPrint('*********************************** /\ S ' + self.stateList[state] + ' /\ ********************************************', buffer=self.stdoutBuffer)
 
             if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
             self.stdoutBuffer = []
@@ -1401,17 +1402,16 @@ class AudioTriggerer(mp.Process):
     ERROR = 5
     EXITING = 6
 
-    stateList = [
-        'STOPPED',
-        'INITIALIZING',
-        'WAITING',
-        'ANALYZING',
-        'STOPPING',
-        'ERROR',
-        'EXITING'
-    ]
-
-    def stateName(self, state): return self.stateList[state]
+    stateList = {
+        -1:'UNKNOWN',
+        0 :'STOPPED',
+        1 :'INITIALIZING',
+        2 :'WAITING',
+        3 :'ANALYZING',
+        4 :'STOPPING',
+        5 :'ERROR',
+        6 :'EXITING'
+    }
 
     #messages:
     START = 'msg_start'
@@ -1443,7 +1443,6 @@ class AudioTriggerer(mp.Process):
         ]
 
     def __init__(self,
-                publishedStateVar=None,
                 audioQueue=None,
                 audioAnalysisMonitorQueue=None,  # A queue to send analysis results to GUI for monitoring
                 audioFrequency=None,                # Shared var: Number of audio samples per second
@@ -1469,7 +1468,7 @@ class AudioTriggerer(mp.Process):
                 messageQueue=None,                  # Queue for getting commands to change state
                 stdoutQueue=None):
         mp.Process.__init__(self, daemon=True)
-        self.publishedStateVar = publishedStateVar
+        self.publishedStateVar = mp.Value('i', -1)
         self.audioQueue = audioQueue
         if self.audioQueue is not None: self.audioQueue.cancel_join_thread()
         self.audioAnalysisMonitorQueue = audioAnalysisMonitorQueue
@@ -1510,6 +1509,7 @@ class AudioTriggerer(mp.Process):
 
         self.highLevelBuffer = None
         self.lowLevelBuffer = None
+        self.PID = mp.Value('i', -1)
 
     def updateHighBuffer(self):
         self.triggerHighChunks = int(self.triggerHighTime * self.audioFrequency.value / self.chunkSize)
@@ -1552,6 +1552,7 @@ class AudioTriggerer(mp.Process):
                 L.release()
 
     def run(self):
+        self.PID = os.getpid()
         if self.verbose >= 1: syncPrint("AT - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
         state = AudioTriggerer.STOPPED
         nextState = AudioTriggerer.STOPPED
@@ -1587,7 +1588,7 @@ class AudioTriggerer(mp.Process):
                         self.analyzeFlag = True
                         nextState = AudioTriggerer.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* INITIALIZING *****************************
                 elif state == AudioTriggerer.INITIALIZING:
                     # DO STUFF
@@ -1616,7 +1617,7 @@ class AudioTriggerer(mp.Process):
                     elif msg == AudioTriggerer.STARTANALYZE or self.analyzeFlag:
                         nextState = AudioTriggerer.ANALYZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* WAITING ********************************
                 elif state == AudioTriggerer.WAITING:
                     # DO STUFF
@@ -1645,7 +1646,7 @@ class AudioTriggerer(mp.Process):
                     elif msg in ['', AudioTriggerer.STOPANALYZE, AudioTriggerer.START]:
                         nextState = AudioTriggerer.WAITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* ANALYZING *********************************
                 elif state == AudioTriggerer.ANALYZING:
                     # DO STUFF
@@ -1768,7 +1769,7 @@ class AudioTriggerer(mp.Process):
                     elif msg in ['', AudioTriggerer.STARTANALYZE, AudioTriggerer.START]:
                         nextState = state
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* STOPPING *********************************
                 elif state == AudioTriggerer.STOPPING:
                     # DO STUFF
@@ -1792,7 +1793,7 @@ class AudioTriggerer(mp.Process):
                     elif msg == AudioTriggerer.START:
                         nextState = AudioTriggerer.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* ERROR *********************************
                 elif state == AudioTriggerer.ERROR:
                     # DO STUFF
@@ -1829,12 +1830,12 @@ class AudioTriggerer(mp.Process):
                         else:
                             nextState = AudioTriggerer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* EXIT *********************************
                 elif state == AudioTriggerer.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateName(state))
+                    raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: syncPrint("AT - Keyboard interrupt received - exiting", buffer=self.stdoutBuffer)
@@ -1842,12 +1843,12 @@ class AudioTriggerer(mp.Process):
                 nextState = AudioTriggerer.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateName(state)+" state\n\n"+traceback.format_exc())
+                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
                 nextState = AudioTriggerer.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 syncPrint("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag), buffer=self.stdoutBuffer)
-                syncPrint('*********************************** /\ AT ' + self.stateName(state) + ' /\ ********************************************', buffer=self.stdoutBuffer)
+                syncPrint('*********************************** /\ AT ' + self.stateList[state] + ' /\ ********************************************', buffer=self.stdoutBuffer)
 
             if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
             self.stdoutBuffer = []
@@ -1895,17 +1896,16 @@ class AudioAcquirer(mp.Process):
     ERROR = 5
     EXITING = 6
 
-    stateList = [
-        'state_stopped',
-        'state_initializing',
-        'state_acquiring',
-        'state_stopping',
-        'state_acquire_ready',
-        'state_error',
-        'state_exiting'
-    ]
-
-    def stateName(self, state): return self.stateList[state]
+    stateList = {
+        -1:'unknown',
+        0 :'state_stopped',
+        1 :'state_initializing',
+        2 :'state_acquiring',
+        3 :'state_stopping',
+        4 :'state_acquire_ready',
+        5 :'state_error',
+        6 :'state_exiting'
+    }
 
     #messages:
     START = 'msg_start'
@@ -1918,7 +1918,6 @@ class AudioAcquirer(mp.Process):
     ]
 
     def __init__(self,
-                publishedStateVar=None,
                 startTime=None,
                 audioQueue = None,                  # A multiprocessing queue to send data to another proces for writing to disk
                 audioMonitorQueue = None,           # A multiprocessing queue to send data to the UI to monitor the audio
@@ -1933,7 +1932,7 @@ class AudioAcquirer(mp.Process):
                 ready=None,                         # Synchronization barrier to ensure everyone's ready before beginning
                 stdoutQueue=None):
         mp.Process.__init__(self, daemon=True)
-        self.publishedStateVar = publishedStateVar
+        self.publishedStateVar = mp.Value('i', -1)
         # Store inputs in instance variables for later access
         self.startTimeSharedValue = startTime
         self.audioFrequency = audioFrequency
@@ -1955,6 +1954,7 @@ class AudioAcquirer(mp.Process):
         self.exitFlag = False
         self.stdoutQueue = stdoutQueue
         self.stdoutBuffer = []
+        self.PID = mp.Value('i', -1)
 
     def setParams(self, **params):
         for key in params:
@@ -1976,6 +1976,7 @@ class AudioAcquirer(mp.Process):
                 L.release()
 
     def run(self):
+        self.PID = os.getpid()
         if self.verbose >= 1: syncPrint("AA - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
         state = AudioAcquirer.STOPPED
         nextState = AudioAcquirer.STOPPED
@@ -2009,7 +2010,7 @@ class AudioAcquirer(mp.Process):
                         self.exitFlag = True
                         nextState = AudioAcquirer.EXITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* INITIALIZING *********************************
                 elif state == AudioAcquirer.INITIALIZING:
                     # DO STUFF
@@ -2053,7 +2054,7 @@ class AudioAcquirer(mp.Process):
                         self.exitFlag = True
                         nextState = AudioAcquirer.STOPPING
                     else:
-                        raise SyntaxError("AA - Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("AA - Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* ACQUIRE_READY *********************************
                 elif state == AudioAcquirer.ACQUIRE_READY:
                     # DO STUFF
@@ -2082,7 +2083,7 @@ class AudioAcquirer(mp.Process):
                         self.exitFlag = True
                         nextState = AudioAcquirer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* ACQUIRING *********************************
                 elif state == AudioAcquirer.ACQUIRING:
                     # DO STUFF
@@ -2135,7 +2136,7 @@ class AudioAcquirer(mp.Process):
                         self.exitFlag = True
                         nextState = AudioAcquirer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* STOPPING *********************************
                 elif state == AudioAcquirer.STOPPING:
                     # DO STUFF
@@ -2161,7 +2162,7 @@ class AudioAcquirer(mp.Process):
                     elif msg == AudioAcquirer.START:
                         nextState = AudioAcquirer.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* ERROR *********************************
                 elif state == AudioAcquirer.ERROR:
                     # DO STUFF
@@ -2198,13 +2199,13 @@ class AudioAcquirer(mp.Process):
                         else:
                             nextState = AudioAcquirer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* EXIT *********************************
                 elif state == AudioAcquirer.EXITING:
                     if self.verbose >= 1: syncPrint('AA - Exiting!', buffer=self.stdoutBuffer)
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateName(state))
+                    raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 1: syncPrint("AA - Keyboard interrupt received - exiting", buffer=self.stdoutBuffer)
@@ -2212,12 +2213,12 @@ class AudioAcquirer(mp.Process):
                 nextState = AudioAcquirer.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateName(state)+" state\n\n"+traceback.format_exc())
+                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
                 nextState = AudioAcquirer.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 syncPrint("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag), buffer=self.stdoutBuffer)
-                syncPrint('*********************************** /\ AA ' + self.stateName(state) + ' /\ ********************************************', buffer=self.stdoutBuffer)
+                syncPrint('*********************************** /\ AA ' + self.stateList[state] + ' /\ ********************************************', buffer=self.stdoutBuffer)
 
             if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
             self.stdoutBuffer = []
@@ -2242,17 +2243,16 @@ class AudioWriter(mp.Process):
     ERROR = 5
     EXITING = 6
 
-    stateList = [
-        'STOPPED',
-        'INITIALIZING',
-        'WRITING',
-        'BUFFERING',
-        'STOPPING',
-        'ERROR',
-        'EXITING'
-    ]
-
-    def stateName(self, state): return self.stateList[state]
+    stateList = {
+        -1:'UNKNOWN',
+        0 :'STOPPED',
+        1 :'INITIALIZING',
+        2 :'WRITING',
+        3:'BUFFERING',
+        4 :'STOPPING',
+        5 :'ERROR',
+        6 :'EXITING'
+    }
 
     #messages:
     START = 'msg_start'
@@ -2268,7 +2268,6 @@ class AudioWriter(mp.Process):
         ]
 
     def __init__(self,
-                publishedStateVar=None,
                 audioBaseFileName='audioFile',
                 audioDirectory='.',
                 audioQueue=None,
@@ -2282,7 +2281,7 @@ class AudioWriter(mp.Process):
                 messageQueue=None,          # Queue for getting commands to change state
                 stdoutQueue=None):
         mp.Process.__init__(self, daemon=True)
-        self.publishedStateVar = publishedStateVar
+        self.publishedStateVar = mp.Value('i', -1)
         self.audioDirectory = audioDirectory
         self.audioBaseFileName = audioBaseFileName
         self.audioQueue = audioQueue
@@ -2301,6 +2300,7 @@ class AudioWriter(mp.Process):
         self.audioDepthBytes = audioDepthBytes
         self.stdoutQueue = stdoutQueue
         self.stdoutBuffer = []
+        self.PID = mp.Value('i', -1)
 
     def setParams(self, **params):
         for key in params:
@@ -2319,6 +2319,7 @@ class AudioWriter(mp.Process):
                 L.release()
 
     def run(self):
+        self.PID = os.getpid()
         if self.verbose >= 1: syncPrint("AW - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
         state = AudioWriter.STOPPED
         nextState = AudioWriter.STOPPED
@@ -2353,7 +2354,7 @@ class AudioWriter(mp.Process):
                         self.exitFlag = True
                         nextState = AudioWriter.EXITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* INITIALIZING *****************************
                 elif state == AudioWriter.INITIALIZING:
                     # DO STUFF
@@ -2387,7 +2388,7 @@ class AudioWriter(mp.Process):
                         self.exitFlag = True
                         nextState = AudioWriter.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* BUFFERING ********************************
                 elif state == AudioWriter.BUFFERING:
                     # DO STUFF
@@ -2445,7 +2446,7 @@ class AudioWriter(mp.Process):
                     elif msg in ['', AudioWriter.START]:
                         nextState = AudioWriter.BUFFERING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* WRITING *********************************
                 elif state == AudioWriter.WRITING:
                     # DO STUFF
@@ -2535,7 +2536,7 @@ class AudioWriter(mp.Process):
                                 # Audio chunk does overlap with trigger period. Continue writing.
                                 pass
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* STOPPING *********************************
                 elif state == AudioWriter.STOPPING:
                     # DO STUFF
@@ -2573,7 +2574,7 @@ class AudioWriter(mp.Process):
                     elif msg == AudioWriter.START:
                         nextState = AudioWriter.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* ERROR *********************************
                 elif state == AudioWriter.ERROR:
                     # DO STUFF
@@ -2611,12 +2612,12 @@ class AudioWriter(mp.Process):
                         else:
                             nextState = AudioWriter.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* EXIT *********************************
                 elif state == AudioWriter.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateName(state))
+                    raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: syncPrint("AW - Keyboard interrupt received - exiting", buffer=self.stdoutBuffer)
@@ -2624,12 +2625,12 @@ class AudioWriter(mp.Process):
                 nextState = AudioWriter.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateName(state)+" state\n\n"+traceback.format_exc())
+                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
                 nextState = AudioWriter.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 syncPrint("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag), buffer=self.stdoutBuffer)
-                syncPrint('*********************************** /\ AW ' + self.stateName(state) + ' /\ ********************************************', buffer=self.stdoutBuffer)
+                syncPrint('*********************************** /\ AW ' + self.stateList[state] + ' /\ ********************************************', buffer=self.stdoutBuffer)
 
             if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
             self.stdoutBuffer = []
@@ -2664,17 +2665,16 @@ class VideoAcquirer(mp.Process):
     ERROR = 5
     EXITING = 6
 
-    stateList = [
-        'state_stopped',
-        'state_initializing',
-        'state_acquiring',
-        'state_stopping',
-        'state_acquire_ready',
-        'state_error',
-        'state_exiting'
-        ]
-
-    def stateName(self, state): return self.stateList[state]
+    stateList = {
+        -1:'unknown',
+        0 :'state_stopped',
+        1 :'state_initializing',
+        2 :'state_acquiring',
+        3 :'state_stopping',
+        4 :'state_acquire_ready',
+        5 :'state_error',
+        6 :'state_exiting'
+        }
 
     #messages:
     START = 'msg_start'
@@ -2687,7 +2687,6 @@ class VideoAcquirer(mp.Process):
     ]
 
     def __init__(self,
-                publishedStateVar=None,
                 startTime=None,
                 camSerial='',
                 imageQueue=None,
@@ -2700,7 +2699,7 @@ class VideoAcquirer(mp.Process):
                 ready=None,                        # Synchronization barrier to ensure everyone's ready before beginning
                 stdoutQueue=None):
         mp.Process.__init__(self, daemon=True)
-        self.publishedStateVar = publishedStateVar
+        self.publishedStateVar = mp.Value('i', -1)
         self.startTimeSharedValue = startTime
         self.camSerial = camSerial
         self.ID = 'VA_'+self.camSerial
@@ -2722,6 +2721,7 @@ class VideoAcquirer(mp.Process):
         self.verbose = verbose
         self.stdoutQueue = stdoutQueue
         self.stdoutBuffer = []
+        self.PID = mp.Value('i', -1)
 
     def setParams(self, **params):
         for key in params:
@@ -2740,6 +2740,7 @@ class VideoAcquirer(mp.Process):
                 L.release()
 
     def run(self):
+        self.PID = os.getpid()
 #        if self.verbose >= 1: profiler = cProfile.Profile()
         if self.verbose >= 1: syncPrint(self.ID + " PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
 
@@ -2776,7 +2777,7 @@ class VideoAcquirer(mp.Process):
                         self.exitFlag = True
                         nextState = VideoAcquirer.EXITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* INITIALIZING *********************************
                 elif state == VideoAcquirer.INITIALIZING:
                     # DO STUFF
@@ -2813,7 +2814,7 @@ class VideoAcquirer(mp.Process):
                         self.exitFlag = True
                         nextState = VideoAcquirer.STOPPING
                     else:
-                        raise SyntaxError(self.ID + " Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError(self.ID + " Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* ACQUIRE_READY *********************************
                 elif state == VideoAcquirer.ACQUIRE_READY:
                     # DO STUFF
@@ -2843,7 +2844,7 @@ class VideoAcquirer(mp.Process):
                         self.exitFlag = True
                         nextState = VideoAcquirer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* ACQUIRING *********************************
                 elif state == VideoAcquirer.ACQUIRING:
 #                    if self.verbose > 1: profiler.enable()
@@ -2913,7 +2914,7 @@ class VideoAcquirer(mp.Process):
                         self.exitFlag = True
                         nextState = VideoAcquirer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 #                    if self.verbose > 1: profiler.disable()
 # ********************************* STOPPING *********************************
                 elif state == VideoAcquirer.STOPPING:
@@ -2945,7 +2946,7 @@ class VideoAcquirer(mp.Process):
                     elif msg == VideoAcquirer.START:
                         nextState = VideoAcquirer.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* ERROR *********************************
                 elif state == VideoAcquirer.ERROR:
                     # DO STUFF
@@ -2980,12 +2981,12 @@ class VideoAcquirer(mp.Process):
                         else:
                             nextState = VideoAcquirer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* EXIT *********************************
                 elif state == VideoAcquirer.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateName(state))
+                    raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: syncPrint(self.ID + " Keyboard interrupt received - exiting", buffer=self.stdoutBuffer)
@@ -2993,12 +2994,12 @@ class VideoAcquirer(mp.Process):
                 nextState = VideoAcquirer.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateName(state)+" state\n\n"+traceback.format_exc())
+                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
                 nextState = VideoAcquirer.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 syncPrint("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag), buffer=self.stdoutBuffer)
-                syncPrint('*********************************** /\ ' + self.ID + ' ' + self.stateName(state) + ' /\ ********************************************', buffer=self.stdoutBuffer)
+                syncPrint('*********************************** /\ ' + self.ID + ' ' + self.stateList[state] + ' /\ ********************************************', buffer=self.stdoutBuffer)
 
             if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
             self.stdoutBuffer = []
@@ -3056,17 +3057,16 @@ class VideoWriter(mp.Process):
     ERROR = 5
     EXITING = 6
 
-    stateList = [
-        'state_stopped',
-        'state_initializing',
-        'state_writing',
-        'state_buffering',
-        'state_stopping',
-        'state_error',
-        'state_exiting'
-    ]
-
-    def stateName(self, state): return self.stateList[state]
+    stateList = {
+        -1:'unknown',
+        0 :'state_stopped',
+        1 :'state_initializing',
+        2 :'state_writing',
+        3 :'state_buffering',
+        4 :'state_stopping',
+        5 :'state_error',
+        6 :'state_exiting'
+    }
 
     #messages:
     START = 'msg_start'
@@ -3082,7 +3082,6 @@ class VideoWriter(mp.Process):
         ]
 
     def __init__(self,
-                publishedStateVar=None,
                 videoDirectory='.',
                 videoBaseFilename='videoFile',
                 imageQueue=None,
@@ -3094,7 +3093,7 @@ class VideoWriter(mp.Process):
                 verbose=False,
                 stdoutQueue=None):
         mp.Process.__init__(self, daemon=True)
-        self.publishedStateVar = publishedStateVar
+        self.publishedStateVar = mp.Value('i', -1)
         self.camSerial = camSerial
         self.ID = 'VW_' + self.camSerial
         self.videoDirectory=videoDirectory
@@ -3112,6 +3111,7 @@ class VideoWriter(mp.Process):
         self.stdoutQueue = stdoutQueue
         self.stdoutBuffer = []
         self.videoWriteMethod = 'PySpin'   # options are ffmpeg, PySpin, OpenCV
+        self.PID = mp.Value('i', -1)
 
     def setParams(self, **params):
         for key in params:
@@ -3130,6 +3130,7 @@ class VideoWriter(mp.Process):
                 L.release()
 
     def run(self):
+        self.PID = os.getpid()
 #        if self.verbose >= 1: profiler = cProfile.Profile()
         if self.verbose >= 1: syncPrint(self.ID + " - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
         state = VideoWriter.STOPPED
@@ -3164,7 +3165,7 @@ class VideoWriter(mp.Process):
                         self.exitFlag = True
                         nextState = VideoWriter.EXITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* INITIALIZING *********************************
                 elif state == VideoWriter.INITIALIZING:
                     # DO STUFF
@@ -3190,7 +3191,7 @@ class VideoWriter(mp.Process):
                         self.exitFlag = True
                         nextState = VideoWriter.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* BUFFERING *********************************
                 elif state == VideoWriter.BUFFERING:
                     # DO STUFF
@@ -3248,7 +3249,7 @@ class VideoWriter(mp.Process):
                     elif msg in ['', VideoWriter.START]:
                         nextState = VideoWriter.BUFFERING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* WRITING *********************************
                 elif state == VideoWriter.WRITING:
                     # if self.verbose >= 1: profiler.enable()
@@ -3362,7 +3363,7 @@ class VideoWriter(mp.Process):
                                 # Frame is in trigger period - continue writing
                                 pass
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
                     # if self.verbose >= 1: profiler.disable()
 # ********************************* STOPPING *********************************
                 elif state == VideoWriter.STOPPING:
@@ -3411,7 +3412,7 @@ class VideoWriter(mp.Process):
                     elif msg == VideoWriter.START:
                         nextState = VideoWriter.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* ERROR *********************************
                 elif state == VideoWriter.ERROR:
                     # DO STUFF
@@ -3448,12 +3449,12 @@ class VideoWriter(mp.Process):
                         else:
                             nextState = VideoWriter.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateName(state) + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* EXIT *********************************
                 elif state == VideoWriter.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateName(state))
+                    raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: syncPrint(self.ID + " - Keyboard interrupt received - exiting", buffer=self.stdoutBuffer)
@@ -3461,12 +3462,12 @@ class VideoWriter(mp.Process):
                 nextState = VideoWriter.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateName(state)+" state\n\n"+traceback.format_exc())
+                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
                 nextState = VideoWriter.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 syncPrint("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag), buffer=self.stdoutBuffer)
-                syncPrint('*********************************** /\ ' + self.ID + ' ' + self.stateName(state) + ' /\ ********************************************', buffer=self.stdoutBuffer)
+                syncPrint('*********************************** /\ ' + self.ID + ' ' + self.stateList[state] + ' /\ ********************************************', buffer=self.stdoutBuffer)
 
             if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
             self.stdoutBuffer = []
@@ -3760,6 +3761,7 @@ class PyVAQ:
         self.debugMenu = tk.Menu(self.menuBar, tearoff=False)
         self.debugMenu.add_command(label="Set verbosity", command=self.setVerbosity)
         self.debugMenu.add_command(label="Check states", command=self.checkStates)
+        self.debugMenu.add_command(label="Get PIDs", command=self.getPIDs)
 
         self.monitoringMenu = tk.Menu(self.menuBar, tearoff=False)
         self.monitoringMenu.add_command(label="Configure audio monitoring", command=self.configureAudioMonitoring)
@@ -3956,14 +3958,6 @@ class PyVAQ:
         self.syncProcess = None
         self.mergeProcess = None
         self.StdoutManager = None
-
-        # Published state variables
-        self.videoWriteStateVars = {}
-        self.videoAcquireStateVars = {}
-        self.audioWriteStateVar = None
-        self.audioAcquireStateVar = None
-        self.syncStateVar = None
-        self.mergeStateVar = None
 
         # Actual a/v frequency shared vars
         self.actualVideoFrequency = None
@@ -4667,6 +4661,38 @@ him know. Otherwise, I had nothing to do with it.
             camList.Clear()
             system.ReleaseInstance()
 
+    def getPIDs(self):
+        self.videoWriteProcesses = {}
+        self.videoAcquireProcesses = {}
+        self.audioWriteProcess = None
+        self.audioAcquireProcess = None
+        self.audioTriggerProcess = None
+        self.syncProcess = None
+        self.mergeProcess = None
+        self.StdoutManager = None
+
+        videoWritePIDs = {}
+        videoAcquirePIDs = {}
+        audioWritePID = None
+        audioAcquirePID = None
+        syncPID = None
+        mergePID = None
+
+        for camSerial in self.videoWriteProcesses:
+            videoWritePIDs[camSerial] = self.videoWriteProcesses[camSerial].PID.value
+            print("main>> videoWritePIDs["+camSerial+"]:", videoWritePIDs[camSerial])
+        for camSerial in self.videoAcquirePIDVars:
+            videoAcquirePIDs[camSerial] = self.videoAcquireProcesses[camSerial].PID.value
+            print("main>> videoAcquirePIDs["+camSerial+"]:", videoAcquirePIDs[camSerial])
+        audioWritePID = self.audioWriteProcess.PID.value
+        print("main>> audioWritePID:", audioWritePID)
+        audioAcquirePID = self.audioAcquirePIDVar.get(block=True, timeout=0.1)
+        print("main>> audioAcquirePID:", audioAcquirePID)
+        syncPID = self.syncPIDVar.get(block=True, timeout=0.1)
+        print("main>> syncPID:", syncPID)
+        mergePID = self.mergePIDVar.get(block=True, timeout=0.1)
+        print("main>> mergePID:", mergePID)
+
     def checkStates(self):
         videoWriteStates = {}
         videoAcquireStates = {}
@@ -4675,42 +4701,18 @@ him know. Otherwise, I had nothing to do with it.
         syncState = None
         mergeState = None
 
-        for camSerial in self.videoWriteStateVars:
-            videoWriteStates[camSerial] = self.videoWriteStateVars[camSerial].value
-            if videoWriteStates[camSerial] == -1:
-                print("main>> videoWriteStates["+camSerial+"]: Unknown")
-            else:
-                print("main>> videoWriteStates["+camSerial+"]:", videoWriteStates[camSerial])
-        for camSerial in self.videoAcquireStateVars:
-            videoAcquireStates[camSerial] = self.videoAcquireStateVars[camSerial].get(block=True, timeout=0.1)
-            if videoAcquireStates[camSerial] == -1:
-                print("main>> videoAcquireStates["+camSerial+"]: Unknown")
-            else:
-                print("main>> videoAcquireStates["+camSerial+"]:", videoAcquireStates[camSerial])
-        if self.audioWriteStateVar is not None:
-            audioWriteState = self.audioWriteStateVar.get(block=True, timeout=0.1)
-            if audioWriteState == -1:
-                print("main>> audioWriteState: Unknown")
-            else:
-                print("main>> audioWriteState:", audioWriteState)
-        if self.audioAcquireStateVar is not None:
-            audioAcquireState = self.audioAcquireStateVar.get(block=True, timeout=0.1)
-            if audioAcquireState == -1:
-                print("main>> audioAcquireState: Unknown")
-            else:
-                print("main>> audioAcquireState:", audioAcquireState)
-        if self.syncStateVar is not None:
-            syncState = self.syncStateVar.get(block=True, timeout=0.1)
-            if syncState == -1:
-                print("main>> syncState: Unknown")
-            else:
-                print("main>> syncState:", syncState)
-        if self.mergeStateVar is not None:
-            mergeState = self.mergeStateVar.get(block=True, timeout=0.1)
-            if mergeState == -1:
-                print("main>> mergeState: Unknown")
-            else:
-                print("main>> mergeState:", mergeState)
+        for camSerial in self.videoWriteProcesses:
+            videoWriteStates[camSerial] = VideoWriter.stateList[self.videoWriteProcesses[camSerial].publishedStateVar.value]
+        for camSerial in self.videoAcquireProcesses:
+            videoAcquireStates[camSerial] = VideoAcquirer.stateList[self.videoAcquireProcesses[camSerial].publishedStateVar.value]
+        if self.audioWriteProcess is not None:
+            audioWriteState = AudioWriter.stateList[self.audioWriteProcess.publishedStateVar.value]
+        if self.audioAcquireProcess is not None:
+            audioAcquireState = AudioAcquirer.stateList[self.audioAcquireProcess.publishedStateVar.value]
+        if self.syncProcess is not None:
+            syncState = Synchronizer.stateList[self.syncProcess.publishedStateVar.value]
+        if self.mergeProcess is not None:
+            mergeState = AVMerger.stateList[self.mergeProcess.publishedStateVar.value]
 
         for camSerial in videoWriteStates:
             print("main>> videoWriteStates[", camSerial, "]:", videoWriteStates[camSerial])
@@ -4738,7 +4740,7 @@ him know. Otherwise, I had nothing to do with it.
 
         for camSerial in self.camSerials:
             try:
-                state = self.videoAcquireStateVars[camSerial].get(block=False)
+                state = self.videoAcquireProcesses[camSerial].publishedStateVar.get(block=False)
             except (queue.Full, queue.Empty):
                 state = None
             except (AttributeError, KeyError):
@@ -4747,7 +4749,7 @@ him know. Otherwise, I had nothing to do with it.
             if state in activeVideoStates:
                 return True
         try:
-            state = self.audioAcquireStateVar.get(block=False)
+            state = self.audioAcquireProcess.publishedStateVar.get(block=False)
         except (queue.Full, queue.Empty):
             state = None
         except (AttributeError, KeyError):
@@ -4919,10 +4921,10 @@ him know. Otherwise, I had nothing to do with it.
         self.audioTriggerMessageQueue = mp.Queue()
         self.audioAnalysisMonitorQueue = mp.Queue()
 
-        self.audioWriteStateVar = mp.Value('d', -1)
-        self.audioAcquireStateVar = mp.Value('d', -1)
-        self.syncStateVar = mp.Value('d', -1)
-        self.mergeStateVar = mp.Value('d', -1)
+        self.audioWriteProcess.publishedStateVar = mp.Value('d', -1)
+        self.audioAcquireProcess.publishedStateVar = mp.Value('d', -1)
+        self.syncProcess.publishedStateVar = mp.Value('d', -1)
+        self.mergeProcess.publishedStateVar = mp.Value('d', -1)
 
         # Shared values so all processes can access actual DAQ frequencies
         #   determined by Synchronizer process. This value should only change
@@ -4936,7 +4938,6 @@ him know. Otherwise, I had nothing to do with it.
         # Create sync process
         self.syncMessageQueue = mp.Queue()
         self.syncProcess = Synchronizer(
-            publishedStateVar = self.syncStateVar,
             actualVideoFrequency=self.actualVideoFrequency,
             actualAudioFrequency=self.actualAudioFrequency,
             startTime=startTime,
@@ -4954,7 +4955,6 @@ him know. Otherwise, I had nothing to do with it.
             self.audioAcquireMessageQueue = mp.Queue()
             self.audioWriteMessageQueue = mp.Queue()
             self.audioWriteProcess = AudioWriter(
-                publishedStateVar=self.audioWriteStateVar,
                 audioDirectory=p["directory"],
                 audioBaseFileName=p["audioBaseFilename"],
                 audioQueue=audioQueue,
@@ -4967,7 +4967,6 @@ him know. Otherwise, I had nothing to do with it.
                 verbose=self.audioWriteVerbose,
                 stdoutQueue=self.stdoutQueue)
             self.audioAcquireProcess = AudioAcquirer(
-                publishedStateVar=self.audioAcquireStateVar,
                 startTime=startTime,
                 audioQueue=audioQueue,
                 audioMonitorQueue=self.audioMonitorQueue,
@@ -4987,12 +4986,11 @@ him know. Otherwise, I had nothing to do with it.
             self.videoMonitorQueues[camSerial] = mp.Queue(maxsize=1)
             self.videoAcquireMessageQueues[camSerial] = mp.Queue()
             self.videoWriteMessageQueues[camSerial] = mp.Queue()
-            self.videoWriteStateVars[camSerial] = mp.Value('d', -1)
-            self.videoAcquireStateVars[camSerial] = mp.Value('d', -1)
+            self.videoWriteProcesses[camSerial].publishedStateVar = mp.Value('d', -1)
+            self.videoAcquireProcesses[camSerial].publishedStateVar = mp.Value('d', -1)
             processes = {}
 
             videoAcquireProcess = VideoAcquirer(
-                publishedStateVar = self.videoAcquireStateVars[camSerial],
                 startTime=startTime,
                 camSerial=camSerial,
                 imageQueue=imageQueue,
@@ -5005,7 +5003,6 @@ him know. Otherwise, I had nothing to do with it.
                 ready=ready,
                 stdoutQueue=self.stdoutQueue)
             videoWriteProcess = VideoWriter(
-                publishedStateVar = self.videoWriteStateVars[camSerial],
                 camSerial=camSerial,
                 videoDirectory=p["directory"],
                 videoBaseFilename=p["baseVideoFilename"][camSerial],
@@ -5135,22 +5132,16 @@ him know. Otherwise, I had nothing to do with it.
 
         # Clear and destroy published state variables
         for camSerial in self.camSerials:
-            self.videoWriteStateVars[camSerial].value = -1
-            self.videoWriteStateVars[camSerial] = None
-            self.videoAcquireStateVars[camSerial].value = -1
-            self.videoAcquireStateVars[camSerial] = None
-        if self.audioWriteStateVar is not None:
-            self.audioWriteStateVar.value = -1
-            self.audioWriteStateVar = None
-        if self.audioAcquireStateVar is not None:
-            self.audioAcquireStateVar.value = -1
-            self.audioAcquireStateVar = None
-        if self.syncStateVar is not None:
-            self.syncStateVar.value = -1
-            self.syncStateVar = None
-        if self.mergeStateVar is not None:
-            self.mergeStateVar.value = -1
-            self.mergeStateVar = None
+            self.videoWriteProcesses[camSerial].publishedStateVar.value = -1
+            self.videoAcquireProcesses[camSerial].publishedStateVar.value = -1
+        if self.audioWriteProcess is not None:
+            self.audioWriteProcess.publishedStateVar.value = -1
+        if self.audioAcquireProcess is not None:
+            self.audioAcquireProcess.publishedStateVar.value = -1
+        if self.syncProcess is not None:
+            self.syncProcess.publishedStateVar.value = -1
+        if self.mergeProcess is not None:
+            self.mergeProcess.publishedStateVar.value = -1
 
         self.actualVideoFrequency = None
         self.actualAudioFrequency = None
