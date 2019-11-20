@@ -1471,7 +1471,7 @@ class AudioTriggerer(mp.Process):
         mp.Process.__init__(self, daemon=True)
         self.publishedStateVar = publishedStateVar
         self.audioQueue = audioQueue
-        self.audioQueue.cancel_join_thread()
+        if self.audioQueue is not None: self.audioQueue.cancel_join_thread()
         self.audioAnalysisMonitorQueue = audioAnalysisMonitorQueue
         self.audioMessageQueue = audioMessageQueue
         self.videoMessageQueues = videoMessageQueues
@@ -3100,7 +3100,7 @@ class VideoWriter(mp.Process):
         self.videoDirectory=videoDirectory
         self.videoBaseFilename = videoBaseFilename
         self.imageQueue = imageQueue
-        self.imageQueue.cancel_join_thread()
+        if self.imageQueue is not None: self.imageQueue.cancel_join_thread()
         self.frameRate = frameRate
         self.messageQueue = messageQueue
         self.mergeMessageQueue = mergeMessageQueue
@@ -4317,10 +4317,12 @@ him know. Otherwise, I had nothing to do with it.
             self.master.after_cancel(self.audioAnalysisMonitorUpdateJob)
 
         if newMode == "Audio":
-            self.audioTriggerMessageQueue.put((AudioTriggerer.STARTANALYZE, None))
+            if self.audioTriggerMessageQueue is not None:
+                self.audioTriggerMessageQueue.put((AudioTriggerer.STARTANALYZE, None))
             self.autoUpdateAudioAnalysisMonitors()
         else:
-            self.audioTriggerMessageQueue.put((AudioTriggerer.STOPANALYZE, None))
+            if self.audioTriggerMessageQueue is not None:
+                self.audioTriggerMessageQueue.put((AudioTriggerer.STOPANALYZE, None))
 
         self.update()
 
@@ -5057,6 +5059,8 @@ him know. Otherwise, I had nothing to do with it.
 
         if len(self.audioDAQChannels) > 0:
             self.audioTriggerProcess.start()
+            if self.getParams('triggerMode') == "Audio":
+                self.audioTriggerMessageQueue.put((AudioTriggerer.STARTANALYZE, None))
             self.audioWriteProcess.start()
             self.audioAcquireProcess.start()
 
