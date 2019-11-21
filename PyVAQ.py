@@ -2441,8 +2441,13 @@ class AudioWriter(mp.Process):
                             if self.verbose >= 3: syncPrint("AW - |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState), buffer=self.stdoutBuffer)
                             if chunkStartTriggerState < 0 and chunkEndTriggerState < 0:
                                 # Entire chunk is before trigger range. Continue buffering until we get to trigger start time.
+                                if self.verbose >= 2: syncPrint("AW - Active trigger, but havne't gotten to start time yet, continue buffering.", buffer=self.stdoutBuffer)
                                 nextState = AudioWriter.BUFFERING
-                            elif chunkStartTriggerState == 0 or chunkEndTriggerState == 0 or (chunkStartTriggerState < 0 and chunkStartTriggerState > 0):
+                            elif chunkEndTriggerState == 0 and chunkStartTriggerState < 0:
+                                if self.verbose >= 1: syncPrint("AW - Got trigger start!", buffer=self.stdoutBuffer)
+                                timeWrote = 0
+                                nexState = AudioWriter.WRITING
+                            elif chunkStartTriggerState == 0 or (chunkStartTriggerState < 0 and chunkStartTriggerState > 0):
                                 # Time is now in trigger range
                                 if self.verbose >= 0: syncPrint("AW - Warning, partially missed audio trigger start!", buffer=self.stdoutBuffer)
                                 timeWrote = 0
@@ -3250,12 +3255,21 @@ class VideoWriter(mp.Process):
                             triggerState = triggers[0].state(imp.frameTime)
                             if self.verbose >= 2: syncPrint(self.ID + " - Trigger state: {state}".format(state=triggerState), buffer=self.stdoutBuffer)
                             if triggerState < 0:        # Time is before trigger range
+                                if self.verbose >= 2: syncPrint(self.ID + " - Active trigger, but havne't gotten to start time yet, continue buffering.", buffer=self.stdoutBuffer)
                                 nextState = VideoWriter.BUFFERING
                             elif triggerState == 0:     # Time is now in trigger range
+                                if self.verbose >= 0:
+                                    delta = imp.frameTime - triggers[0].startTime
+                                    if delta <= 1/self.frameRate:
+                                        # Within one frame of trigger start
+                                        syncPrint(self.ID + " - Got trigger start!", buffer=self.stdoutBuffer)
+                                    else:
+                                        # More than one frame after trigger start - we missed some
+                                        syncPrint(self.ID + " - partially missed trigger by {t} seconds, which is {f} frames!".format(t=delta, f=delta/self.frameRate), buffer=self.stdoutBuffer)
                                 timeWrote = 0
                                 nextState = VideoWriter.WRITING
                             else:                       # Time is after trigger range
-                                if self.verbose >= 0: syncPrint(self.ID + " - Missed trigger start by {triggerStart} seconds!".format(triggerStart=triggerStart), buffer=self.stdoutBuffer)
+                                if self.verbose >= 0: syncPrint(self.ID + " - Missed trigger start by {triggerState} seconds!".format(triggerStart=triggerState), buffer=self.stdoutBuffer)
                                 timeWrote = 0
                                 nextState = VideoWriter.BUFFERING
                                 triggers.pop(0)
