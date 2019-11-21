@@ -3300,11 +3300,15 @@ class VideoWriter(mp.Process):
                             try:
                                 im.Release()
                             except PySpin.SpinnakerException:
-                                if self.verbose >= 0: syncPrint("Error releasing unconverted PySpin image after appending to AVI.", buffer=self.stdoutBuffer)
+                                if self.verbose >= 0:
+                                    syncPrint("Error releasing unconverted PySpin image after appending to AVI.", buffer=self.stdoutBuffer)
+                                    syncPrint(traceback.format_exc(), buffer=self.stdoutBuffer)
                             try:
                                 imc.Release()
                             except PySpin.SpinnakerException:
-                                if self.verbose >= 0: syncPrint("Error releasing converted PySpin image after appending to AVI.", buffer=self.stdoutBuffer)
+                                if self.verbose >= 0:
+                                    syncPrint("Error releasing converted PySpin image after appending to AVI.", buffer=self.stdoutBuffer)
+                                    syncPrint(traceback.format_exc(), buffer=self.stdoutBuffer)
                             del im
                         elif self.videoWriteMethod == "ffmpeg":
                             videoFileInterface.write(imp.data, shape=(imp.width, imp.height))
