@@ -4684,8 +4684,8 @@ him know. Otherwise, I had nothing to do with it.
     def getQueueSizes(self):
         print("main>> Get qsizes...")
         for camSerial in self.videoAcquireProcesses:
-            print("main>> videoMonitorQueue[", camSerial, "] size:", self.videoMonitorQueues.qsize())
-            print("main>> imageQueue[", camSerial, "] size:", self.videoAcquireProcesses.imageQueue.qsize())
+            print("main>> videoMonitorQueue[", camSerial, "] size:", self.videoMonitorQueues[camSerial].qsize())
+            print("main>> imageQueue[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].imageQueue.qsize())
         print("main>> audioMonitorQueue size:", self.audioMonitorQueue.qsize())
         print("main>> audioAnalysisQueue size:", self.audioAnalysisQueue.qsize())
         print("main>> mergeMessageQueue size:", self.mergeMessageQueue.qsize())
