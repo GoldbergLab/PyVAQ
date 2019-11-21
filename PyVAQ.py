@@ -24,7 +24,7 @@ from tkinter.filedialog import askdirectory, asksaveasfilename, askopenfilename
 from tkinter.messagebox import showinfo
 import queue
 from PIL import Image, ImageTk
-import pprint
+# import pprint
 import traceback
 from subprocess import check_output
 from collections import deque, defaultdict
@@ -45,6 +45,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.lines import Line2D
 import ffmpegWriter as fw
+from pympler import tracker
 
 VERSION='0.2.0'
 
@@ -406,6 +407,10 @@ def serializableToTime(serializable):
         second=serializable['second'],
         microsecond=serializable['microsecond']
     )
+
+def format_diff(diff):
+    # Diff is a list of the form output by pympler.summary.diff()
+    output = '\n'.join(str(d) for d in sorted(diff, key=lambda dd:-dd[2])))
 
 ### Main recording and writing functions
 
@@ -3295,20 +3300,13 @@ class VideoWriter(mp.Process):
                             # Reconstitute PySpin image from PickleableImage
                             im = PySpin.Image.Create(imp.width, imp.height, imp.offsetX, imp.offsetY, imp.pixelFormat, imp.data)
                             # Convert image to desired format
-                            imc = im.Convert(PySpin.PixelFormat_RGB8, PySpin.HQ_LINEAR)
-                            videoFileInterface.Append(im)
-                            try:
-                                im.Release()
-                            except PySpin.SpinnakerException:
-                                if self.verbose >= 0:
-                                    syncPrint("Error releasing unconverted PySpin image after appending to AVI.", buffer=self.stdoutBuffer)
-                                    syncPrint(traceback.format_exc(), buffer=self.stdoutBuffer)
-                            try:
-                                imc.Release()
-                            except PySpin.SpinnakerException:
-                                if self.verbose >= 0:
-                                    syncPrint("Error releasing converted PySpin image after appending to AVI.", buffer=self.stdoutBuffer)
-                                    syncPrint(traceback.format_exc(), buffer=self.stdoutBuffer)
+                            videoFileInterface.Append(im.Convert(PySpin.PixelFormat_RGB8, PySpin.HQ_LINEAR))
+                            # try:
+                            #     im.Release()
+                            # except PySpin.SpinnakerException:
+                            #     if self.verbose >= 0:
+                            #         syncPrint("Error releasing unconverted PySpin image after appending to AVI.", buffer=self.stdoutBuffer)
+                            #         syncPrint(traceback.format_exc(), buffer=self.stdoutBuffer)
                             del im
                         elif self.videoWriteMethod == "ffmpeg":
                             videoFileInterface.write(imp.data, shape=(imp.width, imp.height))
