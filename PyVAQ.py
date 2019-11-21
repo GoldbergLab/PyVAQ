@@ -49,9 +49,10 @@ import ffmpegWriter as fw
 VERSION='0.2.0'
 
 # Todo:
+#  - Add filename/directory entry for each stream
+#  - Find and plug memory leak
 #  - Add video frameRate indicator
 #  - Make attributes settable
-#  - Add filename entry for each stream
 #  - Make saved avis not gigantic (maybe switch to opencv for video writing?)
 #  - Add external record triggering
 # Done
@@ -3294,12 +3295,16 @@ class VideoWriter(mp.Process):
                             # Reconstitute PySpin image from PickleableImage
                             im = PySpin.Image.Create(imp.width, imp.height, imp.offsetX, imp.offsetY, imp.pixelFormat, imp.data)
                             # Convert image to desired format
-                            im = im.Convert(PySpin.PixelFormat_RGB8, PySpin.HQ_LINEAR)
+                            imc = im.Convert(PySpin.PixelFormat_RGB8, PySpin.HQ_LINEAR)
                             videoFileInterface.Append(im)
-                            # try:
-                            #     im.Release()
-                            # except PySpin.SpinnakerException:
-                            #     if self.verbose >= 0: syncPrint("Error releasing PySpin image after appending to AVI.", buffer=self.stdoutBuffer)
+                            try:
+                                im.Release()
+                            except PySpin.SpinnakerException:
+                                if self.verbose >= 0: syncPrint("Error releasing unconverted PySpin image after appending to AVI.", buffer=self.stdoutBuffer)
+                            try:
+                                imc.Release()
+                            except PySpin.SpinnakerException:
+                                if self.verbose >= 0: syncPrint("Error releasing converted PySpin image after appending to AVI.", buffer=self.stdoutBuffer)
                             del im
                         elif self.videoWriteMethod == "ffmpeg":
                             videoFileInterface.write(imp.data, shape=(imp.width, imp.height))
@@ -3774,6 +3779,7 @@ class PyVAQ:
         self.debugMenu.add_command(label="Set verbosity", command=self.setVerbosity)
         self.debugMenu.add_command(label="Check states", command=self.checkStates)
         self.debugMenu.add_command(label="Get PIDs", command=self.getPIDs)
+        self.debugMenu.add_command(label="Get Queue Sizes", command=self.getQueueSizes)
 
         self.monitoringMenu = tk.Menu(self.menuBar, tearoff=False)
         self.monitoringMenu.add_command(label="Configure audio monitoring", command=self.configureAudioMonitoring)
@@ -4673,6 +4679,20 @@ him know. Otherwise, I had nothing to do with it.
             camList.Clear()
             system.ReleaseInstance()
 
+    def getQueueSizes(self):
+        print("main>> Get qsizes...")
+        for camSerial in self.videoAcquireProcesses:
+            print("main>> videoMonitorQueue[", camSerial, "] size:", self.videoMonitorQueues.qsize())
+            print("main>> imageQueue[", camSerial, "] size:", self.videoAcquireProcesses.imageQueue.qsize())
+        print("main>> audioMonitorQueue size:", self.audioMonitorQueue.qsize())
+        print("main>> audioAnalysisQueue size:", self.audioAnalysisQueue.qsize())
+        print("main>> mergeMessageQueue size:", self.mergeMessageQueue.qsize())
+        print("main>> audioMonitorData size:", self.audioMonitorData.qsize())
+        print("main>> stdoutQueue size:", self.stdoutQueue.qsize())
+        print("main>> audioAnalysisMonitorQueue size:", self.audioAnalysisMonitorQueue.qsize())
+        print("main>> audioAcquireProcess.audioQueue size:", self.audioAcquireProcess.audioQueue.qsize())
+        print("main>> ...get qsizes")
+
     def getPIDs(self):
         videoWritePIDs = {}
         videoAcquirePIDs = {}
@@ -4682,6 +4702,7 @@ him know. Otherwise, I had nothing to do with it.
         mergePID = None
 
         print("main>> PIDs...")
+        print("main>> main thread:", os.getpid())
         for camSerial in self.videoWriteProcesses:
             videoWritePIDs[camSerial] = self.videoWriteProcesses[camSerial].PID.value
             print("main>> videoWritePIDs["+camSerial+"]:", videoWritePIDs[camSerial])
@@ -4723,6 +4744,7 @@ him know. Otherwise, I had nothing to do with it.
         if self.mergeProcess is not None:
             mergeState = AVMerger.stateList[self.mergeProcess.publishedStateVar.value]
 
+        print("main>> Check states...")
         for camSerial in videoWriteStates:
             print("main>> videoWriteStates[", camSerial, "]:", videoWriteStates[camSerial])
         for camSerial in videoAcquireStates:
@@ -4731,6 +4753,7 @@ him know. Otherwise, I had nothing to do with it.
         print("main>> audioAcquireState:", audioAcquireState)
         print("main>> syncState:", syncState)
         print("main>> mergeState:", mergeState)
+        print("main>> ...check states")
 
     def acquisitionActive(self):
         # Check if at least one audio or video process is acquiring
