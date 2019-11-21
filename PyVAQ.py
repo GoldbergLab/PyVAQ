@@ -4686,13 +4686,12 @@ him know. Otherwise, I had nothing to do with it.
         for camSerial in self.videoAcquireProcesses:
             print("main>> videoMonitorQueue[", camSerial, "] size:", self.videoMonitorQueues[camSerial].qsize())
             print("main>> imageQueue[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].imageQueue.qsize())
-        print("main>> audioMonitorQueue size:", self.audioMonitorQueue.qsize())
-        print("main>> audioAnalysisQueue size:", self.audioAnalysisQueue.qsize())
-        print("main>> mergeMessageQueue size:", self.mergeMessageQueue.qsize())
-        print("main>> audioMonitorData size:", self.audioMonitorData.qsize())
-        print("main>> stdoutQueue size:", self.stdoutQueue.qsize())
-        print("main>> audioAnalysisMonitorQueue size:", self.audioAnalysisMonitorQueue.qsize())
         print("main>> audioAcquireProcess.audioQueue size:", self.audioAcquireProcess.audioQueue.qsize())
+        print("main>> audioAnalysisQueue size:", self.audioAnalysisQueue.qsize())
+        print("main>> audioMonitorQueue size:", self.audioMonitorQueue.qsize())
+        print("main>> audioAnalysisMonitorQueue size:", self.audioAnalysisMonitorQueue.qsize())
+        print("main>> mergeMessageQueue size:", self.mergeMessageQueue.qsize())
+        print("main>> stdoutQueue size:", self.stdoutQueue.qsize())
         print("main>> ...get qsizes")
 
     def getPIDs(self):
