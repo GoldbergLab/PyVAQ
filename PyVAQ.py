@@ -410,7 +410,7 @@ def serializableToTime(serializable):
 
 def format_diff(diff):
     # Diff is a list of the form output by pympler.summary.diff()
-    output = '\n'.join(str(d) for d in sorted(diff, key=lambda dd:-dd[2])))
+    output = '\n'.join(str(d) for d in sorted(diff, key=lambda dd:-dd[2]))
 
 ### Main recording and writing functions
 
