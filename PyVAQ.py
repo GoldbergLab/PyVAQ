@@ -700,9 +700,7 @@ class CameraMonitor(ttk.LabelFrame):
 
     def destroy(self):
         ttk.LabelFrame.destroy(self)
-        self.directoryFrame.grid_forget()
-        self.directoryEntry.grid_forget()
-        self.directoryButton.grid_forget()
+        self.fileWidget.grid_forget()
         self.canvas.grid_forget()
         self.imageID = None
         self.currentImage = None
