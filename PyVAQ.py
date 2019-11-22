@@ -1,11 +1,9 @@
-import re
 import sys
 import os
 import struct
 import math
 import time
 import datetime as dt
-import unicodedata
 import json
 import wave
 import numpy as np
@@ -30,9 +28,12 @@ from subprocess import check_output
 from collections import deque, defaultdict
 from threading import BrokenBarrierError
 import itertools
+import re
+import unicodedata
 from decimal import Decimal
 from TimeInput import TimeVar, TimeEntry
 from ParamDialog import ParamDialog, Param
+from fileWritingEntry import FileWritingEntry
 import cProfile, pstats, io
 from scipy.signal import butter, lfilter
 # For audio monitor graph embedding:
@@ -412,7 +413,300 @@ def format_diff(diff):
     # Diff is a list of the form output by pympler.summary.diff()
     output = '\n'.join(str(d) for d in sorted(diff, key=lambda dd:-dd[2]))
 
+def slugify(value, allow_unicode=False):
+    """
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces to hyphens.
+    Remove characters that aren't alphanumerics, underscores, or hyphens.
+    Convert to lowercase. Also strip leading and trailing whitespace.
+
+    Adapter from Django utils
+    """
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\w\s-]', '', value).strip().lower()
+    return re.sub(r'[-\s]+', '-', value)
+
 ### Main recording and writing functions
+
+class AudioMonitor(ttk.LabelFrame):
+    def __init__(self, *args, historyLength=44100*2, displayAmplitude=5, autoscale=False, **kwargs):
+        ttk.LabelFrame.__init__(self, *args, **kwargs)
+
+        self.channels = []
+        self.displayWidgets = {}
+        self.historyLength = historyLength          # Max number of samples to display in history
+        self.displayAmplitude = displayAmplitude    # Max amplitude to display (if autoscale=False)
+        self.autoscale = autoscale                  # Autoscale axes
+
+        self.fileWidget = FileWritingEntry(
+            self,
+            defaultDirectory=r'C:\Users\Brian Kardon\Documents\Cornell Lab Tech non-syncing\PyVAQ test videos\audio',
+            defaultBaseFileName='audioWrite',
+            purposeText='audio writing',
+            text="Audio Writing"
+            )
+
+        self.masterDisplayFrame = ttk.Frame(self)
+
+        self.data = None
+
+        for index, channel in enumerate(self.channels):
+            self.createChannelDisplay(channel, index)
+
+        self.updateWidgets()
+
+    def getDirectory(self):
+        return self.fileWidget.getDirectory()
+
+    def getBaseFileName(self):
+        return self.fileWidget.getBaseFileName()
+
+    def setDirectoryChangeHandler(self, function):
+        self.fileWidget.setDirectoryChangeHandler(function)
+
+    def setBaseFileNameChangeHandler(self, function):
+        self.fileWidget.setBaseFileNameChangeHandler(function)
+
+    def addAudioData(self, newData):
+        # Concatenate new audio data with old data, trim to monitor length if
+        #   necessary, and update displays
+        if self.data is None:
+            self.data = newData
+        else:
+            self.data = np.concatenate((self.data, newData), axis=1)
+
+        if self.data is not None:
+            # Trim data to specified size
+            startTrim = self.data.shape[1] - self.historyLength
+            if startTrim < 0:
+                startTrim = 0
+            self.data = self.data[:, startTrim:]
+
+            # Display new data
+            for k, channel in enumerate(self.channels):
+                axes = self.displayWidgets[channel]['axes']
+                fig = self.displayWidgets[channel]['figure']
+                axes.clear()
+                axes.plot(self.data[k, :].tolist(), LINE_STYLES[k % len(LINE_STYLES)], linewidth=1)
+                if self.autoscale:
+                    axes.relim()
+                    axes.autoscale_view(True, True, True)
+                else:
+                    axes.set_ylim([-self.displayAmplitude, self.displayAmplitude])
+                axes.margins(x=0, y=0)
+                fig.canvas.draw()
+                fig.canvas.flush_events()
+
+    def updateChannels(self, channels):
+        self.channels = channels
+        self.updateWidgets()
+
+    def updateWidgets(self):
+        if self.channels != self.displayWidgets.keys():
+            # We've got a new set of channels, delete old widgets, make new ones
+            for channel in self.displayWidgets:
+                self.displayWidgets[channel]['displayFrame'].grid_forget()
+                self.displayWidgets[channel]['figureCanvas'].pack_forget()
+                # Memory leak? MPL figure is probably still in memory...
+                self.data = None
+            self.displayWidgets = {}
+            for index, channel in enumerate(self.channels):
+                self.createChannelDisplay(channel, index)
+
+#        wA, hA = getOptimalMonitorGrid(len(self.channels))
+        for k, channel in enumerate(self.channels):
+            self.displayWidgets[channel]['displayFrame'].pack()
+            self.displayWidgets[channel]['figureCanvas'].get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
+
+        if len(self.channels) > 0:
+            # No channels, it would look weird to display directory entry
+            self.masterDisplayFrame.grid(row=0, column=0)
+            self.fileWidget.grid(row=1, column=0)
+        else:
+            self.masterDisplayFrame.grid_forget()
+            self.fileWidget.grid_forget()
+
+
+    def createChannelDisplay(self, channel, index):
+        self.displayWidgets[channel] = {}  # Change this to gracefully remove existing channel widgets under this channel name
+        self.displayWidgets[channel]['displayFrame'] = ttk.LabelFrame(self.masterDisplayFrame, text=channel)
+        fig = Figure(figsize=(7, 0.75), dpi=100, facecolor=WIDGET_COLORS[1])
+        t = np.arange(self.historyLength)
+        axes = fig.add_subplot(111)
+        axes.autoscale(enable=True)
+        axes.plot(t, 0 * t, LINE_STYLES[index % len(LINE_STYLES)], linewidth=1)
+        axes.relim()
+        axes.autoscale_view(True, True, True)
+        axes.margins(x=0, y=0)
+        #fig.tight_layout()
+        plt.subplots_adjust(left=0, right=1, top=1, bottom=0, wspace=0, hspace=0)
+        canvas = FigureCanvasTkAgg(fig, master=self.displayWidgets[channel]['displayFrame'])  # A tk.DrawingArea.
+        canvas.draw()
+
+        # Set up matplotlib figure callbacks
+        # toolbar = NavigationToolbar2Tk(canvas, self.audioMonitorFrames[channel])
+        # toolbar.update()
+#         def figureKeyPressManager(event):
+# #            syncPrint("you pressed {}".format(event.key))
+#             key_press_handler(event, canvas, toolbar)
+#         canvas.mpl_connect("key_press_event", figureKeyPressManager)
+
+        self.displayWidgets[channel]['figure'] = fig
+        self.displayWidgets[channel]['axes'] = axes
+        self.displayWidgets[channel]['figureCanvas'] = canvas
+        # self.displayWidgets[channel]['figureNavToolbar'] = toolbar
+        # self.displayWidgets[channel]['figureLine'] = line
+
+class CameraMonitor(ttk.LabelFrame):
+    def __init__(self, *args, displaySize=(400, 300), camSerial='Unknown camera', speedText='Unknown speed', **kwargs):
+        ttk.LabelFrame.__init__(self, *args, **kwargs)
+        self.camSerial = camSerial
+        self.config(text="{serial} ({speed})".format(serial=self.camSerial, speed=speedText))
+        self.displaySize = displaySize
+        self.canvas = tk.Canvas(self, width=self.displaySize[0], height=self.displaySize[1], borderwidth=2, relief=tk.SUNKEN)
+        self.imageID = None
+        self.currentImage = None
+
+        self.fileWidget = FileWritingEntry(
+            self,
+            defaultDirectory=r'C:\Users\Brian Kardon\Documents\Cornell Lab Tech non-syncing\PyVAQ test videos\video',
+            defaultBaseFileName='videoWrite',
+            purposeText='video writing',
+            text="Video Writing - {camSerial}".format(camSerial=self.camSerial)
+            )
+
+        self.canvas.grid(row=0, column=0)
+        self.fileWidget.grid(row=1, column=0, sticky=tk.NSEW)
+
+#       self.cameraAttributeBrowserButton = ttk.Button(vFrame, text="Attribute browser", command=lambda:self.createCameraAttributeBrowser(camSerial))
+
+    def createCameraAttributeBrowser(self, camSerial):
+        main = tk.Toplevel()
+        nb = ttk.Notebook(main)
+        nb.grid(row=0)
+        tooltipLabel = ttk.Label(main, text="temp")
+        tooltipLabel.grid(row=1)
+
+        #self.cameraAttributesWidget[camSerial]
+        widgets = self.createAttributeBrowserNode(self.cameraAttributes[camSerial], nb, tooltipLabel, 1)
+
+    def createAttributeBrowserNode(self, attributeNode, parent, tooltipLabel, gridRow):
+        frame = ttk.Frame(parent)
+        frame.bind("<Enter>", lambda event: tooltipLabel.config(text=attributeNode["tooltip"]))  # Set tooltip rollover callback
+        frame.grid(row=gridRow)
+
+        # syncPrint()
+        # pp = pprint.PrettyPrinter(indent=1, depth=1)
+        # pp.pprint(attributeNode)
+        # syncPrint()
+
+        widgets = [frame]
+        childWidgets = []
+        childCategoryHolder = None
+        childCategoryWidgets = []
+
+        if attributeNode['type'] == "category":
+            children = []
+            parent.add(frame, text=attributeNode['displayName'])
+            if len(attributeNode['subcategories']) > 0:
+                # If this category has subcategories, create a notebook to hold them
+                childCategoryHolder = ttk.Notebook(frame)
+                childCategoryHolder.grid(row=0)
+                widgets.append(childCategoryHolder)
+                for subcategoryAttributeNode in attributeNode['subcategories']:
+                    childCategoryWidgets.append(self.createAttributeBrowserNode(subcategoryAttributeNode, childCategoryHolder, tooltipLabel, 0))
+            for k, childAttributeNode in enumerate(attributeNode['children']):
+                childWidgets.append(self.createAttributeBrowserNode(childAttributeNode, frame, tooltipLabel, k+1))
+        else:
+            if attributeNode['accessMode'] == "RW":
+                # Read/write attribute
+                accessState = 'normal'
+            else:
+                # Read only attribute
+                accessState = 'readonly'
+            if attributeNode['type'] == "command":
+                commandButton = ttk.Button(frame, text=attributeNode['displayName'])
+                commandButton.grid()
+                widgets.append(commandButton)
+            elif attributeNode['type'] == "enum":
+                enumLabel = ttk.Label(frame, text=attributeNode['displayName'])
+                enumLabel.grid(column=0, row=0)
+                options = list(attributeNode['options'].values())
+                enumSelector = ttk.Combobox(frame, state=accessState, values=options)
+                enumSelector.set(attributeNode['value'][1])
+                enumSelector.grid(column=1, row=0)
+                widgets.append(enumLabel)
+                widgets.append(enumSelector)
+            else:
+                entryLabel = ttk.Label(frame, text=attributeNode['displayName'])
+                entryLabel.grid(column=0, row=0)
+                entry = ttk.Entry(frame, state=accessState)
+                entry.insert(0, attributeNode['value'])
+                entry.grid(column=1, row=0)
+                widgets.append(entryLabel)
+                widgets.append(entry)
+
+        return {'widgets':widgets, 'childWidgets':childWidgets, 'childCategoryWidgets':childCategoryWidgets, 'childCategoryHolder':childCategoryHolder}
+
+    def directoryChangeMetaHandler(self, *args):
+        newDir = self.directoryVar.get()
+        if len(newDir) == 0 or os.path.isdir(newDir):
+            self.directoryEntry['style'] = 'ValidDirectory.TEntry'
+        else:
+            self.directoryEntry['style'] = 'InvalidDirectory.TEntry'
+
+        self.directoryChangeHandler()
+
+    def baseFileNameChangeMetaHandler(self, *args):
+        self.baseFileNameChangeHandler()
+
+    def setDirectoryChangeHandler(self, function):
+        self.directoryChangeHandler = function
+
+    def setBaseFileNameChangeHandler(self, function):
+        self.baseFileNameChangeHandler = function
+
+    def updateImage(self, image):
+        # Expects a PIL image object
+        newSize = self.getBestImageSize(image.size)
+        image = image.resize(newSize, resample=Image.BILINEAR)
+        self.currentImage = ImageTk.PhotoImage(image)
+        if self.imageID is None:
+            self.imageID = self.canvas.create_image((0, 0), image=self.currentImage, anchor=tk.NW)
+        else:
+            self.canvas.itemconfig(self.imageID, image=self.currentImage)
+
+    def getBestImageSize(self, imageSize):
+        # Get a new image size that preserves the aspect ratio, and fits into
+        #   the display canvas without cutting off any image or wasting space.
+        xRatio = self.displaySize[0] / imageSize[0]
+        yRatio = self.displaySize[1] / imageSize[1]
+
+        if xRatio > yRatio:
+            # image aspect ratio is wider than display - scale based on x ratio
+            return (self.displaySize[0], int(imageSize[1] * xRatio))
+        else:
+            # image aspect ratio is taller than display - scale based on y ratio
+            return (int(imageSize[0] * yRatio), self.displaySize[1])
+
+    def getDirectory(self):
+        return self.fileWidget.getDirectory()
+
+    def getBaseFileName(self):
+        return self.fileWidget.getBaseFileName()
+
+    def destroy(self):
+        ttk.LabelFrame.destroy(self)
+        self.directoryFrame.grid_forget()
+        self.directoryEntry.grid_forget()
+        self.directoryButton.grid_forget()
+        self.canvas.grid_forget()
+        self.imageID = None
+        self.currentImage = None
+        # self.cameraAttributeBrowserButton.grid_forget()
 
 class Stopwatch:
     def __init__(self):
@@ -632,7 +926,8 @@ class AVMerger(mp.Process):
         4 :'state_merging',
         5 :'state_stopping',
         6 :'state_error',
-        7 :'state_exiting'
+        7 :'state_exiting',
+        100 :'state_dead'
     }
 
     #messages:
@@ -1091,7 +1386,8 @@ class Synchronizer(mp.Process):
         3 :'state_stopping',
         4 :'state_sync_ready',
         5 :'state_error',
-        6 :'state_exiting'
+        6 :'state_exiting',
+        100 :'state_dead'
     }
 
     #messages:
@@ -1418,7 +1714,8 @@ class AudioTriggerer(mp.Process):
         3 :'ANALYZING',
         4 :'STOPPING',
         5 :'ERROR',
-        6 :'EXITING'
+        6 :'EXITING',
+        100 :'DEAD'
     }
 
     #messages:
@@ -1748,7 +2045,7 @@ class AudioTriggerer(mp.Process):
                                     lowTrigger=lowTrigger,
                                     highTrigger=highTrigger,
                                     triggerLowFrac=self.triggerLowFraction,
-                                    triggerHightFrac=self.triggerHighFraction,
+                                    triggerHighFrac=self.triggerHighFraction,
                                     chunkStartTime=chunkStartTime,
                                     chunkSize = self.chunkSize,
                                     audioFrequency = self.audioFrequency.value,
@@ -1872,6 +2169,7 @@ class AudioTriggerer(mp.Process):
 
         if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
         self.stdoutBuffer = []
+        self.updatePublishedState(100)
 
     def updateFilter(self):
         self.filter = generateButterBandpassCoeffs(self.bandpassFrequencies[0], self.bandpassFrequencies[1], self.audioFrequency.value, order=self.butterworthOrder)
@@ -1914,7 +2212,8 @@ class AudioAcquirer(mp.Process):
         3 :'state_stopping',
         4 :'state_acquire_ready',
         5 :'state_error',
-        6 :'state_exiting'
+        6 :'state_exiting',
+        100 :'state_dead'
     }
 
     #messages:
@@ -2263,7 +2562,8 @@ class AudioWriter(mp.Process):
         3:'BUFFERING',
         4 :'STOPPING',
         5 :'ERROR',
-        6 :'EXITING'
+        6 :'EXITING',
+        100 :'DEAD'
     }
 
     #messages:
@@ -2441,12 +2741,12 @@ class AudioWriter(mp.Process):
                             if self.verbose >= 3: syncPrint("AW - |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState), buffer=self.stdoutBuffer)
                             if chunkStartTriggerState < 0 and chunkEndTriggerState < 0:
                                 # Entire chunk is before trigger range. Continue buffering until we get to trigger start time.
-                                if self.verbose >= 2: syncPrint("AW - Active trigger, but havne't gotten to start time yet, continue buffering.", buffer=self.stdoutBuffer)
+                                if self.verbose >= 2: syncPrint("AW - Active trigger, but haven't gotten to start time yet, continue buffering.", buffer=self.stdoutBuffer)
                                 nextState = AudioWriter.BUFFERING
                             elif chunkEndTriggerState == 0 and chunkStartTriggerState < 0:
                                 if self.verbose >= 1: syncPrint("AW - Got trigger start!", buffer=self.stdoutBuffer)
                                 timeWrote = 0
-                                nexState = AudioWriter.WRITING
+                                nextState = AudioWriter.WRITING
                             elif chunkStartTriggerState == 0 or (chunkStartTriggerState < 0 and chunkStartTriggerState > 0):
                                 # Time is now in trigger range
                                 if self.verbose >= 0: syncPrint("AW - Warning, partially missed audio trigger start!", buffer=self.stdoutBuffer)
@@ -2692,7 +2992,8 @@ class VideoAcquirer(mp.Process):
         3 :'state_stopping',
         4 :'state_acquire_ready',
         5 :'state_error',
-        6 :'state_exiting'
+        6 :'state_exiting',
+        100 :'state_dead'
         }
 
     #messages:
@@ -2730,7 +3031,7 @@ class VideoAcquirer(mp.Process):
         self.monitorImageQueue = monitorImageQueue
         if self.monitorImageQueue is not None:
             self.monitorImageQueue.cancel_join_thread()
-        self.monitorFrameRate = monitorFrameRate
+        self.monitorMasterFrameRate = monitorFrameRate
         self.ready = ready
         self.frameStopwatch = Stopwatch()
         self.monitorStopwatch = Stopwatch()
@@ -2808,7 +3109,7 @@ class VideoAcquirer(mp.Process):
                     nodemap = cam.GetNodeMap()
                     self.setCameraAttributes(nodemap, self.acquireSettings)
 
-                    monitorFramePeriod = 1.0/self.monitorFrameRate
+                    monitorFramePeriod = 1.0/self.monitorMasterFrameRate
                     if self.verbose >= 1: syncPrint("Monitoring with period", monitorFramePeriod, buffer=self.stdoutBuffer)
                     thisTime = 0
                     lastTime = time.time()
@@ -2915,7 +3216,7 @@ class VideoAcquirer(mp.Process):
                         imageResult.Release()
                     except PySpin.SpinnakerException:
                         syncPrint(traceback.format_exc(), buffer=self.stdoutBuffer)
-                        if self.verbose >= 0: syncPrint(self.ID + " Video frame acquisition timeed out.", buffer=self.stdoutBuffer)
+                        if self.verbose >= 0: syncPrint(self.ID + " Video frame acquisition timed out.", buffer=self.stdoutBuffer)
 
                     # CHECK FOR MESSAGES
                     try:
@@ -3039,7 +3340,7 @@ class VideoAcquirer(mp.Process):
         self.stdoutBuffer = []
 
     def setCameraAttribute(self, nodemap, attributeName, attributeValue, type='enum'):
-        # Set camera attribute. Retrusn True if successful, False otherwise.
+        # Set camera attribute. ReturnRetrusn True if successful, False otherwise.
         if self.verbose >= 1: syncPrint('Setting', attributeName, 'to', attributeValue, 'as', type, buffer=self.stdoutBuffer)
         nodeAttribute = nodeAccessorTypes[type](nodemap.GetNode(attributeName))
         if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsWritable(nodeAttribute):
@@ -3085,7 +3386,8 @@ class VideoWriter(mp.Process):
         3 :'state_buffering',
         4 :'state_stopping',
         5 :'state_error',
-        6 :'state_exiting'
+        6 :'state_exiting',
+        100 :'state_dead'
     }
 
     #messages:
@@ -3103,7 +3405,7 @@ class VideoWriter(mp.Process):
 
     def __init__(self,
                 videoDirectory='.',
-                videoBaseFilename='videoFile',
+                videoBaseFileName='videoFile',
                 imageQueue=None,
                 frameRate=10,
                 messageQueue=None,
@@ -3117,7 +3419,7 @@ class VideoWriter(mp.Process):
         self.camSerial = camSerial
         self.ID = 'VW_' + self.camSerial
         self.videoDirectory=videoDirectory
-        self.videoBaseFilename = videoBaseFilename
+        self.videoBaseFileName = videoBaseFileName
         self.imageQueue = imageQueue
         if self.imageQueue is not None:
             self.imageQueue.cancel_join_thread()
@@ -3255,7 +3557,7 @@ class VideoWriter(mp.Process):
                             triggerState = triggers[0].state(imp.frameTime)
                             if self.verbose >= 2: syncPrint(self.ID + " - Trigger state: {state}".format(state=triggerState), buffer=self.stdoutBuffer)
                             if triggerState < 0:        # Time is before trigger range
-                                if self.verbose >= 2: syncPrint(self.ID + " - Active trigger, but havne't gotten to start time yet, continue buffering.", buffer=self.stdoutBuffer)
+                                if self.verbose >= 2: syncPrint(self.ID + " - Active trigger, but haven't gotten to start time yet, continue buffering.", buffer=self.stdoutBuffer)
                                 nextState = VideoWriter.BUFFERING
                             elif triggerState == 0:     # Time is now in trigger range
                                 if self.verbose >= 0:
@@ -3269,7 +3571,7 @@ class VideoWriter(mp.Process):
                                 timeWrote = 0
                                 nextState = VideoWriter.WRITING
                             else:                       # Time is after trigger range
-                                if self.verbose >= 0: syncPrint(self.ID + " - Missed trigger start by {triggerState} seconds!".format(triggerStart=triggerState), buffer=self.stdoutBuffer)
+                                if self.verbose >= 0: syncPrint(self.ID + " - Missed trigger start by {triggerState} seconds!".format(triggerState=triggerState), buffer=self.stdoutBuffer)
                                 timeWrote = 0
                                 nextState = VideoWriter.BUFFERING
                                 triggers.pop(0)
@@ -3292,7 +3594,7 @@ class VideoWriter(mp.Process):
                     if imp is not None:
                         if videoFileInterface is None:
                             # Start new video file
-                            videoFileName = generateFileName(directory=self.videoDirectory, baseName=self.videoBaseFilename, extension='', trigger=triggers[0])
+                            videoFileName = generateFileName(directory=self.videoDirectory, baseName=self.videoBaseFileName, extension='', trigger=triggers[0])
                             ensureDirectoryExists(self.videoDirectory)
                             if self.videoWriteMethod == "PySpin":
                                 videoFileInterface = PySpin.SpinVideo()
@@ -3543,22 +3845,6 @@ def getCameraAttribute(nodemap, attributeName, attributeTypePtrFunction):
         value = (valueEntry.GetName(), valueEntry.GetDisplayName())
     return value
 
-def slugify(value, allow_unicode=False):
-    """
-    Convert to ASCII if 'allow_unicode' is False. Convert spaces to hyphens.
-    Remove characters that aren't alphanumerics, underscores, or hyphens.
-    Convert to lowercase. Also strip leading and trailing whitespace.
-
-    Adapter from Django utils
-    """
-    value = str(value)
-    if allow_unicode:
-        value = unicodedata.normalize('NFKC', value)
-    else:
-        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
-    value = re.sub(r'[^\w\s-]', '', value).strip().lower()
-    return re.sub(r'[-\s]+', '-', value)
-
 nodeAccessorFunctions = {
     PySpin.intfIString:('string', PySpin.CStringPtr),
     PySpin.intfIInteger:('integer', PySpin.CIntegerPtr),
@@ -3732,8 +4018,15 @@ def checkCameraSpeed(camSerial):
 def flattenList(l):
     return [item for sublist in l for item in sublist]
 
+LINE_STYLES = [c+'-' for c in 'bykcmgr']
+WIDGET_COLORS = [
+    '#050505', # near black
+    '#e6f5ff', # very light blue
+    '#c1ffc1', # light green
+    '#FFC1C1'  # light red
+]
+
 class PyVAQ:
-    lineStyles = [c+'-' for c in 'bykcmgr']
     def __init__(self, master):
         self.master = master
         self.customTitleBar = False
@@ -3743,29 +4036,22 @@ class PyVAQ:
         self.master.protocol("WM_DELETE_WINDOW", self.cleanupAndExit)
         self.style = ttk.Style()
         self.style.theme_use('default')
-        self.colors = [
-            '#050505', # near black
-            '#e6f5ff', # very light blue
-            '#c1ffc1', # light green
-            '#FFC1C1'  # light red
-        ]
         if False:
-            self.style.configure('.', background=self.colors[0])
-            self.style.configure('.', foreground=self.colors[1])
-            self.style.configure('TButton', background=self.colors[1], foreground=self.colors[0], borderwidth=3)
-            self.style.configure('TEntry', borderwidth=0, fieldbackground=self.colors[1], foreground=self.colors[0])
-            self.style.configure('TLabel', borderwidth=0, background=self.colors[1], fieldbackground=self.colors[1], foreground=self.colors[0])
-            self.style.configure('TRadiobutton', indicatorbackground=self.colors[1], indicatorcolor=self.colors[0])
-            self.style.configure('TCheckbutton', indicatorbackground=self.colors[1], indicatorcolor=self.colors[0])
-            self.style.configure('TCombobox', fieldbackground=self.colors[1], foreground=self.colors[0])
+            # Man, ttk styling is hard to get into...
+            self.style.configure('.', background=WIDGET_COLORS[0])
+            self.style.configure('.', foreground=WIDGET_COLORS[1])
+            self.style.configure('TButton', background=WIDGET_COLORS[1], foreground=WIDGET_COLORS[0], borderwidth=3)
+            self.style.configure('TEntry', borderwidth=0, fieldbackground=WIDGET_COLORS[1], foreground=WIDGET_COLORS[0])
+            self.style.configure('TLabel', borderwidth=0, background=WIDGET_COLORS[1], fieldbackground=WIDGET_COLORS[1], foreground=WIDGET_COLORS[0])
+            self.style.configure('TRadiobutton', indicatorbackground=WIDGET_COLORS[1], indicatorcolor=WIDGET_COLORS[0])
+            self.style.configure('TCheckbutton', indicatorbackground=WIDGET_COLORS[1], indicatorcolor=WIDGET_COLORS[0])
+            self.style.configure('TCombobox', fieldbackground=WIDGET_COLORS[1], foreground=WIDGET_COLORS[0])
         self.style.configure('SingleContainer.TLabelframe', padding=5)
 
 #        self.style.configure('TFrame', background='#050505', foreground='#aaaadd')
-        self.style.configure('ValidDirectory.TEntry', fieldbackground=self.colors[2])
-        self.style.configure('InvalidDirectory.TEntry', fieldbackground=self.colors[3])
+        self.style.configure('ValidDirectory.TEntry', fieldbackground=WIDGET_COLORS[2])
+        self.style.configure('InvalidDirectory.TEntry', fieldbackground=WIDGET_COLORS[3])
 #        self.style.map('Directory.TEntry.label', background=[(('!invalid',), 'green'),(('invalid',), 'red')])
-
-        self.settings = []  # A list of StringVar/IntVar/etc that are settings to save/restore
 
         self.chunkSize = 1000
 
@@ -3805,31 +4091,17 @@ class PyVAQ:
         self.menuBar.add_cascade(label="Debug", menu=self.debugMenu)
         self.menuBar.add_cascade(label="Help", menu=self.helpMenu)
 
-        # self.settingsFrame = ttk.LabelFrame(self.controlFrame, text="Settings")
-        # self.saveSettingsButton = ttk.Button(self.settingsFrame, text="Save settings", command=self.saveSettings)
-        # self.loadSettingsButton = ttk.Button(self.settingsFrame, text="Load settings", command=self.loadSettings)
-        # self.saveDefaultSettingsButton = ttk.Button(self.settingsFrame, text="Save defaults", command=lambda *args: self.saveSettings(path='default.pvs'))
-        # self.loadDefaultSettingsButton = ttk.Button(self.settingsFrame, text="Load defaults", command=lambda *args: self.loadSettings(path='default.pvs'))
-        # self.helpButton = ttk.Button(self.settingsFrame, text="Help", command=self.showHelpDialog)
-
         self.master.config(menu=self.menuBar)
 
         self.titleBarFrame = ttk.Frame(self.master)
         self.closeButton = ttk.Button(self.titleBarFrame, text="X", command=self.cleanupAndExit)
 
-        self.monitorFrame = ttk.Frame(self.mainFrame)
-        self.videoMonitorMasterFrame = ttk.Frame(self.monitorFrame)
-        self.canvasSize = (300, 300)
-        self.audioMonitorMasterFrame = ttk.Frame(self.monitorFrame)
+        self.monitorMasterFrame = ttk.Frame(self.mainFrame)
+        self.videoMonitorMasterFrame = ttk.Frame(self.monitorMasterFrame)
+        self.audioMonitorMasterFrame = None  #ttk.Frame(self.monitorMasterFrame)
 
-        self.audioMonitorWidgets = {}
-        self.audioMonitorFrames = {}
         self.cameraAttributes = {}
-        self.videoMonitorFrames = {}
-        self.videoMonitors = {}
-        self.imageIDs = {}
-        self.currentImages = {}
-        self.cameraAttributeBrowserButtons = {}
+        self.cameraMonitors = {}
 
         self.camSerials = []
 
@@ -3839,65 +4111,65 @@ class PyVAQ:
         self.startChildProcessesButton = ttk.Button(self.acquisitionFrame, text="Start acquisition", command=self.acquireButtonClick)
 
         self.audioFrequencyFrame =  ttk.LabelFrame(self.acquisitionFrame, text="Audio freq. (Hz)", style='SingleContainer.TLabelframe')
-        self.audioFrequencyVar =    tk.StringVar(); self.audioFrequencyVar.set("22010"); self.settings.append('audioFrequencyVar')
+        self.audioFrequencyVar =    tk.StringVar(); self.audioFrequencyVar.set("22010")
         self.audioFrequencyEntry =  ttk.Entry(self.audioFrequencyFrame, width=15, textvariable=self.audioFrequencyVar);
 
         self.videoFrequencyFrame =  ttk.LabelFrame(self.acquisitionFrame, text="Video freq (fps)", style='SingleContainer.TLabelframe')
-        self.videoFrequencyVar =    tk.StringVar(); self.videoFrequencyVar.set("30"); self.settings.append('videoFrequencyVar')
+        self.videoFrequencyVar =    tk.StringVar(); self.videoFrequencyVar.set("30")
         self.videoFrequencyEntry =  ttk.Entry(self.videoFrequencyFrame, width=15, textvariable=self.videoFrequencyVar)
 
         self.exposureTimeFrame =    ttk.LabelFrame(self.acquisitionFrame, text="Exposure time (us):", style='SingleContainer.TLabelframe')
-        self.exposureTimeVar =      tk.StringVar(); self.exposureTimeVar.set("8000"); self.settings.append('exposureTimeVar')
+        self.exposureTimeVar =      tk.StringVar(); self.exposureTimeVar.set("8000")
         self.exposureTimeEntry =    ttk.Entry(self.exposureTimeFrame, width=18, textvariable=self.exposureTimeVar)
 
         self.preTriggerTimeFrame =  ttk.LabelFrame(self.acquisitionFrame, text="Pre-trigger record time (s)", style='SingleContainer.TLabelframe')
-        self.preTriggerTimeVar =    tk.StringVar(); self.preTriggerTimeVar.set("2.0"); self.settings.append('preTriggerTimeVar')
+        self.preTriggerTimeVar =    tk.StringVar(); self.preTriggerTimeVar.set("2.0")
         self.preTriggerTimeEntry =  ttk.Entry(self.preTriggerTimeFrame, width=26, textvariable=self.preTriggerTimeVar)
 
         self.recordTimeFrame =      ttk.LabelFrame(self.acquisitionFrame, text="Record time (s)", style='SingleContainer.TLabelframe')
-        self.recordTimeVar =        tk.StringVar(); self.recordTimeVar.set("4.0"); self.settings.append('recordTimeVar')
+        self.recordTimeVar =        tk.StringVar(); self.recordTimeVar.set("4.0")
         self.recordTimeEntry =      ttk.Entry(self.recordTimeFrame, width=14, textvariable=self.recordTimeVar)
 
-        self.baseFileNameFrame =    ttk.LabelFrame(self.acquisitionFrame, text="Base write filename", style='SingleContainer.TLabelframe')
-        self.baseFileNameVar =      tk.StringVar(); self.baseFileNameVar.set("recording"); self.settings.append("baseFileNameVar")
-        self.baseFileNameEntry =    ttk.Entry(self.baseFileNameFrame, width=24, textvariable=self.baseFileNameVar)
-
-        self.directoryFrame =       ttk.LabelFrame(self.acquisitionFrame, text="Write directory", style='SingleContainer.TLabelframe')
-        self.directoryVar =         tk.StringVar(); self.directoryVar.set("Recordings"); self.settings.append("directoryVar")
-        self.directoryEntry =       ttk.Entry(self.directoryFrame, width=48, textvariable=self.directoryVar, style='ValidDirectory.TEntry')
-        self.directoryButton =      ttk.Button(self.directoryFrame, text="Select write directory", command=self.selectWriteDirectory)
-        self.directoryEntry.bind('<FocusOut>', self.directoryChangeHandler)
 
         self.updateInputsButton =   ttk.Button(self.acquisitionFrame, text="Select audio/video inputs", command=self.selectInputs)
 
         self.mergeFrame = ttk.LabelFrame(self.acquisitionFrame, text="AV File merging")
 
-        self.mergeFilesVar =        tk.BooleanVar(); self.mergeFilesVar.set(True); self.settings.append('mergeFilesVar')
+        self.mergeFileWidget = FileWritingEntry(
+            self.mergeFrame,
+            defaultDirectory=r'C:\Users\Brian Kardon\Documents\Cornell Lab Tech non-syncing\PyVAQ test videos\merge',
+            defaultBaseFileName='mergeWrite',
+            purposeText='merging audio/video',
+            text="Merged A/V Writing"
+        )
+        self.mergeFileWidget.setDirectoryChangeHandler(self.mergeDirectoryChangeHandler)
+
+        self.mergeFilesVar =        tk.BooleanVar(); self.mergeFilesVar.set(True)
         self.mergeFilesCheckbutton = ttk.Checkbutton(self.mergeFrame, text="Merge audio/video", variable=self.mergeFilesVar, offvalue=False, onvalue=True)
         self.mergeFilesVar.trace('w', self.updateAVMergerState)
 
-        self.deleteMergedFilesVar = tk.BooleanVar(); self.deleteMergedFilesVar.set(False); self.settings.append('deleteMergedFilesVar')
+        self.deleteMergedFilesVar = tk.BooleanVar(); self.deleteMergedFilesVar.set(False)
         self.deleteMergedFilesCheckbutton = ttk.Checkbutton(self.mergeFrame, text="Delete merged files", variable=self.deleteMergedFilesVar, offvalue=False, onvalue=True)
         self.deleteMergedFilesVar.trace('w', lambda *args: self.changeAVMergerParams(deleteMergedFiles=self.deleteMergedFilesVar.get()))
 
-        self.montageMergeVar = tk.BooleanVar(); self.montageMergeVar.set(False); self.settings.append('montageMergeVar')
+        self.montageMergeVar = tk.BooleanVar(); self.montageMergeVar.set(False)
         self.montageMergeCheckbutton = ttk.Checkbutton(self.mergeFrame, text="Montage-merge videos", variable=self.montageMergeVar, offvalue=False, onvalue=True)
         self.montageMergeVar.trace('w', lambda *args: self.changeAVMergerParams(montage=self.montageMergeVar.get()))
 
         self.scheduleFrame = ttk.LabelFrame(self.acquisitionFrame, text="Trigger enable schedule")
-        self.scheduleEnabledVar = tk.BooleanVar(); self.scheduleEnabledVar.set(False); self.settings.append('scheduleEnabledVar')
+        self.scheduleEnabledVar = tk.BooleanVar(); self.scheduleEnabledVar.set(False)
         self.scheduleEnabledCheckbutton = ttk.Checkbutton(self.scheduleFrame, text="Restrict trigger to schedule", variable=self.scheduleEnabledVar)
-        self.scheduleStartVar = TimeVar(); self.settings.append('scheduleStartVar')
+        self.scheduleStartVar = TimeVar()
         self.scheduleStartTimeEntry = TimeEntry(self.scheduleFrame, text="Start time", style=self.style)
-        self.scheduleStopVar = TimeVar(); self.settings.append('scheduleStopVar')
+        self.scheduleStopVar = TimeVar()
         self.scheduleStopTimeEntry = TimeEntry(self.scheduleFrame, text="Stop time")
 
         self.triggerFrame = ttk.LabelFrame(self.controlFrame, text='Triggering')
         self.triggerModes = ['Manual', 'Audio']
         self.triggerModeChooserFrame = ttk.Frame(self.triggerFrame)
-        self.triggerModeVar = tk.StringVar(); self.triggerModeVar.set(self.triggerModes[0]); self.settings.append('triggerModeVar')
+        self.triggerModeVar = tk.StringVar(); self.triggerModeVar.set(self.triggerModes[0])
         self.triggerModeVar.trace('w', self.updateTriggerMode)
-        self.triggerModeLabel = ttk.Label(self.triggerModeChooserFrame, text='Trigger mode')
+        self.triggerModeLabel = ttk.Label(self.triggerModeChooserFrame, text='Trigger mode:')
         self.triggerModeRadioButtons = {}
         self.triggerModeControlGroupFrames = {}
 
@@ -3910,40 +4182,48 @@ class PyVAQ:
 
         # Audio trigger controls
         self.triggerHighLevelFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="High volume threshold", style='SingleContainer.TLabelframe')
-        self.triggerHighLevelVar = tk.StringVar(); self.triggerHighLevelVar.set("0.1"); self.settings.append('triggerHighLevelVar')
+        self.triggerHighLevelVar = tk.StringVar(); self.triggerHighLevelVar.set("0.1")
         self.triggerHighLevelEntry = ttk.Entry(self.triggerHighLevelFrame, textvariable=self.triggerHighLevelVar); self.triggerHighLevelEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
         self.triggerLowLevelFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Low volume threshold", style='SingleContainer.TLabelframe')
-        self.triggerLowLevelVar = tk.StringVar(); self.triggerLowLevelVar.set("0.05"); self.settings.append('triggerLowLevelVar')
+        self.triggerLowLevelVar = tk.StringVar(); self.triggerLowLevelVar.set("0.05")
         self.triggerLowLevelEntry = ttk.Entry(self.triggerLowLevelFrame, textvariable=self.triggerLowLevelVar); self.triggerLowLevelEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
         self.triggerHighTimeFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="High threshold time", style='SingleContainer.TLabelframe')
-        self.triggerHighTimeVar = tk.StringVar(); self.triggerHighTimeVar.set("0.5"); self.settings.append('triggerHighTimeVar')
+        self.triggerHighTimeVar = tk.StringVar(); self.triggerHighTimeVar.set("0.5")
         self.triggerHighTimeEntry = ttk.Entry(self.triggerHighTimeFrame, textvariable=self.triggerHighTimeVar); self.triggerHighTimeEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
         self.triggerLowTimeFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Low threshold time", style='SingleContainer.TLabelframe')
-        self.triggerLowTimeVar = tk.StringVar(); self.triggerLowTimeVar.set("2.0"); self.settings.append('triggerLowTimeVar')
+        self.triggerLowTimeVar = tk.StringVar(); self.triggerLowTimeVar.set("2.0")
         self.triggerLowTimeEntry = ttk.Entry(self.triggerLowTimeFrame, textvariable=self.triggerLowTimeVar); self.triggerLowTimeEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
         self.triggerHighFractionFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Frac. of time above high threshold", style='SingleContainer.TLabelframe')
-        self.triggerHighFractionVar = tk.StringVar(); self.triggerHighFractionVar.set("0.1"); self.settings.append('triggerHighFractionVar')
+        self.triggerHighFractionVar = tk.StringVar(); self.triggerHighFractionVar.set("0.1")
         self.triggerHighFractionEntry = ttk.Entry(self.triggerHighFractionFrame, textvariable=self.triggerHighFractionVar); self.triggerHighFractionEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
         self.triggerLowFractionFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Frac. of time below low threshold", style='SingleContainer.TLabelframe')
-        self.triggerLowFractionVar = tk.StringVar(); self.triggerLowFractionVar.set("0.99"); self.settings.append('triggerLowFractionVar')
+        self.triggerLowFractionVar = tk.StringVar(); self.triggerLowFractionVar.set("0.99")
         self.triggerLowFractionEntry = ttk.Entry(self.triggerLowFractionFrame, textvariable=self.triggerLowFractionVar); self.triggerLowFractionEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
+        self.triggerHighBandpassFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="High bandpass cutoff freq. (Hz)", style='SingleContainer.TLabelframe')
+        self.triggerHighBandpassVar = tk.StringVar(); self.triggerHighBandpassVar.set("7000")
+        self.triggerHighBandpassEntry = ttk.Entry(self.triggerHighBandpassFrame, textvariable=self.triggerHighBandpassVar); self.triggerHighBandpassEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
+
+        self.triggerLowBandpassFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Low bandpass cutoff freq. (Hz)", style='SingleContainer.TLabelframe')
+        self.triggerLowBandpassVar = tk.StringVar(); self.triggerLowBandpassVar.set("100")
+        self.triggerLowBandpassEntry = ttk.Entry(self.triggerLowBandpassFrame, textvariable=self.triggerLowBandpassVar); self.triggerLowBandpassEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
+
         self.maxAudioTriggerTimeFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Max. audio trigger record time", style='SingleContainer.TLabelframe')
-        self.maxAudioTriggerTimeVar = tk.StringVar(); self.maxAudioTriggerTimeVar.set("20.0"); self.settings.append('maxAudioTriggerTimeVar')
+        self.maxAudioTriggerTimeVar = tk.StringVar(); self.maxAudioTriggerTimeVar.set("20.0")
         self.maxAudioTriggerTimeEntry = ttk.Entry(self.maxAudioTriggerTimeFrame, textvariable=self.maxAudioTriggerTimeVar); self.maxAudioTriggerTimeEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
         self.multiChannelStartBehaviorFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Start recording when...", style='SingleContainer.TLabelframe')
-        self.multiChannelStartBehaviorVar = tk.StringVar(); self.multiChannelStartBehaviorVar.set("OR"); self.multiChannelStartBehaviorVar.trace('w', self.updateAudioTriggerSettings); self.settings.append('multiChannelStartBehaviorVar')
+        self.multiChannelStartBehaviorVar = tk.StringVar(); self.multiChannelStartBehaviorVar.set("OR"); self.multiChannelStartBehaviorVar.trace('w', self.updateAudioTriggerSettings)
         self.multiChannelStartBehaviorOR = ttk.Radiobutton(self.multiChannelStartBehaviorFrame, text="...any channels stay above threshold", variable=self.multiChannelStartBehaviorVar, value="OR")
         self.multiChannelStartBehaviorAND = ttk.Radiobutton(self.multiChannelStartBehaviorFrame, text="...all channels stay above threshold", variable=self.multiChannelStartBehaviorVar, value="AND")
 
         self.multiChannelStopBehaviorFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Stop recording when...", style='SingleContainer.TLabelframe')
-        self.multiChannelStopBehaviorVar = tk.StringVar(); self.multiChannelStopBehaviorVar.set("AND"); self.multiChannelStopBehaviorVar.trace('w', self.updateAudioTriggerSettings); self.settings.append('multiChannelStopBehaviorVar')
+        self.multiChannelStopBehaviorVar = tk.StringVar(); self.multiChannelStopBehaviorVar.set("AND"); self.multiChannelStopBehaviorVar.trace('w', self.updateAudioTriggerSettings)
         self.multiChannelStopBehaviorOR = ttk.Radiobutton(self.multiChannelStopBehaviorFrame, text="...any channels stay below threshold", variable=self.multiChannelStopBehaviorVar, value="OR")
         self.multiChannelStopBehaviorAND = ttk.Radiobutton(self.multiChannelStopBehaviorFrame, text="...all channels stay below threshold", variable=self.multiChannelStopBehaviorVar, value="AND")
 
@@ -3957,19 +4237,16 @@ class PyVAQ:
         self.audioAnalysisSummaryHistory = deque(maxlen=self.analysisSummaryHistoryChunkLength)
         self.createAudioAnalysisMonitor()
 
-        self.audioMonitorSampleSize = 44100*2
-        self.audioMonitorAutoscale = False
-        self.audioMonitorAmplitude = 5
         self.setupInputMonitoringWidgets(camSerials=self.camSerials, audioDAQChannels=self.audioDAQChannels)
 
         ########### Child process objects #####################
 
-        # Monitoring queues for collecting qudio and video data for user monitoring purposes
+        # Monitoring queues for collecting audio and video data for user monitoring purposes
         self.videoMonitorQueues = None
         self.audioMonitorQueue = None
         self.audioAnalysisQueue = None
         self.mergeMessageQueue = None
-        self.monitorFrameRate = 15
+        self.monitorMasterFrameRate = 15
         self.audioMonitorData = None    #np.zeros((len(self.audioDAQChannels), self.audioMonitorSampleSize))
         self.stdoutQueue = None
         self.audioAnalysisMonitorQueue = None
@@ -4142,6 +4419,14 @@ him know. Otherwise, I had nothing to do with it.
                     pass
 
     def selectInputs(self, *args):
+        debug = False
+        if debug:
+            print("main>> GUI DEBUG MODE - using fake cameras and DAQ channels")
+            audioDAQChannels = ['fakeDebugAudioChannel1', 'fakeDebugAudioChannel2']
+            # availableClockChannels = ['fakeDebugClockChannel1', 'fakeDebugClockChannel2', 'fakeDebugClockChannel3', 'fakeDebugClockChannel4', 'fakeDebugClockChannel5', 'fakeDebugClockChannel6']
+            camSerials = ['fakeDebugCam1', 'fakeDebugCam2']
+            self.setupInputMonitoringWidgets(camSerials=camSerials, audioDAQChannels=audioDAQChannels)
+            return
 
         availableAudioChannels = flattenList(discoverDAQAudioChannels().values())
         availableClockChannels = flattenList(discoverDAQClockChannels().values()) + ['None']
@@ -4213,14 +4498,9 @@ him know. Otherwise, I had nothing to do with it.
 
         # Destroy old video stream monitoring widgets
         for camSerial in self.camSerials:
-            self.videoMonitorFrames[camSerial].grid_forget()
-            del self.videoMonitorFrames[camSerial]
-            self.videoMonitors[camSerial].grid_forget()
-            del self.videoMonitors[camSerial]
-            del self.imageIDs[camSerial]
-            del self.currentImages[camSerial]
-            self.cameraAttributeBrowserButtons[camSerial].grid_forget()
-            del self.cameraAttributeBrowserButtons[camSerial]
+            self.cameraMonitors[camSerial].grid_forget()
+            self.cameraMonitors[camSerial].destroy()
+            del self.cameraMonitors[camSerial]
 
         self.camSerials = camSerials
 
@@ -4232,38 +4512,21 @@ him know. Otherwise, I had nothing to do with it.
 
         # Create new video stream monitoring widgets and other entities
         for camSerial in self.camSerials:
-            self.videoMonitorFrames[camSerial] = vFrame = ttk.LabelFrame(self.videoMonitorMasterFrame, text="{serial} ({speed})".format(serial=camSerial, speed=self.cameraSpeeds[camSerial]))
-            self.videoMonitors[camSerial] = tk.Canvas(vFrame, width=self.canvasSize[0], height=self.canvasSize[1], borderwidth=2, relief=tk.SUNKEN)
-            self.imageIDs[camSerial] = None
-            if camSerial in self.currentImages:
-                del self.currentImages[camSerial]
-            self.cameraAttributeBrowserButtons[camSerial] = ttk.Button(vFrame, text="Attribute browser", command=lambda:self.createCameraAttributeBrowser(camSerial))
+            self.cameraMonitors[camSerial] = CameraMonitor(
+                self.videoMonitorMasterFrame,
+                displaySize=(400, 300),
+                camSerial=camSerial,
+                speedText=self.cameraSpeeds[camSerial]
+            )
+            self.cameraMonitors[camSerial].setDirectoryChangeHandler(self.videoDirectoryChangeHandler)
 
-        # Destroy old audio monitoring widgets
-        for k, channel in enumerate(self.audioDAQChannels):
-            self.audioMonitorFrames[channel].pack_forget()
-            del self.audioMonitorFrames[channel]
-            self.audioMonitorWidgets[channel]['figureCanvas'].get_tk_widget().pack_forget()
-            del self.audioMonitorWidgets[channel]['figureCanvas']
-            del self.audioMonitorWidgets[channel]['figure']
-            del self.audioMonitorWidgets[channel]['axes']
-        self.audioMonitorFrames = {}
-        self.audioMonitorWidgets = {}
-
-        # if len(audioDAQChannels) == 0:
-        #     # If no channels are given, pick the first available in the system
-        #     availableDAQAudioChannels = discoverDAQAudioChannels()
-        #     availableDevices = list(availableDAQAudioChannels.keys())
-        #     if len(availableDAQAudioChannels) > 0:
-        #         # Find all available analog in channels and pick the first one
-        #         audioDAQChannels = [availableDAQAudioChannels[availableDevices[0]][0]] # ['Dev3/ai5']
         self.audioDAQChannels = audioDAQChannels
 
         # Create new audio stream monitoring widgets
-        for k, channel in enumerate(self.audioDAQChannels):
-            self.audioMonitorFrames[channel] = aFrame = ttk.LabelFrame(self.audioMonitorMasterFrame, text=channel)
-            self.createAudioMonitor(channel, k)
-
+        if self.audioMonitorMasterFrame is None:
+            self.audioMonitorMasterFrame = AudioMonitor(self.monitorMasterFrame)
+        self.audioMonitorMasterFrame.updateChannels(self.audioDAQChannels)
+        self.audioMonitorMasterFrame.setDirectoryChangeHandler(self.audioDirectoryChangeHandler)
         self.update()
 
     def updateAudioTriggerSettings(self, *args):
@@ -4312,31 +4575,46 @@ him know. Otherwise, I had nothing to do with it.
         if self.mergeMessageQueue is not None:
             self.mergeMessageQueue.put((AVMerger.SETPARAMS, params))
 
-    def directoryChangeHandler(self, *args):
-        newDir = self.directoryVar.get()
-        if len(newDir) == 0 or os.path.isdir(newDir):
-            for camSerial in self.videoWriteMessageQueues:
-                self.videoWriteMessageQueues[camSerial].put((VideoWriter.SETPARAMS, dict(videoDirectory=newDir)))
-            if self.audioWriteMessageQueue is not None:
-                self.audioWriteMessageQueue.put((AudioWriter.SETPARAMS, dict(audioDirectory=newDir)))
-            if self.mergeMessageQueue is not None:
-                self.mergeMessageQueue.put((AVMerger.SETPARAMS, dict(directory=newDir)))
-            self.directoryEntry['style'] = 'ValidDirectory.TEntry'
-        else:
-            self.directoryEntry['style'] = 'InvalidDirectory.TEntry'
+    def videoDirectoryChangeHandler(self, *args):
+        p = self.getParams(
+            'videoDirectories',
+            'videoBaseFileNames'
+            )
+        for camSerial in self.videoWriteMessageQueues:
+            if len(p['videoDirectories'][camSerial]) == 0 or os.path.isdir(p['videoDirectories'][camSerial]):
+                # Notify VideoWriter child process of new write directory
+                self.videoWriteMessageQueues[camSerial].put((VideoWriter.SETPARAMS, dict(videoDirectory=p['videoDirectories'][camSerial])))
+    def audioDirectoryChangeHandler(self, *args):
+        p = self.getParams(
+            'audioDirectory',
+            'audioBaseFileName'
+            )
+        if self.audioWriteMessageQueue is not None:
+            if len(p['audioDirectory']) == 0 or os.path.isdir(p['audioDirectory']):
+                # Notify AudioWriter child process of new write directory
+                self.audioWriteMessageQueue.put((AudioWriter.SETPARAMS, dict(audioDirectory=p['audioDirectory'])))
+    def mergeDirectoryChangeHandler(self, *args):
+        p = self.getParams(
+            'mergeDirectory',
+            'mergeBaseFileName'
+        )
+        if self.mergeMessageQueue is not None:
+            if len(p['mergeDirectory']) == 0 or os.path.isdir(p['mergeDirectory']):
+                # Notify AVMerger child process of new write directory
+                self.mergeMessageQueue.put((AVMerger.SETPARAMS, dict(directory=p['mergeDirectory'])))
 
-    def selectWriteDirectory(self, *args):
+    def selectMergedWriteDirectory(self, *args):
         directory = askdirectory(
 #            initialdir = ,
 #            message = "Choose a directory to write video and audio files to.",
             mustexist = False,
-            title = "Choose a directory to write video and audio files to."
+            title = "Choose a directory to write merged audio/video files to."
         )
         if len(directory) > 0:
-            self.directoryVar.set(directory)
-            self.directoryEntry.xview_moveto(0.5)
-            self.directoryEntry.update_idletasks()
-            self.directoryChangeHandler()
+            self.mergedDirectoryVar.set(directory)
+            self.mergedDirectoryEntry.xview_moveto(0.5)
+            self.mergedDirectoryEntry.update_idletasks()
+            self.mergedDirectoryChangeHandler()
 
     def updateTriggerMode(self, *args):
         newMode = self.triggerModeVar.get()
@@ -4358,7 +4636,7 @@ him know. Otherwise, I had nothing to do with it.
         # Set up matplotlib axes and plots to display audio analysis data from AudioTriggerer object
 
         # Create figure
-        self.audioAnalysisWidgets['figure'] = fig = Figure(figsize=(7, 0.75), dpi=100, facecolor=self.colors[1])
+        self.audioAnalysisWidgets['figure'] = fig = Figure(figsize=(7, 0.75), dpi=100, facecolor=WIDGET_COLORS[1])
 
         gs = gridspec.GridSpec(1, 2, width_ratios=[6, 1])
 
@@ -4367,7 +4645,7 @@ him know. Otherwise, I had nothing to do with it.
         t = np.arange(int(self.analysisSummaryHistoryChunkLength))
         self.audioAnalysisWidgets['volumeTraceAxes'] = vtaxes = fig.add_subplot(gs[0])  # Axes to display
         vtaxes.autoscale(enable=True)
-        vtaxes.plot(t, 0 * t, PyVAQ.lineStyles[0], linewidth=1)
+        vtaxes.plot(t, 0 * t, LINE_STYLES[0], linewidth=1)
         vtaxes.plot([0, 0], [0, 1], color='r')
         vtaxes.plot([0, 0], [0, 1], color='g')
         vtaxes.relim()
@@ -4390,35 +4668,6 @@ him know. Otherwise, I had nothing to do with it.
         plt.subplots_adjust(left=0, right=1, top=1, bottom=0, wspace=0, hspace=0)
         self.audioAnalysisWidgets['canvas'] = FigureCanvasTkAgg(fig, master=self.audioAnalysisMonitorFrame)  # A tk.DrawingArea.
         self.audioAnalysisWidgets['canvas'].draw()
-
-    def createAudioMonitor(self, channel, index):
-        self.audioMonitorWidgets[channel] = {}  # Change this to gracefully remove existing channel widgets under this channel name
-        fig = Figure(figsize=(7, 0.75), dpi=100, facecolor=self.colors[1])
-        t = np.arange(self.audioMonitorSampleSize)
-        axes = fig.add_subplot(111)
-        axes.autoscale(enable=True)
-        axes.plot(t, 0 * t, PyVAQ.lineStyles[index % len(PyVAQ.lineStyles)], linewidth=1)
-        axes.relim()
-        axes.autoscale_view(True, True, True)
-        axes.margins(x=0, y=0)
-        #fig.tight_layout()
-        plt.subplots_adjust(left=0, right=1, top=1, bottom=0, wspace=0, hspace=0)
-        canvas = FigureCanvasTkAgg(fig, master=self.audioMonitorFrames[channel])  # A tk.DrawingArea.
-        canvas.draw()
-
-        # Set up matplotlib figure callbacks
-        # toolbar = NavigationToolbar2Tk(canvas, self.audioMonitorFrames[channel])
-        # toolbar.update()
-#         def figureKeyPressManager(event):
-# #            syncPrint("you pressed {}".format(event.key))
-#             key_press_handler(event, canvas, toolbar)
-#         canvas.mpl_connect("key_press_event", figureKeyPressManager)
-
-        self.audioMonitorWidgets[channel]['figure'] = fig
-        self.audioMonitorWidgets[channel]['axes'] = axes
-        self.audioMonitorWidgets[channel]['figureCanvas'] = canvas
-        # self.audioMonitorWidgets[channel]['figureNavToolbar'] = toolbar
-        # self.audioMonitorWidgets[channel]['figureLine'] = line
 
     def stopMonitors(self):
         if self.audioMonitorUpdateJob is not None:
@@ -4486,7 +4735,7 @@ him know. Otherwise, I had nothing to do with it.
                     yMax = 1.1 * max([volumeTrace.max(), triggerLowLevelTrace.max(), triggerHighLevelTrace.max()])
                     # Plot volume traces for all channels
                     for c in range(numChannels):
-                        self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, volumeTrace[c, :], PyVAQ.lineStyles[c % len(PyVAQ.lineStyles)], linewidth=1)
+                        self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, volumeTrace[c, :], LINE_STYLES[c % len(LINE_STYLES)], linewidth=1)
                     # Plot low level trigger level demarcation
                     self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, triggerLowLevelTrace, 'r-', linewidth=1)
                     # Plot high level trigger level demarcation
@@ -4526,41 +4775,25 @@ him know. Otherwise, I had nothing to do with it.
 
     def autoUpdateAudioMonitors(self, beginAuto=True):
         if self.audioMonitorQueue is not None:
-            audioData = None
+            newAudioData = None
             try:
-                chunkCount = 0
-                while chunkCount < 1000:
+                for chunkCount in range(100):
                     # Get audio data from monitor queue
                     channels, chunkStartTime, audioData = self.audioMonitorQueue.get(block=True, timeout=0.001)
                     # audioData = np.ones(audioData.shape) * cc
-                    chunkCount = chunkCount + 1
-                    # Append new data
-                    if self.audioMonitorData is not None:
-                        self.audioMonitorData = np.concatenate((self.audioMonitorData, audioData), axis=1)
+                    # Accumulate all new audio chunks together
+                    if newAudioData is not None:
+                        newAudioData = np.concatenate((newAudioData, audioData), axis=1)
                     else:
-                        self.audioMonitorData = audioData
+                        newAudioData = audioData
                 print("main>> WARNING! Audio monitor is not getting data fast enough to keep up with stream.")
             except queue.Empty:
+#                print('main>> exhausted audio monitoring queue, got', chunkCount)
                 pass
-#                print('exhausted audio monitoring queue, got', chunkCount)
 
-            if self.audioMonitorData is not None and audioData is not None:
-                # Trim monitor data to specified size
-                startTrim = self.audioMonitorData.shape[1] - self.audioMonitorSampleSize
-                if startTrim < 0:
-                    startTrim = 0
-                self.audioMonitorData = self.audioMonitorData[:, startTrim:]
-                for k, channel in enumerate(channels):
-                    self.audioMonitorWidgets[channel]['axes'].clear()
-                    self.audioMonitorWidgets[channel]['axes'].plot(self.audioMonitorData[k, :].tolist(), PyVAQ.lineStyles[k % len(PyVAQ.lineStyles)], linewidth=1)
-                    if self.audioMonitorAutoscale:
-                        self.audioMonitorWidgets[channel]['axes'].relim()
-                        self.audioMonitorWidgets[channel]['axes'].autoscale_view(True, True, True)
-                    else:
-                        self.audioMonitorWidgets[channel]['axes'].set_ylim([-self.audioMonitorAmplitude, self.audioMonitorAmplitude])
-                    self.audioMonitorWidgets[channel]['axes'].margins(x=0, y=0)
-                    self.audioMonitorWidgets[channel]['figure'].canvas.draw()
-                    self.audioMonitorWidgets[channel]['figure'].canvas.flush_events()
+            if newAudioData is not None:
+                self.audioMonitorMasterFrame.addAudioData(newAudioData)
+
         if beginAuto:
             self.audioMonitorUpdateJob = self.master.after(100, self.autoUpdateAudioMonitors)
 
@@ -4578,15 +4811,11 @@ him know. Otherwise, I had nothing to do with it.
                 # syncPrint("Received frame for monitoring")
                 pImage = availableImages[camSerial]
                 imData = np.reshape(pImage.data, (pImage.height, pImage.width, 3))
-                im = Image.fromarray(imData).resize(self.canvasSize, resample=Image.BILINEAR)
-                self.currentImages[camSerial] = ImageTk.PhotoImage(im)
-                if self.imageIDs[camSerial] is None:
-                    self.imageIDs[camSerial] = self.videoMonitors[camSerial].create_image((0, 0), image=self.currentImages[camSerial], anchor=tk.NW)
-                else:
-                    self.videoMonitors[camSerial].itemconfig(self.imageIDs[camSerial], image=self.currentImages[camSerial])
+                im = Image.fromarray(imData)
+                self.cameraMonitors[camSerial].updateImage(im)
 
         if beginAuto:
-            period = int(round(1000.0/(self.monitorFrameRate)))
+            period = int(round(1000.0/(self.monitorMasterFrameRate)))
             self.videoMonitorUpdateJob = self.master.after(period, self.autoUpdateVideoMonitors)
 
     def autoUpdateTriggerIndicator(self, beginAuto=True):
@@ -4610,7 +4839,7 @@ him know. Otherwise, I had nothing to do with it.
 
         # syncPrint()
         # pp = pprint.PrettyPrinter(indent=1, depth=1)
-        # pp.psyncPrint(attributeNode)
+        # pp.pprint(attributeNode)
         # syncPrint()
 
         widgets = [frame]
@@ -4698,8 +4927,8 @@ him know. Otherwise, I had nothing to do with it.
     def getQueueSizes(self):
         print("main>> Get qsizes...")
         for camSerial in self.videoAcquireProcesses:
-            print("main>> videoMonitorQueue[", camSerial, "] size:", self.videoMonitorQueues[camSerial].qsize())
-            print("main>> imageQueue[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].imageQueue.qsize())
+            print("main>> videoMonitorQueues[", camSerial, "] size:", self.videoMonitorQueues[camSerial].qsize())
+            print("main>> imageQueues[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].imageQueue.qsize())
         print("main>> audioAcquireProcess.audioQueue size:", self.audioAcquireProcess.audioQueue.qsize())
         print("main>> audioAnalysisQueue size:", self.audioAnalysisQueue.qsize())
         print("main>> audioMonitorQueue size:", self.audioMonitorQueue.qsize())
@@ -4746,6 +4975,7 @@ him know. Otherwise, I had nothing to do with it.
         syncState = None
         mergeState = None
 
+        print("main>> Check states...")
         for camSerial in self.videoWriteProcesses:
             videoWriteStates[camSerial] = VideoWriter.stateList[self.videoWriteProcesses[camSerial].publishedStateVar.value]
         for camSerial in self.videoAcquireProcesses:
@@ -4759,7 +4989,6 @@ him know. Otherwise, I had nothing to do with it.
         if self.mergeProcess is not None:
             mergeState = AVMerger.stateList[self.mergeProcess.publishedStateVar.value]
 
-        print("main>> Check states...")
         for camSerial in videoWriteStates:
             print("main>> videoWriteStates[", camSerial, "]:", videoWriteStates[camSerial])
         for camSerial in videoAcquireStates:
@@ -4877,6 +5106,8 @@ him know. Otherwise, I had nothing to do with it.
         self.triggerLowTimeVar.set(params['triggerLowTime'])
         self.triggerHighFractionVar.set(params['triggerHighFraction'])
         self.triggerLowFractionVar.set(params['triggerLowFraction'])
+        self.triggerHighBandpassVar.set(params['triggerHighBandpass'])
+        self.triggerLowBandpassVar.set(params['triggerLowBandpass'])
         self.maxAudioTriggerTimeVar.set(params['maxAudioTriggerTime'])
         self.multiChannelStartBehaviorVar.set(params['multiChannelStartBehavior'])
         self.multiChannelStopBehaviorVar.set(params['multiChannelStopBehavior'])
@@ -4891,8 +5122,21 @@ him know. Otherwise, I had nothing to do with it.
         if getAllParams or 'exposureTime' in paramList: params['exposureTime'] = float(self.exposureTimeVar.get())
         if getAllParams or 'preTriggerTime' in paramList: params['preTriggerTime'] = float(self.preTriggerTimeVar.get())
         if getAllParams or 'recordTime' in paramList: params['recordTime'] = float(self.recordTimeVar.get())
-        if getAllParams or 'baseFileName' in paramList: params['baseFileName'] = self.baseFileNameVar.get()
-        if getAllParams or 'directory' in paramList: params['directory'] = self.directoryVar.get()
+        if getAllParams or 'videoBaseFileNames' in paramList:
+            videoBaseFileNames = {}
+            for camSerial in self.camSerials:
+                videoBaseFileNames[camSerial] = slugify(self.cameraMonitors[camSerial].getBaseFileName() + '_' + camSerial)
+            params['videoBaseFileNames'] = videoBaseFileNames
+        if getAllParams or 'videoDirectories' in paramList:
+            videoDirectories = {}
+            for camSerial in self.camSerials:
+                videoDirectories[camSerial] = self.cameraMonitors[camSerial].getDirectory()
+            params['videoDirectories'] = videoDirectories
+        if getAllParams or 'audioBaseFileName' in paramList:
+            params["audioBaseFileName"] = slugify(self.audioMonitorMasterFrame.getBaseFileName()+'_'+','.join(self.audioDAQChannels))
+        if getAllParams or 'audioDirectory' in paramList: params['audioDirectory'] = self.audioMonitorMasterFrame.getDirectory()
+        if getAllParams or 'mergeBaseFileName' in paramList: params['mergeBaseFileName'] = self.mergeFileWidget.getBaseFileName()
+        if getAllParams or 'mergeDirectory' in paramList: params['mergeDirectory'] = self.mergeFileWidget.getDirectory()
         if getAllParams or 'mergeFiles' in paramList: params['mergeFiles'] = self.mergeFilesVar.get()
         if getAllParams or 'deleteMergedFiles' in paramList: params['deleteMergedFiles'] = self.deleteMergedFilesVar.get()
         if getAllParams or 'montageMerge' in paramList: params['montageMerge'] = self.montageMergeVar.get()
@@ -4906,6 +5150,8 @@ him know. Otherwise, I had nothing to do with it.
         if getAllParams or 'triggerLowTime' in paramList: params['triggerLowTime'] = float(self.triggerLowTimeVar.get())
         if getAllParams or 'triggerHighFraction' in paramList: params['triggerHighFraction'] = float(self.triggerHighFractionVar.get())
         if getAllParams or 'triggerLowFraction' in paramList: params['triggerLowFraction'] = float(self.triggerLowFractionVar.get())
+        if getAllParams or 'triggerHighBandpass' in paramList: params['triggerHighBandpass'] = float(self.triggerHighBandpassVar.get())
+        if getAllParams or 'triggerLowBandpass' in paramList: params['triggerLowBandpass'] = float(self.triggerLowBandpassVar.get())
         if getAllParams or 'maxAudioTriggerTime' in paramList: params['maxAudioTriggerTime'] = float(self.maxAudioTriggerTimeVar.get())
         if getAllParams or 'multiChannelStartBehavior' in paramList: params['multiChannelStartBehavior'] = self.multiChannelStartBehaviorVar.get()
         if getAllParams or 'multiChannelStopBehavior' in paramList: params['multiChannelStopBehavior'] = self.multiChannelStopBehaviorVar.get()
@@ -4924,11 +5170,9 @@ him know. Otherwise, I had nothing to do with it.
                 print("main>> ********************")
                 print('main>> ')
 
-        if getAllParams or "baseVideoFilename" in paramList: params["baseVideoFilename"] = dict([(camSerial, slugify(params["baseFileName"] + '_' + camSerial)) for camSerial in self.camSerials])
         if getAllParams or "bufferSizeSeconds" in paramList: params["bufferSizeSeconds"] = params["preTriggerTime"] * 2 + 1   # Twice the pretrigger time to make sure we don't miss stuff, plus one second for good measure
 
         if getAllParams or "bufferSizeAudioChunks" in paramList: params["bufferSizeAudioChunks"] = params["bufferSizeSeconds"] * params['audioFrequency'] / params["chunkSize"]   # Will be rounded up to nearest integer
-        if getAllParams or "audioBaseFilename" in paramList: params["audioBaseFilename"] = slugify(params["baseFileName"]+'_'+','.join(self.audioDAQChannels))
 
         if getAllParams or "numStreams" in paramList: params["numStreams"] = (len(self.audioDAQChannels)>0) + len(self.camSerials)
         if getAllParams or "numProcesses" in paramList: params["numProcesses"] = (len(self.audioDAQChannels)>0) + len(self.camSerials)*2 + 2
@@ -4997,8 +5241,8 @@ him know. Otherwise, I had nothing to do with it.
             self.audioAcquireMessageQueue = mp.Queue()
             self.audioWriteMessageQueue = mp.Queue()
             self.audioWriteProcess = AudioWriter(
-                audioDirectory=p["directory"],
-                audioBaseFileName=p["audioBaseFilename"],
+                audioDirectory=p["audioDirectory"],
+                audioBaseFileName=p["audioBaseFileName"],
                 audioQueue=audioQueue,
                 messageQueue=self.audioWriteMessageQueue,
                 mergeMessageQueue=self.mergeMessageQueue,
@@ -5037,15 +5281,15 @@ him know. Otherwise, I had nothing to do with it.
                 monitorImageQueue=self.videoMonitorQueues[camSerial],
                 acquireSettings=p["acquireSettings"],
                 frameRate=p["videoFrequency"],
-                monitorFrameRate=self.monitorFrameRate,
+                monitorFrameRate=self.monitorMasterFrameRate,
                 messageQueue=self.videoAcquireMessageQueues[camSerial],
                 verbose=self.videoAcquireVerbose,
                 ready=ready,
                 stdoutQueue=self.stdoutQueue)
             videoWriteProcess = VideoWriter(
                 camSerial=camSerial,
-                videoDirectory=p["directory"],
-                videoBaseFilename=p["baseVideoFilename"][camSerial],
+                videoDirectory=p["videoDirectories"][camSerial],
+                videoBaseFileName=p["videoBaseFileNames"][camSerial],
                 imageQueue=imageQueue,
                 frameRate=p["videoFrequency"],
                 messageQueue=self.videoWriteMessageQueues[camSerial],
@@ -5060,12 +5304,12 @@ him know. Otherwise, I had nothing to do with it.
         if p["numStreams"] >= 2:
             # Create merge process
             self.mergeProcess = AVMerger(
-                directory=p["directory"],
+                directory=p["mergeDirectory"],
                 numFilesPerTrigger=p["numStreams"],
                 messageQueue=self.mergeMessageQueue,
                 verbose=self.mergeVerbose,
                 stdoutQueue=self.stdoutQueue,
-                baseFileName=p["baseFileName"],
+                baseFileName=p["mergeBaseFileName"],
                 montage=p["montageMerge"],
                 deleteMergedFiles=p["deleteMergedFiles"]
                 )
@@ -5087,6 +5331,7 @@ him know. Otherwise, I had nothing to do with it.
             preTriggerTime=p["preTriggerTime"],
             multiChannelStartBehavior=p["multiChannelStartBehavior"],
             multiChannelStopBehavior=p["multiChannelStopBehavior"],
+            bandpassFrequencies=(p['triggerLowBandpass'], p['triggerHighBandpass']),
             verbose=self.audioTriggerVerbose,
             audioMessageQueue=self.audioWriteMessageQueue,
             videoMessageQueues=self.videoWriteMessageQueues,
@@ -5115,17 +5360,17 @@ him know. Otherwise, I had nothing to do with it.
             self.audioTriggerMessageQueue.put((AudioTriggerer.START, None))
             self.updateTriggerMode()
 
-            # Start audioWriter
+            # Start AudioWriter
             self.audioWriteMessageQueue.put((AudioWriter.START, None))
 
-            # Start audioAcquirer
+            # Start AudioAcquirer
             self.audioAcquireMessageQueue.put((AudioAcquirer.START, None))
 
         # For each camera
         for camSerial in self.camSerials:
             # Start VideoWriter
             self.videoWriteMessageQueues[camSerial].put((VideoWriter.START, None))
-            # Start videoAcquirer
+            # Start VideoAcquirer
             self.videoAcquireMessageQueues[camSerial].put((VideoAcquirer.START, None))
 
         if len(self.audioDAQChannels) + len(self.camSerials) >= 2:
@@ -5278,20 +5523,15 @@ him know. Otherwise, I had nothing to do with it.
         self.mainFrame.rowconfigure(0, weight=1)
         self.mainFrame.rowconfigure(1, weight=1)
 
-        self.monitorFrame.grid(row=0, column=0)
+        self.monitorMasterFrame.grid(row=0, column=0)
 
         self.videoMonitorMasterFrame.grid(row=0, column=0, sticky=tk.NSEW)
         wV, hV = getOptimalMonitorGrid(len(self.camSerials))
         for k, camSerial in enumerate(self.camSerials):
-            self.videoMonitorFrames[camSerial].grid(row=2*(k // wV), column = k % wV)
-            self.videoMonitors[camSerial].grid(row=0, column=0, columnspan=2)
-            self.cameraAttributeBrowserButtons[camSerial].grid(row=1, column=0)
+            self.cameraMonitors[camSerial].grid(row=2*(k // wV), column = k % wV)
+            # self.cameraAttributeBrowserButtons[camSerial].grid(row=1, column=0)
 
         self.audioMonitorMasterFrame.grid(row=1, column=0, sticky=tk.NSEW)
-        wA, hA = getOptimalMonitorGrid(len(self.audioDAQChannels))
-        for k, channel in enumerate(self.audioDAQChannels):
-            self.audioMonitorFrames[channel].pack()
-            self.audioMonitorWidgets[channel]['figureCanvas'].get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
 
         self.controlFrame.grid(row=0, column=1, sticky=tk.NSEW)
         # self.controlFrame.columnconfigure(0, weight=1)
@@ -5315,17 +5555,15 @@ him know. Otherwise, I had nothing to do with it.
         self.preTriggerTimeEntry.grid()
         self.recordTimeFrame.grid(row=2, column=1, sticky=tk.EW)
         self.recordTimeEntry.grid()
-        self.baseFileNameFrame.grid(row=2, column=2, columnspan=2, sticky=tk.EW)
-        self.baseFileNameEntry.grid()
+
         self.updateInputsButton.grid(row=3, column=0)
-        self.directoryFrame.grid(row=3, column=2, sticky=tk.EW)
-        self.directoryEntry.grid(row=0, column=0)
-        self.directoryButton.grid(row=1, column=0, sticky=tk.EW)
 
         self.mergeFrame.grid(row=4, column=0, sticky=tk.NSEW)
         self.mergeFilesCheckbutton.grid(row=1, column=0, sticky=tk.NW)
         self.deleteMergedFilesCheckbutton.grid(row=2, column=0, sticky=tk.NW)
         self.montageMergeCheckbutton.grid(row=3, column=0, stick=tk.NW)
+
+        self.mergeFileWidget.grid(row=4, column=0)
 
         self.scheduleFrame.grid(row=4, column=1, columnspan=2, sticky=tk.NSEW)
         self.scheduleEnabledCheckbutton.grid(row=0, column=0, sticky=tk.NW)
@@ -5334,9 +5572,9 @@ him know. Otherwise, I had nothing to do with it.
 
         self.triggerFrame.grid(row=1, column=0, sticky=tk.NSEW)
         self.triggerModeChooserFrame.grid(row=0, column=0, sticky=tk.NW)
-        self.triggerModeLabel.grid(row=0, column=0, columnspan=2)
+        self.triggerModeLabel.grid(row=0, column=0)
         for k, mode in enumerate(self.triggerModes):
-            self.triggerModeRadioButtons[mode].grid(row=1, column=k)
+            self.triggerModeRadioButtons[mode].grid(row=0, column=k+1)
             if mode == self.triggerModeVar.get():
                 self.triggerModeControlGroupFrames[mode].grid(row=1, column=0)
             else:
@@ -5355,25 +5593,26 @@ him know. Otherwise, I had nothing to do with it.
         self.triggerHighFractionEntry.grid()
         self.triggerLowFractionFrame.grid(row=1, column=2)
         self.triggerLowFractionEntry.grid()
-        self.multiChannelStartBehaviorFrame.grid(row=2, column=0, rowspan=2)
+        self.triggerHighBandpassFrame.grid(row=0, column=3)
+        self.triggerHighBandpassEntry.grid()
+        self.triggerLowBandpassFrame.grid(row=1, column=3)
+        self.triggerLowBandpassEntry.grid()
+
+        self.multiChannelStartBehaviorFrame.grid(row=2, column=0)
         self.multiChannelStartBehaviorOR.grid(row=0)
         self.multiChannelStartBehaviorAND.grid(row=1)
-        self.multiChannelStopBehaviorFrame.grid(row=2, column=1, rowspan=2)
+
+        self.multiChannelStopBehaviorFrame.grid(row=2, column=1)
         self.multiChannelStopBehaviorOR.grid(row=0)
         self.multiChannelStopBehaviorAND.grid(row=1)
+
         self.maxAudioTriggerTimeFrame.grid(row=2, column=2)
         self.maxAudioTriggerTimeEntry.grid()
-        self.audioTriggerStateFrame.grid(row=3, column=2)
+
+        self.audioTriggerStateFrame.grid(row=2, column=3)
         self.audioTriggerStateLabel.grid()
         self.audioAnalysisMonitorFrame.grid(row=4, column=0, columnspan=3)
         self.audioAnalysisWidgets['canvas'].get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
-
-        # self.settingsFrame.grid(row=2, column=0, sticky=tk.NSEW)
-        # self.saveSettingsButton.grid(row=0, column=0)
-        # self.loadSettingsButton.grid(row=0, column=1)
-        # self.saveDefaultSettingsButton.grid(row=1, column=0)
-        # self.loadDefaultSettingsButton.grid(row=1, column=1)
-        # self.helpButton.grid(row=1, column=2)
 
 def clearQueue(q):
     if q is not None:
