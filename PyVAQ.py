@@ -914,18 +914,19 @@ class AVMerger(mp.Process):
     STOPPING = 5
     ERROR = 6
     EXITING = 7
+    DEAD = 100
 
     stateList = {
         -1:'unknown',
-        0 :'state_stopped',
-        1 :'state_initializing',
-        2 :'state_ignoring',
-        3 :'state_waiting',
-        4 :'state_merging',
-        5 :'state_stopping',
-        6 :'state_error',
-        7 :'state_exiting',
-        100 :'state_dead'
+        STOPPED :'state_stopped',
+        INITIALIZING :'state_initializing',
+        IGNORING :'state_ignoring',
+        WAITING :'state_waiting',
+        MERGING :'state_merging',
+        STOPPING :'state_stopping',
+        ERROR :'state_error',
+        EXITING :'state_exiting',
+        DEAD :'state_dead'
     }
 
     #messages:
@@ -1357,6 +1358,7 @@ class AVMerger(mp.Process):
 
         if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
         self.stdoutBuffer = []
+        self.updatePublishedState(self.DEAD)
 
 class Synchronizer(mp.Process):
     # Class for generating two synchronization signals at the same time
@@ -1375,17 +1377,18 @@ class Synchronizer(mp.Process):
     SYNC_READY = 4
     ERROR = 5
     EXITING = 6
+    DEAD = 100
 
     stateList = {
         -1:'unknown',
-        0 :'state_stopped',
-        1 :'state_initializing',
-        2 :'state_synchronizing',
-        3 :'state_stopping',
-        4 :'state_sync_ready',
-        5 :'state_error',
-        6 :'state_exiting',
-        100 :'state_dead'
+         STOPPED:'state_stopped',
+         INITIALIZING:'state_initializing',
+         SYNCHRONIZING:'state_synchronizing',
+         STOPPING:'state_stopping',
+         SYNC_READY:'state_sync_ready',
+         ERROR:'state_error',
+         EXITING:'state_exiting',
+         DEAD:'state_dead'
     }
 
     #messages:
@@ -1693,6 +1696,7 @@ class Synchronizer(mp.Process):
         if self.verbose >= 1: syncPrint("Synchronization process STOPPED", buffer=self.stdoutBuffer)
         if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
         self.stdoutBuffer = []
+        self.updatePublishedState(self.DEAD)
 
 class AudioTriggerer(mp.Process):
     # States:
@@ -1703,17 +1707,18 @@ class AudioTriggerer(mp.Process):
     STOPPING = 4
     ERROR = 5
     EXITING = 6
+    DEAD = 100
 
     stateList = {
         -1:'UNKNOWN',
-        0 :'STOPPED',
-        1 :'INITIALIZING',
-        2 :'WAITING',
-        3 :'ANALYZING',
-        4 :'STOPPING',
-        5 :'ERROR',
-        6 :'EXITING',
-        100 :'DEAD'
+        STOPPED :'STOPPED',
+        INITIALIZING :'INITIALIZING',
+        WAITING :'WAITING',
+        ANALYZING :'ANALYZING',
+        STOPPING :'STOPPING',
+        ERROR :'ERROR',
+        EXITING :'EXITING',
+        DEAD :'DEAD'
     }
 
     #messages:
@@ -2167,7 +2172,7 @@ class AudioTriggerer(mp.Process):
 
         if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
         self.stdoutBuffer = []
-        self.updatePublishedState(100)
+        self.updatePublishedState(self.DEAD)
 
     def updateFilter(self):
         self.filter = generateButterBandpassCoeffs(self.bandpassFrequencies[0], self.bandpassFrequencies[1], self.audioFrequency.value, order=self.butterworthOrder)
@@ -2201,17 +2206,18 @@ class AudioAcquirer(mp.Process):
     ACQUIRE_READY = 4
     ERROR = 5
     EXITING = 6
+    DEAD = 100
 
     stateList = {
         -1:'unknown',
-        0 :'state_stopped',
-        1 :'state_initializing',
-        2 :'state_acquiring',
-        3 :'state_stopping',
-        4 :'state_acquire_ready',
-        5 :'state_error',
-        6 :'state_exiting',
-        100 :'state_dead'
+        STOPPED :'state_stopped',
+        INITIALIZING :'state_initializing',
+        ACQUIRING :'state_acquiring',
+        STOPPING :'state_stopping',
+        ACQUIRE_READY :'state_acquire_ready',
+        ERROR :'state_error',
+        EXITING :'state_exiting',
+        DEAD :'state_dead'
     }
 
     #messages:
@@ -2541,6 +2547,7 @@ class AudioAcquirer(mp.Process):
 
         if len(self.stdoutBuffer) > 1: self.stdoutQueue.put(self.stdoutBuffer)
         self.stdoutBuffer = []
+        self.updatePublishedState(self.DEAD)
 
 class AudioWriter(mp.Process):
     # States:
@@ -2551,17 +2558,18 @@ class AudioWriter(mp.Process):
     STOPPING = 4
     ERROR = 5
     EXITING = 6
+    DEAD = 100
 
     stateList = {
         -1:'UNKNOWN',
-        0 :'STOPPED',
-        1 :'INITIALIZING',
-        2 :'WRITING',
-        3:'BUFFERING',
-        4 :'STOPPING',
-        5 :'ERROR',
-        6 :'EXITING',
-        100 :'DEAD'
+        STOPPED :'STOPPED',
+        INITIALIZING :'INITIALIZING',
+        WRITING :'WRITING',
+        BUFFERING:'BUFFERING',
+        STOPPING :'STOPPING',
+        ERROR :'ERROR',
+        EXITING :'EXITING',
+        DEAD :'DEAD'
     }
 
     #messages:
@@ -2961,6 +2969,7 @@ class AudioWriter(mp.Process):
 
         if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
         self.stdoutBuffer = []
+        self.updatePublishedState(self.DEAD)
 
     def updateTriggers(self, triggers, trigger):
         if len(triggers) > 0 and trigger.id == triggers[-1].id:
@@ -2981,17 +2990,18 @@ class VideoAcquirer(mp.Process):
     ACQUIRE_READY = 4
     ERROR = 5
     EXITING = 6
+    DEAD = 100
 
     stateList = {
         -1:'unknown',
-        0 :'state_stopped',
-        1 :'state_initializing',
-        2 :'state_acquiring',
-        3 :'state_stopping',
-        4 :'state_acquire_ready',
-        5 :'state_error',
-        6 :'state_exiting',
-        100 :'state_dead'
+        STOPPED :'state_stopped',
+        INITIALIZING :'state_initializing',
+        ACQUIRING :'state_acquiring',
+        STOPPING :'state_stopping',
+        ACQUIRE_READY :'state_acquire_ready',
+        ERROR :'state_error',
+        EXITING :'state_exiting',
+        DEAD :'state_dead'
         }
 
     #messages:
@@ -3275,7 +3285,9 @@ class VideoAcquirer(mp.Process):
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
-                    try: msg, arg = self.messageQueue.get(block=False)
+                    try:
+                        msg, arg = self.messageQueue.get(block=False)
+                        if msg == VideoAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -3336,6 +3348,7 @@ class VideoAcquirer(mp.Process):
         #     syncPrint(s.getvalue(), buffer=self.stdoutBuffer)
         if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
         self.stdoutBuffer = []
+        self.updatePublishedState(self.DEAD)
 
     def setCameraAttribute(self, nodemap, attributeName, attributeValue, type='enum'):
         # Set camera attribute. ReturnRetrusn True if successful, False otherwise.
@@ -3375,17 +3388,18 @@ class VideoWriter(mp.Process):
     STOPPING = 4
     ERROR = 5
     EXITING = 6
+    DEAD = 100
 
     stateList = {
         -1:'unknown',
-        0 :'state_stopped',
-        1 :'state_initializing',
-        2 :'state_writing',
-        3 :'state_buffering',
-        4 :'state_stopping',
-        5 :'state_error',
-        6 :'state_exiting',
-        100 :'state_dead'
+        STOPPED :'state_stopped',
+        INITIALIZING :'state_initializing',
+        WRITING :'state_writing',
+        BUFFERING :'state_buffering',
+        STOPPING :'state_stopping',
+        ERROR :'state_error',
+        EXITING :'state_exiting',
+        DEAD :'state_dead'
     }
 
     #messages:
@@ -3817,6 +3831,7 @@ class VideoWriter(mp.Process):
         #     syncPrint(s.getvalue(), buffer=self.stdoutBuffer)
         if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
         self.stdoutBuffer = []
+        self.updatePublishedState(self.DEAD)
 
     def updateTriggers(self, triggers, trigger):
         if len(triggers) > 0 and trigger.id == triggers[-1].id:
