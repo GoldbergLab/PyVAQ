@@ -4310,8 +4310,8 @@ him know. Otherwise, I had nothing to do with it.
         p = self.getParams()
         audioMonitorSampleLength = round(self.audioMonitor.historyLength / p['audioFrequency'], 2)
         params = [
-            Param(name='Audio autoscale', widgetType=Param.MONOCHOICE, options=['Auto', 'Manual'], default=('Auto' if self.audioMonitor.autoscale else 'Manual'),
-            Param(name='Audio range', widgetType=Param.TEXT, options=None, default=str(-self.audioMonitor.displayAmplitude)),
+            Param(name='Audio autoscale', widgetType=Param.MONOCHOICE, options=['Auto', 'Manual'], default=('Auto' if self.audioMonitor.autoscale else 'Manual')),
+            Param(name='Audio range', widgetType=Param.TEXT, options=None, default=str(self.audioMonitor.displayAmplitude)),
             Param(name='Audio history length (s)', widgetType=Param.TEXT, options=None, default=str(audioMonitorSampleLength))
         ]
         pd = ParamDialog(self.master, params=params, title="Configure audio monitoring")
