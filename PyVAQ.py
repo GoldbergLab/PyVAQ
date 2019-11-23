@@ -5200,8 +5200,6 @@ him know. Otherwise, I had nothing to do with it.
         for camSerial in self.camSerials:
             imageQueue = mp.Queue()
             self.videoMonitorQueues[camSerial] = mp.Queue(maxsize=1)
-            self.videoAcquireProcesses[camSerial].msgQueue = mp.Queue()
-            self.videoWriteProcesses[camSerial].msgQueue = mp.Queue()
             processes = {}
 
             videoAcquireProcess = VideoAcquirer(
