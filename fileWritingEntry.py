@@ -35,6 +35,8 @@ class FileWritingEntry(ttk.LabelFrame):
         self.baseFileNameFrame.grid(row=0, column=1, sticky=tk.NSEW)
         self.baseFileNameEntry.grid()
 
+        self.checkForValidDirectory()
+
     def getDirectory(self):
         return self.directoryVar.get()
 
@@ -42,6 +44,10 @@ class FileWritingEntry(ttk.LabelFrame):
         return self.baseFileNameVar.get()
 
     def directoryChangeMetaHandler(self, *args):
+        self.checkForValidDirectory()
+        self.directoryChangeHandler()
+
+    def checkForValidDirectory(self):
         newDir = self.directoryVar.get()
         if len(newDir) == 0 or os.path.isdir(newDir):
             self.directoryEntry['style'] = 'ValidDirectory.TEntry'
@@ -49,8 +55,6 @@ class FileWritingEntry(ttk.LabelFrame):
         else:
             self.directoryEntry['style'] = 'InvalidDirectory.TEntry'
             print("Invalid directory")
-
-        self.directoryChangeHandler()
 
     def baseFileNameChangeMetaHandler(self, *args):
         # Regularize filename
