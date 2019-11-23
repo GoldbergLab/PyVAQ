@@ -986,7 +986,8 @@ class AVMerger(StateMachineProcess):
         directory='.',              # Directory for writing merged files
         baseFileName='',            # Base filename (sans extension) for writing merged files
         deleteMergedFiles=False,    # After merging, delete unmerged originals
-        montage=False):             # Combine videos side by side
+        montage=False,              # Combine videos side by side
+        **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
         self.verbose = verbose
@@ -1424,7 +1425,8 @@ class Synchronizer(StateMachineProcess):
         audioDutyCycle=0.5,
         startTime=None,                         # Shared value that is set when sync starts, used as start time by all processes (relevant for manual triggers)
         verbose=False,
-        ready=None):                            # Synchronization barrier to ensure everyone's ready before beginning
+        ready=None,                             # Synchronization barrier to ensure everyone's ready before beginning
+        **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
         self.actualAudioFrequency = actualAudioFrequency
@@ -1766,7 +1768,8 @@ class AudioTriggerer(StateMachineProcess):
                 scheduleStopTime=None,
                 verbose=False,
                 audioMessageQueue=None,             # Queue to send triggers to audio writers
-                videoMessageQueues={}):              # Queues to send triggers to video writers
+                videoMessageQueues={},              # Queues to send triggers to video writers
+                **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.audioQueue = audioQueue
         if self.audioQueue is not None:
@@ -2217,7 +2220,8 @@ class AudioAcquirer(StateMachineProcess):
                 channelNames = [],                  # Channel name for analog input (microphone signal)
                 syncChannel = None,                 # Channel name for synchronization source
                 verbose = False,
-                ready=None):                         # Synchronization barrier to ensure everyone's ready before beginning
+                ready=None,                         # Synchronization barrier to ensure everyone's ready before beginning
+                **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
         self.startTimeSharedValue = startTime
@@ -2966,7 +2970,8 @@ class VideoAcquirer(StateMachineProcess):
                 frameRate=None,
                 monitorFrameRate=15,
                 verbose=False,
-                ready=None):                        # Synchronization barrier to ensure everyone's ready before beginning
+                ready=None,                        # Synchronization barrier to ensure everyone's ready before beginning
+                **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.startTimeSharedValue = startTime
         self.camSerial = camSerial
@@ -3350,7 +3355,8 @@ class VideoWriter(StateMachineProcess):
                 mergeMessageQueue=None,            # Queue to put (filename, trigger) in for merging
                 bufferSizeSeconds=5,
                 camSerial='',
-                verbose=False):
+                verbose=False,
+                **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.camSerial = camSerial
         self.ID = 'VW_' + self.camSerial
