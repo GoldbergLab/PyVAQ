@@ -2570,7 +2570,7 @@ class AudioWriter(StateMachineProcess):
         self.numChannels = numChannels
         self.requestedBufferSizeSeconds = bufferSizeSeconds
         self.chunkSize = chunkSize
-        self.mergeProcess.msgQueue = mergeMessageQueue
+        self.mergeMessageQueue = mergeMessageQueue
         self.bufferSize = None
         self.buffer = None
         self.errorMessages = []
@@ -2793,7 +2793,7 @@ class AudioWriter(StateMachineProcess):
                                     # Done with trigger, close file and clear audioFile
                                     audioFile.writeframes(b'')  # Recompute header info?
                                     audioFile.close()
-                                    if self.mergeProcess.msgQueue is not None:
+                                    if self.mergeMessageQueue is not None:
                                         # Send file for AV merging:
                                         fileEvent = dict(
                                             filePath=audioFile.audioFileName,
@@ -2802,7 +2802,7 @@ class AudioWriter(StateMachineProcess):
                                             streamID='audio'
                                         )
                                         if self.verbose >= 1: self.log("AW - Sending audio filename to merger")
-                                        self.mergeProcess.msgQueue.put((AVMerger.MERGE, fileEvent))
+                                        self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
                                     audioFile = None
                                 # Remove current trigger
                                 triggers.pop(0)
@@ -2817,7 +2817,7 @@ class AudioWriter(StateMachineProcess):
                     if audioFile is not None:
                         audioFile.writeframes(b'')  # Recompute header info?
                         audioFile.close()
-                        if self.mergeProcess.msgQueue is not None:
+                        if self.mergeMessageQueue is not None:
                             # Send file for AV merging:
                             fileEvent = dict(
                                 filePath=audioFile.audioFileName,
@@ -2825,7 +2825,7 @@ class AudioWriter(StateMachineProcess):
                                 trigger=triggers[0],
                                 streamID='audio'
                             )
-                            self.mergeProcess.msgQueue.put((AVMerger.MERGE, fileEvent))
+                            self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
                         audioFile = None
                     triggers = []
 
@@ -3366,7 +3366,7 @@ class VideoWriter(StateMachineProcess):
         if self.imageQueue is not None:
             self.imageQueue.cancel_join_thread()
         self.frameRate = frameRate
-        self.mergeProcess.msgQueue = mergeMessageQueue
+        self.mergeMessageQueue = mergeMessageQueue
         self.bufferSize = int(2*bufferSizeSeconds * self.frameRate)
         self.buffer = deque(maxlen=self.bufferSize)
         self.errorMessages = []
@@ -3603,7 +3603,7 @@ class VideoWriter(StateMachineProcess):
                                         videoFileInterface.Close()
                                     elif self.videoWriteMethod == "ffmpeg":
                                         videoFileInterface.close()
-                                    if self.mergeProcess.msgQueue is not None:
+                                    if self.mergeMessageQueue is not None:
                                         # Send file for AV merging:
                                         if self.videoWriteMethod == "PySpin":
                                             fileEvent = dict(
@@ -3620,7 +3620,7 @@ class VideoWriter(StateMachineProcess):
                                                 streamID=self.camSerial
                                             )
                                         if self.verbose >= 2: self.log(self.ID + " - Sending video filename to merger")
-                                        self.mergeProcess.msgQueue.put((AVMerger.MERGE, fileEvent))
+                                        self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
                                     videoFileInterface = None
                                 triggers.pop(0)
                             else:
@@ -3637,7 +3637,7 @@ class VideoWriter(StateMachineProcess):
                             videoFileInterface.Close()
                         elif self.videoWriteMethod == "ffmpeg":
                             videoFileInterface.close()
-                        if self.mergeProcess.msgQueue is not None:
+                        if self.mergeMessageQueue is not None:
                             # Send file for AV merging:
                             if self.videoWriteMethod == "PySpin":
                                 fileEvent = dict(
@@ -3653,7 +3653,7 @@ class VideoWriter(StateMachineProcess):
                                     trigger=triggers[0],
                                     streamID=self.camSerial
                                 )
-                            self.mergeProcess.msgQueue.put((AVMerger.MERGE, fileEvent))
+                            self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
                         videoFileInterface = None
                     triggers = []
 
