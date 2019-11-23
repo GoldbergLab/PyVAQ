@@ -5144,7 +5144,6 @@ him know. Otherwise, I had nothing to do with it.
             self.mergeProcess = AVMerger(
                 directory=p["mergeDirectory"],
                 numFilesPerTrigger=p["numStreams"],
-                messageQueue=self.mergeProcess.msgQueue,
                 verbose=self.mergeVerbose,
                 stdoutQueue=self.StdoutManager.queue,
                 baseFileName=p["mergeBaseFileName"],
@@ -5218,7 +5217,6 @@ him know. Otherwise, I had nothing to do with it.
                 videoBaseFileName=p["videoBaseFileNames"][camSerial],
                 imageQueue=imageQueue,
                 frameRate=p["videoFrequency"],
-                messageQueue=self.videoWriteProcesses[camSerial].msgQueue,
                 mergeMessageQueue=self.mergeProcess.msgQueue,
                 bufferSizeSeconds=p["bufferSizeSeconds"],
                 verbose=self.videoWriteVerbose,
@@ -5246,7 +5244,6 @@ him know. Otherwise, I had nothing to do with it.
             verbose=self.audioTriggerVerbose,
             audioMessageQueue=self.audioWriteProcess.msgQueue,
             videoMessageQueues=dict([(camSerial, self.videoWriteProcesses[camSerial].msgQueue) for camSerial in self.videoWriteProcesses]),
-            messageQueue=self.audioTriggerProcess.msgQueue,
             stdoutQueue=self.StdoutManager.queue
             )
 
