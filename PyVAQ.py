@@ -4448,7 +4448,7 @@ him know. Otherwise, I had nothing to do with it.
         self.update()
 
     def updateAudioTriggerSettings(self, *args):
-        if self.audioTriggerProcess.msgQueue is not None:
+        if self.audioTriggerProcess is not None:
             paramList = [
                 'triggerHighLevel',
                 'triggerLowLevel',
@@ -4483,14 +4483,14 @@ him know. Otherwise, I had nothing to do with it.
             self.deleteMergedFilesCheckbutton.config(state=tk.DISABLED)
             self.montageMergeCheckbutton.config(state=tk.DISABLED)
 
-        if self.mergeProcess.msgQueue is not None:
+        if self.mergeProcess is not None:
             if merging:
                 self.mergeProcess.msgQueue.put((AVMerger.START, None))
             else:
                 self.mergeProcess.msgQueue.put((AVMerger.CHILL, None))
 
     def changeAVMergerParams(self, **params):
-        if self.mergeProcess.msgQueue is not None:
+        if self.mergeProcess is not None:
             self.mergeProcess.msgQueue.put((AVMerger.SETPARAMS, params))
 
     def videoDirectoryChangeHandler(self, *args):
@@ -4507,7 +4507,7 @@ him know. Otherwise, I had nothing to do with it.
             'audioDirectory',
             'audioBaseFileName'
             )
-        if self.audioWriteProcess.msgQueue is not None:
+        if self.audioWriteProcess is not None:
             if len(p['audioDirectory']) == 0 or os.path.isdir(p['audioDirectory']):
                 # Notify AudioWriter child process of new write directory
                 self.audioWriteProcess.msgQueue.put((AudioWriter.SETPARAMS, dict(audioDirectory=p['audioDirectory'])))
@@ -4516,7 +4516,7 @@ him know. Otherwise, I had nothing to do with it.
             'mergeDirectory',
             'mergeBaseFileName'
         )
-        if self.mergeProcess.msgQueue is not None:
+        if self.mergeProcess is not None:
             if len(p['mergeDirectory']) == 0 or os.path.isdir(p['mergeDirectory']):
                 # Notify AVMerger child process of new write directory
                 self.mergeProcess.msgQueue.put((AVMerger.SETPARAMS, dict(directory=p['mergeDirectory'])))
@@ -4541,11 +4541,11 @@ him know. Otherwise, I had nothing to do with it.
             self.master.after_cancel(self.audioAnalysisMonitorUpdateJob)
 
         if newMode == "Audio":
-            if self.audioTriggerProcess.msgQueue is not None:
+            if self.audioTriggerProcess is not None:
                 self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STARTANALYZE, None))
             self.autoUpdateAudioAnalysisMonitors()
         else:
-            if self.audioTriggerProcess.msgQueue is not None:
+            if self.audioTriggerProcess is not None:
                 self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOPANALYZE, None))
 
         self.update()
