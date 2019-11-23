@@ -2576,7 +2576,6 @@ class AudioWriter(StateMachineProcess):
         self.errorMessages = []
         self.verbose = verbose
         self.audioDepthBytes = audioDepthBytes
-        self.stdoutQueue = stdoutQueue
 
     def setParams(self, **params):
         for key in params:
@@ -4175,7 +4174,6 @@ class PyVAQ:
         self.audioAnalysisQueue = None
         self.monitorMasterFrameRate = 15
         # self.audioMonitorData = None    #np.zeros((len(self.audioDAQChannels), self.audioMonitorSampleSize))
-        self.stdoutQueue = None
         self.audioAnalysisMonitorQueue = None
 
         # Message queues for sending commands to processes
@@ -4861,7 +4859,7 @@ him know. Otherwise, I had nothing to do with it.
         print("main>> audioMonitorQueue size:", self.audioMonitorQueue.qsize())
         print("main>> audioAnalysisMonitorQueue size:", self.audioAnalysisMonitorQueue.qsize())
         print("main>> mergeMessageQueue size:", self.mergeProcess.msgQueue.qsize())
-        print("main>> stdoutQueue size:", self.stdoutQueue.qsize())
+        print("main>> stdoutQueue size:", self.StdoutManager.queue.qsize())
         print("main>> ...get qsizes")
 
     def getPIDs(self):
