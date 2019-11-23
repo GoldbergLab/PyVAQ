@@ -4025,7 +4025,7 @@ class PyVAQ:
 
         self.monitorMasterFrame = ttk.Frame(self.mainFrame)
         self.videoMonitorMasterFrame = ttk.Frame(self.monitorMasterFrame)
-        self.audioMonitorMasterFrame = None  #ttk.Frame(self.monitorMasterFrame)
+        self.audioMonitor = None  #ttk.Frame(self.monitorMasterFrame)
 
         self.cameraAttributes = {}
         self.cameraMonitors = {}
@@ -4173,17 +4173,7 @@ class PyVAQ:
         self.audioMonitorQueue = None
         self.audioAnalysisQueue = None
         self.monitorMasterFrameRate = 15
-        # self.audioMonitorData = None    #np.zeros((len(self.audioDAQChannels), self.audioMonitorSampleSize))
         self.audioAnalysisMonitorQueue = None
-
-        # Message queues for sending commands to processes
-        # self.audioAcquireProcess.msgQueue = None
-        # self.audioWriteProcess.msgQueue = None
-        # self.syncProcess.msgQueue = None
-        # self.videoAcquireMessageQueues = {}
-        # self.videoWriteMessageQueues = {}
-        # self.mergeProcess.msgQueue = None
-        # self.audioTriggerProcess.msgQueue = None
 
         # Pointers to processes
         self.videoWriteProcesses = {}
@@ -4313,8 +4303,12 @@ him know. Otherwise, I had nothing to do with it.
         showinfo('About PyVAQ', msg)
 
     def configureAudioMonitoring(self):
+        if self.audioMonitor is None:
+            showinfo('Please start acquisition before configuring audio monitor')
+            return
+
         p = self.getParams()
-        audioMonitorSampleLength = round(self.audioMonitorSampleSize / p['audioFrequency'], 2)
+        audioMonitorSampleLength = round(self.audioMonitor.historyLength / p['audioFrequency'], 2)
         params = [
             Param(name='Audio autoscale', widgetType=Param.MONOCHOICE, options=['Auto', 'Manual'], default='Manual'),
             Param(name='Audio range', widgetType=Param.TEXT, options=None, default=str(-self.audioMonitorAmplitude)),
@@ -4339,7 +4333,7 @@ him know. Otherwise, I had nothing to do with it.
                     pass
             if 'Audio history length' in choices and len(choices['Audio history length']) > 0:
                 try:
-                    self.audioMonitorSampleSize = float(choices['Audio history length']) * p['audioFrequency']
+                    self.self.audioMonitor.historyLength = float(choices['Audio history length']) * p['audioFrequency']
                 except ValueError:
                     pass
 
@@ -4448,10 +4442,10 @@ him know. Otherwise, I had nothing to do with it.
         self.audioDAQChannels = audioDAQChannels
 
         # Create new audio stream monitoring widgets
-        if self.audioMonitorMasterFrame is None:
-            self.audioMonitorMasterFrame = AudioMonitor(self.monitorMasterFrame)
-        self.audioMonitorMasterFrame.updateChannels(self.audioDAQChannels)
-        self.audioMonitorMasterFrame.setDirectoryChangeHandler(self.audioDirectoryChangeHandler)
+        if self.audioMonitor is None:
+            self.audioMonitor = AudioMonitor(self.monitorMasterFrame)
+        self.audioMonitor.updateChannels(self.audioDAQChannels)
+        self.audioMonitor.setDirectoryChangeHandler(self.audioDirectoryChangeHandler)
         self.update()
 
     def updateAudioTriggerSettings(self, *args):
@@ -4717,7 +4711,7 @@ him know. Otherwise, I had nothing to do with it.
                 pass
 
             if newAudioData is not None:
-                self.audioMonitorMasterFrame.addAudioData(newAudioData)
+                self.audioMonitor.addAudioData(newAudioData)
 
         if beginAuto:
             self.audioMonitorUpdateJob = self.master.after(100, self.autoUpdateAudioMonitors)
@@ -5058,8 +5052,8 @@ him know. Otherwise, I had nothing to do with it.
                 videoDirectories[camSerial] = self.cameraMonitors[camSerial].getDirectory()
             params['videoDirectories'] = videoDirectories
         if getAllParams or 'audioBaseFileName' in paramList:
-            params["audioBaseFileName"] = slugify(self.audioMonitorMasterFrame.getBaseFileName()+'_'+','.join(self.audioDAQChannels))
-        if getAllParams or 'audioDirectory' in paramList: params['audioDirectory'] = self.audioMonitorMasterFrame.getDirectory()
+            params["audioBaseFileName"] = slugify(self.audioMonitor.getBaseFileName()+'_'+','.join(self.audioDAQChannels))
+        if getAllParams or 'audioDirectory' in paramList: params['audioDirectory'] = self.audioMonitor.getDirectory()
         if getAllParams or 'mergeBaseFileName' in paramList: params['mergeBaseFileName'] = self.mergeFileWidget.getBaseFileName()
         if getAllParams or 'mergeDirectory' in paramList: params['mergeDirectory'] = self.mergeFileWidget.getDirectory()
         if getAllParams or 'mergeFiles' in paramList: params['mergeFiles'] = self.mergeFilesVar.get()
@@ -5441,7 +5435,7 @@ him know. Otherwise, I had nothing to do with it.
             self.cameraMonitors[camSerial].grid(row=2*(k // wV), column = k % wV)
             # self.cameraAttributeBrowserButtons[camSerial].grid(row=1, column=0)
 
-        self.audioMonitorMasterFrame.grid(row=1, column=0, sticky=tk.NSEW)
+        self.audioMonitor.grid(row=1, column=0, sticky=tk.NSEW)
 
         self.controlFrame.grid(row=0, column=1, sticky=tk.NSEW)
         # self.controlFrame.columnconfigure(0, weight=1)
