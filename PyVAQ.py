@@ -917,16 +917,16 @@ class AVMerger(mp.Process):
     DEAD = 100
 
     stateList = {
-        -1:'unknown',
-        STOPPED :'state_stopped',
-        INITIALIZING :'state_initializing',
-        IGNORING :'state_ignoring',
-        WAITING :'state_waiting',
-        MERGING :'state_merging',
-        STOPPING :'state_stopping',
-        ERROR :'state_error',
-        EXITING :'state_exiting',
-        DEAD :'state_dead'
+        -1:'UNKNOWN',
+        STOPPED :'STOPPED',
+        INITIALIZING :'INITIALIZING',
+        IGNORING :'IGNORING',
+        WAITING :'WAITING',
+        MERGING :'MERGING',
+        STOPPING :'STOPPING',
+        ERROR :'ERROR',
+        EXITING :'EXITING',
+        DEAD :'DEAD'
     }
 
     #messages:
@@ -1380,15 +1380,15 @@ class Synchronizer(mp.Process):
     DEAD = 100
 
     stateList = {
-        -1:'unknown',
-         STOPPED:'state_stopped',
-         INITIALIZING:'state_initializing',
-         SYNCHRONIZING:'state_synchronizing',
-         STOPPING:'state_stopping',
-         SYNC_READY:'state_sync_ready',
-         ERROR:'state_error',
-         EXITING:'state_exiting',
-         DEAD:'state_dead'
+        -1:'UNKNOWN',
+         STOPPED:'STOPPED',
+         INITIALIZING:'INITIALIZING',
+         SYNCHRONIZING:'SYNCHRONIZING',
+         STOPPING:'STOPPING',
+         SYNC_READY:'SYNC_READY',
+         ERROR:'ERROR',
+         EXITING:'EXITING',
+         DEAD:'DEAD'
     }
 
     #messages:
@@ -2209,15 +2209,15 @@ class AudioAcquirer(mp.Process):
     DEAD = 100
 
     stateList = {
-        -1:'unknown',
-        STOPPED :'state_stopped',
-        INITIALIZING :'state_initializing',
-        ACQUIRING :'state_acquiring',
-        STOPPING :'state_stopping',
-        ACQUIRE_READY :'state_acquire_ready',
-        ERROR :'state_error',
-        EXITING :'state_exiting',
-        DEAD :'state_dead'
+        -1:'UNKNOWN',
+        STOPPED :'STOPPED',
+        INITIALIZING :'INITIALIZING',
+        ACQUIRING :'ACQUIRING',
+        STOPPING :'STOPPING',
+        ACQUIRE_READY :'ACQUIRE_READY',
+        ERROR :'ERROR',
+        EXITING :'EXITING',
+        DEAD :'DEAD'
     }
 
     #messages:
@@ -2993,15 +2993,15 @@ class VideoAcquirer(mp.Process):
     DEAD = 100
 
     stateList = {
-        -1:'unknown',
-        STOPPED :'state_stopped',
-        INITIALIZING :'state_initializing',
-        ACQUIRING :'state_acquiring',
-        STOPPING :'state_stopping',
-        ACQUIRE_READY :'state_acquire_ready',
-        ERROR :'state_error',
-        EXITING :'state_exiting',
-        DEAD :'state_dead'
+        -1:'UNKNOWN',
+        STOPPED :'STOPPED',
+        INITIALIZING :'INITIALIZING',
+        ACQUIRING :'ACQUIRING',
+        STOPPING :'STOPPING',
+        ACQUIRE_READY :'ACQUIRE_READY',
+        ERROR :'ERROR',
+        EXITING :'EXITING',
+        DEAD :'DEAD'
         }
 
     #messages:
@@ -3391,15 +3391,15 @@ class VideoWriter(mp.Process):
     DEAD = 100
 
     stateList = {
-        -1:'unknown',
-        STOPPED :'state_stopped',
-        INITIALIZING :'state_initializing',
-        WRITING :'state_writing',
-        BUFFERING :'state_buffering',
-        STOPPING :'state_stopping',
-        ERROR :'state_error',
-        EXITING :'state_exiting',
-        DEAD :'state_dead'
+        -1:'UNKNOWN',
+        STOPPED :'STOPPED',
+        INITIALIZING :'INITIALIZING',
+        WRITING :'WRITING',
+        BUFFERING :'BUFFERING',
+        STOPPING :'STOPPING',
+        ERROR :'ERROR',
+        EXITING :'EXITING',
+        DEAD :'DEAD'
     }
 
     #messages:
