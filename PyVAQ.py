@@ -879,9 +879,9 @@ class StdoutManager(mp.Process):
 
     EXIT = 'exit'
 
-    def __init__(self, queue):
+    def __init__(self):
         mp.Process.__init__(self, daemon=True)
-        self.queue = queue
+        self.queue = mp.Queue()
         self.timeout = 0.1
         self.PID = mp.Value('i', -1)
 
@@ -901,8 +901,38 @@ class StdoutManager(mp.Process):
                 for args, kwargs in msgBundle:
                     print(*args, **kwargs)
                 print()
+        clearQueue(self.queue)
 
-class AVMerger(mp.Process):
+class StateMachineProcess(mp.Process):
+    def __init__(self, *args, stdoutQueue=None, daemon=True, **kwargs):
+        mp.Process.__init__(self, *args, daemon=daemon, **kwargs)
+        self.msgQueue = mp.Queue()
+        self.stdoutQueue = stdoutQueue               # Queue for pushing output message groups to for printing
+        self.publishedStateVar = mp.Value('i', -1)
+        self.PID = mp.Value('i', -1)
+        self.exitFlag = False
+        self.stdoutBuffer = []
+
+    def run(self):
+        self.PID.value = os.getpid()
+
+    def updatePublishedState(self, state):
+        if self.publishedStateVar is not None:
+            L = self.publishedStateVar.get_lock()
+            locked = L.acquire(block=False)
+            if locked:
+                self.publishedStateVar.value = state
+                L.release()
+
+    def log(self, msg, *args, **kwargs):
+        syncPrint(msg, *args, buffer=self.stdoutBuffer, **kwargs)
+
+    def flushStdout(self):
+        if len(self.stdoutBuffer) > 0:
+            self.stdoutQueue.put(self.stdoutBuffer)
+        self.stdoutBuffer = []
+
+class AVMerger(StateMachineProcess):
 # Class for merging audio and video files using ffmpeg
 
     # States:
@@ -951,52 +981,36 @@ class AVMerger(mp.Process):
     ]
 
     def __init__(self,
-        messageQueue=None,
         verbose=False,
         numFilesPerTrigger=2,       # Number of files expected per trigger event (audio + video)
         directory='.',              # Directory for writing merged files
         baseFileName='',            # Base filename (sans extension) for writing merged files
-        stdoutQueue=None,           # Queue for pushing output message groups to for printing
         deleteMergedFiles=False,    # After merging, delete unmerged originals
         montage=False):             # Combine videos side by side
-        mp.Process.__init__(self, daemon=True)
+        StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
-        self.publishedStateVar = mp.Value('i', -1)
-        self.messageQueue = messageQueue
         self.verbose = verbose
-        self.exitFlag = False
         self.ignoreFlag = True
         self.errorMessages = []
-        self.stdoutQueue = stdoutQueue
-        self.stdoutBuffer = []
         self.numFilesPerTrigger = numFilesPerTrigger
         self.directory = directory
         self.baseFileName = baseFileName
         self.montage = montage
         self.deleteMergedFiles = deleteMergedFiles
-        self.PID = mp.Value('i', -1)
         if self.numFilesPerTrigger < 2:
-            if self.verbose >= 0: syncPrint("Warning! AVMerger can't merge less than 2 files!", buffer=self.stdoutBuffer)
+            if self.verbose >= 0: self.log("Warning! AVMerger can't merge less than 2 files!")
 
     def setParams(self, **params):
         for key in params:
             if key in AVMerger.settableParams:
                 setattr(self, key, params[key])
-                if self.verbose >= 1: syncPrint("M - Param set: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
+                if self.verbose >= 1: self.log("M - Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: syncPrint("M - Param not settable: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
-
-    def updatePublishedState(self, state):
-        if self.publishedStateVar is not None:
-            L = self.publishedStateVar.get_lock()
-            locked = L.acquire(block=False)
-            if locked:
-                self.publishedStateVar.value = state
-                L.release()
+                if self.verbose >= 0: self.log("M - Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
-        if self.verbose >= 1: syncPrint("M - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
+        if self.verbose >= 1: self.log("M - PID={pid}".format(pid=os.getpid()))
         state = AVMerger.STOPPED
         nextState = AVMerger.STOPPED
         lastState = AVMerger.STOPPED
@@ -1014,7 +1028,7 @@ class AVMerger(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=True)
+                        msg, arg = self.msgQueue.get(block=True)
                         if msg == AVMerger.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -1049,7 +1063,7 @@ class AVMerger(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AVMerger.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -1086,13 +1100,13 @@ class AVMerger(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=True, timeout=0.1)
+                        msg, arg = self.msgQueue.get(block=True, timeout=0.1)
                         if msg == AVMerger.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if msg == AVMerger.MERGE and arg is not None:
-                        if self.verbose >= 1: syncPrint("M - Ignoring {streamType} file event for merging at {time}: {file}".format(file=arg['filePath'], streamType=arg['streamType'], time=arg['trigger'].triggerTime), buffer=self.stdoutBuffer)
+                        if self.verbose >= 1: self.log("M - Ignoring {streamType} file event for merging at {time}: {file}".format(file=arg['filePath'], streamType=arg['streamType'], time=arg['trigger'].triggerTime))
                         nextState = AVMerger.IGNORING
                     elif msg == AVMerger.CHILL:
                         self.ignoreFlag = True
@@ -1148,19 +1162,19 @@ class AVMerger(mp.Process):
 
                     if self.verbose > 3:
                         if len(receivedFileEventList) > 0 or len(groupedFileEventList) > 0:
-                            syncPrint("Received: ", [p['filePath'] for p in receivedFileEventList], buffer=self.stdoutBuffer)
-                            syncPrint("Ready:    ", [tuple([p['filePath'] for p in fileEvent]) for fileEvent in groupedFileEventList], buffer=self.stdoutBuffer)
+                            self.log("Received: ", [p['filePath'] for p in receivedFileEventList])
+                            self.log("Ready:    ", [tuple([p['filePath'] for p in fileEvent]) for fileEvent in groupedFileEventList])
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=True, timeout=0.1)
+                        msg, arg = self.msgQueue.get(block=True, timeout=0.1)
                         if msg == AVMerger.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if msg == AVMerger.MERGE and arg is not None:
                         receivedFileEventList.append(arg)
-                        if self.verbose >= 1: syncPrint("M - Received {streamType} file event for merging at {time}: {file}".format(file=arg['filePath'], streamType=arg['streamType'], time=arg['trigger'].triggerTime), buffer=self.stdoutBuffer)
+                        if self.verbose >= 1: self.log("M - Received {streamType} file event for merging at {time}: {file}".format(file=arg['filePath'], streamType=arg['streamType'], time=arg['trigger'].triggerTime))
                         nextState = AVMerger.WAITING
                     elif msg == AVMerger.CHILL or self.ignoreFlag:
                         self.ignoreFlag = True
@@ -1204,13 +1218,13 @@ class AVMerger(mp.Process):
                                 # Substitute strings into command template
                                 mergeCommand = mergeCommandTemplate.format(**kwargs)
                                 if self.verbose >= 1:
-                                    syncPrint("M - Merging with kwargs: "+str(kwargs), buffer=self.stdoutBuffer)
-                                    syncPrint("M - Merging with command:", buffer=self.stdoutBuffer)
-                                    syncPrint("M - {command}".format(command=mergeCommand), buffer=self.stdoutBuffer)
+                                    self.log("M - Merging with kwargs: "+str(kwargs))
+                                    self.log("M - Merging with command:")
+                                    self.log("M - {command}".format(command=mergeCommand))
                                 # Execute constructed merge command
                                 status = os.system(mergeCommand)
                                 mergeSuccess = mergeSuccess and (status == 0)
-                                if self.verbose >= 1: syncPrint("M - Merge exit status: {status}".format(status=status), buffer=self.stdoutBuffer)
+                                if self.verbose >= 1: self.log("M - Merge exit status: {status}".format(status=status))
                         else:   # Montage the video streams into one file
                             # Construct the video part of the ffmpeg command template
                             videoFileInputText = ' '.join(['-i "{{videoFile{k}}}"'.format(k=k) for k in range(len(videoFileEvents))])
@@ -1224,27 +1238,27 @@ class AVMerger(mp.Process):
                             kwargs['outputFile'] = generateFileName(directory=self.directory, baseName=baseVideoName, extension='.avi', trigger=videoFileEvents[0]['trigger'])
                             mergeCommand = mergeCommandTemplate.format(**kwargs)
                             if self.verbose >= 1:
-                                syncPrint("M - Merging with kwargs: "+str(kwargs), buffer=self.stdoutBuffer)
-                                syncPrint("M - Merging with command:", buffer=self.stdoutBuffer)
-                                syncPrint("M - {command}".format(command=mergeCommand), buffer=self.stdoutBuffer)
+                                self.log("M - Merging with kwargs: "+str(kwargs))
+                                self.log("M - Merging with command:")
+                                self.log("M - {command}".format(command=mergeCommand))
                             # Execute constructed merge command
                             status = os.system(mergeCommand)
                             mergeSuccess = mergeSuccess and (status == 0)
-                            if self.verbose >= 1: syncPrint("M - Merge exit status: {status}".format(status=status), buffer=self.stdoutBuffer)
+                            if self.verbose >= 1: self.log("M - Merge exit status: {status}".format(status=status))
                         if self.deleteMergedFiles:
                             if mergeSuccess:
                                 for fileEvent in audioFileEvents + videoFileEvents:
-                                    if self.verbose >= 1: syncPrint('M - deleting source file: {file}'.format(file=fileEvent['filePath']), buffer=self.stdoutBuffer)
+                                    if self.verbose >= 1: self.log('M - deleting source file: {file}'.format(file=fileEvent['filePath']))
                                     os.remove(fileEvent['filePath'])
                             else:
-                                if self.verbose >= 0: syncPrint('M - Merge failure - keeping source files in place!', buffer=self.stdoutBuffer)
+                                if self.verbose >= 0: self.log('M - Merge failure - keeping source files in place!')
 
                     # Clear merged files
                     groupedFileEventList = []
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=True, timeout=0.1)
+                        msg, arg = self.msgQueue.get(block=True, timeout=0.1)
                         if msg == AVMerger.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -1273,7 +1287,7 @@ class AVMerger(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AVMerger.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -1295,13 +1309,13 @@ class AVMerger(mp.Process):
                 elif state == AVMerger.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        syncPrint("M - ERROR STATE. Error messages:\n\n", buffer=self.stdoutBuffer)
-                        syncPrint("\n\n".join(self.errorMessages), buffer=self.stdoutBuffer)
+                        self.log("M - ERROR STATE. Error messages:\n\n")
+                        self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AVMerger.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -1335,7 +1349,7 @@ class AVMerger(mp.Process):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: syncPrint("S - Keyboard interrupt received - exiting", buffer=self.stdoutBuffer)
+                if self.verbose >= 0: self.log("S - Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = AVMerger.STOPPING
             except:
@@ -1344,23 +1358,21 @@ class AVMerger(mp.Process):
                 nextState = AVMerger.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                syncPrint("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag), buffer=self.stdoutBuffer)
-                syncPrint('*********************************** /\ M ' + self.stateList[state] + ' /\ ********************************************', buffer=self.stdoutBuffer)
+                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log('*********************************** /\ M ' + self.stateList[state] + ' /\ ********************************************')
 
             # Prepare to advance to next state
             lastState = state
             state = nextState
-            if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
-            self.stdoutBuffer = []
+            self.flushStdout()
 
-        clearQueue(self.messageQueue)
-        if self.verbose >= 1: syncPrint("AVMerger process STOPPED", buffer=self.stdoutBuffer)
+        clearQueue(self.msgQueue)
+        if self.verbose >= 1: self.log("AVMerger process STOPPED")
 
-        if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
-        self.stdoutBuffer = []
+        self.flushStdout()
         self.updatePublishedState(self.DEAD)
 
-class Synchronizer(mp.Process):
+class Synchronizer(StateMachineProcess):
     # Class for generating two synchronization signals at the same time
     #   - one for video (send via cable to the camera GPIO)
     #   - one for audio (used internally to trigger analog input of microphone
@@ -1410,14 +1422,11 @@ class Synchronizer(mp.Process):
         videoDutyCycle=0.5,
         audioSyncChannel=None,           # The counter channel on which to generate the audio sync signal Dev3/ctr1
         audioDutyCycle=0.5,
-        messageQueue=None,
         startTime=None,                         # Shared value that is set when sync starts, used as start time by all processes (relevant for manual triggers)
         verbose=False,
-        ready=None,
-        stdoutQueue=None):                            # Synchronization barrier to ensure everyone's ready before beginning
-        mp.Process.__init__(self, daemon=True)
+        ready=None):                            # Synchronization barrier to ensure everyone's ready before beginning
+        StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
-        self.publishedStateVar = mp.Value('i', -1)
         self.actualAudioFrequency = actualAudioFrequency
         self.actualVideoFrequency = actualVideoFrequency
         self.startTime = startTime
@@ -1427,34 +1436,21 @@ class Synchronizer(mp.Process):
         self.audioSyncChannel = audioSyncChannel
         self.videoDutyCycle = videoDutyCycle
         self.audioDutyCycle = audioDutyCycle
-        self.messageQueue = messageQueue
         self.ready = ready
-        self.exitFlag = False
         self.errorMessages = []
         self.verbose = verbose
-        self.stdoutQueue = stdoutQueue
-        self.stdoutBuffer = []
-        self.PID = mp.Value('i', -1)
 
     def setParams(self, **params):
         for key in params:
             if key in Synchronizer.settableParams:
                 setattr(self, key, params[key])
-                if self.verbose >= 1: syncPrint("S - Param set: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
+                if self.verbose >= 1: self.log("S - Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: syncPrint("S - Param not settable: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
-
-    def updatePublishedState(self, state):
-        if self.publishedStateVar is not None:
-            L = self.publishedStateVar.get_lock()
-            locked = L.acquire(block=False)
-            if locked:
-                self.publishedStateVar.value = state
-                L.release()
+                if self.verbose >= 0: self.log("S - Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
-        if self.verbose >= 1: syncPrint("S - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
+        if self.verbose >= 1: self.log("S - PID={pid}".format(pid=os.getpid()))
         state = Synchronizer.STOPPED
         nextState = Synchronizer.STOPPED
         lastState = Synchronizer.STOPPED
@@ -1472,7 +1468,7 @@ class Synchronizer(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=True)
+                        msg, arg = self.msgQueue.get(block=True)
                         if msg == Synchronizer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -1528,7 +1524,7 @@ class Synchronizer(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == Synchronizer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -1557,12 +1553,12 @@ class Synchronizer(mp.Process):
                         postTime = time.time_ns()
                         self.startTime.value = (preTime + postTime) / 2000000000
                     except BrokenBarrierError:
-                        if self.verbose >= 0: syncPrint("S - Simultaneous start failure", buffer=self.stdoutBuffer)
+                        if self.verbose >= 0: self.log("S - Simultaneous start failure")
                         nextState = Synchronizer.STOPPING
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == Synchronizer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -1583,7 +1579,7 @@ class Synchronizer(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=True, timeout=0.1)
+                        msg, arg = self.msgQueue.get(block=True, timeout=0.1)
                         if msg == Synchronizer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -1611,7 +1607,7 @@ class Synchronizer(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == Synchronizer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -1633,13 +1629,13 @@ class Synchronizer(mp.Process):
                 elif state == Synchronizer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        syncPrint("S - ERROR STATE. Error messages:\n\n", buffer=self.stdoutBuffer)
-                        syncPrint("\n\n".join(self.errorMessages), buffer=self.stdoutBuffer)
+                        self.log("S - ERROR STATE. Error messages:\n\n")
+                        self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == Synchronizer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -1673,7 +1669,7 @@ class Synchronizer(mp.Process):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: syncPrint("S - Keyboard interrupt received - exiting", buffer=self.stdoutBuffer)
+                if self.verbose >= 0: self.log("S - Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = Synchronizer.STOPPING
             except:
@@ -1682,23 +1678,21 @@ class Synchronizer(mp.Process):
                 nextState = Synchronizer.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                syncPrint("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag), buffer=self.stdoutBuffer)
-                syncPrint('*********************************** /\ S ' + self.stateList[state] + ' /\ ********************************************', buffer=self.stdoutBuffer)
+                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log('*********************************** /\ S ' + self.stateList[state] + ' /\ ********************************************')
 
-            if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
-            self.stdoutBuffer = []
+            self.flushStdout()
 
             # Prepare to advance to next state
             lastState = state
             state = nextState
 
-        clearQueue(self.messageQueue)
-        if self.verbose >= 1: syncPrint("Synchronization process STOPPED", buffer=self.stdoutBuffer)
-        if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
-        self.stdoutBuffer = []
+        clearQueue(self.msgQueue)
+        if self.verbose >= 1: self.log("Synchronization process STOPPED")
+        self.flushStdout()
         self.updatePublishedState(self.DEAD)
 
-class AudioTriggerer(mp.Process):
+class AudioTriggerer(StateMachineProcess):
     # States:
     STOPPED = 0
     INITIALIZING = 1
@@ -1772,11 +1766,8 @@ class AudioTriggerer(mp.Process):
                 scheduleStopTime=None,
                 verbose=False,
                 audioMessageQueue=None,             # Queue to send triggers to audio writers
-                videoMessageQueues={},              # Queues to send triggers to video writers
-                messageQueue=None,                  # Queue for getting commands to change state
-                stdoutQueue=None):
-        mp.Process.__init__(self, daemon=True)
-        self.publishedStateVar = mp.Value('i', -1)
+                videoMessageQueues={}):              # Queues to send triggers to video writers
+        StateMachineProcess.__init__(self, **kwargs)
         self.audioQueue = audioQueue
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
@@ -1793,7 +1784,6 @@ class AudioTriggerer(mp.Process):
         self.butterworthOrder = butterworthOrder
         self.multiChannelStartBehavior = multiChannelStartBehavior
         self.multiChannelStopBehavior = multiChannelStopBehavior
-        self.messageQueue = messageQueue
         self.triggerHighTime = triggerHighTime
         self.triggerLowTime = triggerLowTime
 
@@ -1810,15 +1800,11 @@ class AudioTriggerer(mp.Process):
         self.filter = None
 
         self.errorMessages = []
-        self.exitFlag = False
         self.analyzeFlag = False
         self.verbose = verbose
-        self.stdoutQueue = stdoutQueue
-        self.stdoutBuffer = []
 
         self.highLevelBuffer = None
         self.lowLevelBuffer = None
-        self.PID = mp.Value('i', -1)
 
     def updateHighBuffer(self):
         self.triggerHighChunks = int(self.triggerHighTime * self.audioFrequency.value / self.chunkSize)
@@ -1848,21 +1834,13 @@ class AudioTriggerer(mp.Process):
                     self.updateLowBuffer()
                 if key == 'bandpassFrequencies' or key == 'butterworthOrder':
                     self.updateFilter()
-                if self.verbose >= 1: syncPrint("AT - Param set: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
+                if self.verbose >= 1: self.log("AT - Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: syncPrint("AT - Param not settable: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
-
-    def updatePublishedState(self, state):
-        if self.publishedStateVar is not None:
-            L = self.publishedStateVar.get_lock()
-            locked = L.acquire(block=False)
-            if locked:
-                self.publishedStateVar.value = state
-                L.release()
+                if self.verbose >= 0: self.log("AT - Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
-        if self.verbose >= 1: syncPrint("AT - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
+        if self.verbose >= 1: self.log("AT - PID={pid}".format(pid=os.getpid()))
         state = AudioTriggerer.STOPPED
         nextState = AudioTriggerer.STOPPED
         lastState = AudioTriggerer.STOPPED
@@ -1880,7 +1858,7 @@ class AudioTriggerer(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=True)
+                        msg, arg = self.msgQueue.get(block=True)
                         if msg == AudioTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -1912,7 +1890,7 @@ class AudioTriggerer(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -1941,7 +1919,7 @@ class AudioTriggerer(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -2022,14 +2000,14 @@ class AudioTriggerer(mp.Process):
                                     triggerTime = chunkStartTime,
                                     endTime = chunkStartTime - self.preTriggerTime + self.maxAudioTriggerTime)
                                 self.sendTrigger(activeTrigger)
-                                if self.verbose >= 1: syncPrint("Send new trigger!", buffer=self.stdoutBuffer)
+                                if self.verbose >= 1: self.log("Send new trigger!")
                             elif activeTrigger is not None and lowTrigger:
                                 # Send updated trigger
                                 # print("Sending updated stop trigger")
                                 activeTrigger.endTime = chunkStartTime
                                 # print("Setting trigger stop time to", activeTrigger.endTime)
                                 self.sendTrigger(activeTrigger)
-                                if self.verbose >= 1: syncPrint("Update trigger to stop now", buffer=self.stdoutBuffer)
+                                if self.verbose >= 1: self.log("Update trigger to stop now")
 
                             if self.audioAnalysisMonitorQueue is not None:
                                 # Send analysis summary of this chunk to the GUI
@@ -2056,19 +2034,19 @@ class AudioTriggerer(mp.Process):
                                 )
                                 self.audioAnalysisMonitorQueue.put(summary)
 
-                            if self.verbose >= 3: syncPrint('h% =', highFrac, 'l% =', lowFrac, 'hT =', highTrigger, 'lT =', lowTrigger, buffer=self.stdoutBuffer)
+                            if self.verbose >= 3: self.log('h% =', highFrac, 'l% =', lowFrac, 'hT =', highTrigger, 'lT =', lowTrigger)
 
                     except queue.Empty:
                         pass # No audio data to analyze
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-#                    if self.verbose >= 3: syncPrint("AT - |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState), buffer=self.stdoutBuffer)
+#                    if self.verbose >= 3: self.log("AT - |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
                     if msg == AudioTriggerer.EXIT or self.exitFlag:
                         self.exitFlag = True
                         nextState = AudioTriggerer.STOPPING
@@ -2086,7 +2064,7 @@ class AudioTriggerer(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -2108,13 +2086,13 @@ class AudioTriggerer(mp.Process):
                 elif state == AudioTriggerer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        syncPrint("AT - ERROR STATE. Error messages:\n\n", buffer=self.stdoutBuffer)
-                        syncPrint("\n\n".join(self.errorMessages), buffer=self.stdoutBuffer)
+                        self.log("AT - ERROR STATE. Error messages:\n\n")
+                        self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -2148,7 +2126,7 @@ class AudioTriggerer(mp.Process):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: syncPrint("AT - Keyboard interrupt received - exiting", buffer=self.stdoutBuffer)
+                if self.verbose >= 0: self.log("AT - Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = AudioTriggerer.STOPPING
             except:
@@ -2157,21 +2135,19 @@ class AudioTriggerer(mp.Process):
                 nextState = AudioTriggerer.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                syncPrint("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag), buffer=self.stdoutBuffer)
-                syncPrint('*********************************** /\ AT ' + self.stateList[state] + ' /\ ********************************************', buffer=self.stdoutBuffer)
+                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log('*********************************** /\ AT ' + self.stateList[state] + ' /\ ********************************************')
 
-            if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
-            self.stdoutBuffer = []
+            self.flushStdout()
 
             # Prepare to advance to next state
             lastState = state
             state = nextState
 
-        clearQueue(self.messageQueue)
-        if self.verbose >= 1: syncPrint("Audio write process STOPPED", buffer=self.stdoutBuffer)
+        clearQueue(self.msgQueue)
+        if self.verbose >= 1: self.log("Audio write process STOPPED")
 
-        if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
-        self.stdoutBuffer = []
+        self.flushStdout()
         self.updatePublishedState(self.DEAD)
 
     def updateFilter(self):
@@ -2193,7 +2169,7 @@ class AudioTriggerer(mp.Process):
         for camSerial in self.videoMessageQueues:
             self.videoMessageQueues[camSerial].put((VideoWriter.TRIGGER, trigger))
 
-class AudioAcquirer(mp.Process):
+class AudioAcquirer(StateMachineProcess):
     # Class for acquiring an audio signal (or any analog signal) at a rate that
     #   is synchronized to the rising edges on the specified synchronization
     #   channel.
@@ -2240,12 +2216,9 @@ class AudioAcquirer(mp.Process):
                 bufferSize = None,                  # Size of device buffer. Defaults to 1 second's worth of data
                 channelNames = [],                  # Channel name for analog input (microphone signal)
                 syncChannel = None,                 # Channel name for synchronization source
-                messageQueue = None,
                 verbose = False,
-                ready=None,                         # Synchronization barrier to ensure everyone's ready before beginning
-                stdoutQueue=None):
-        mp.Process.__init__(self, daemon=True)
-        self.publishedStateVar = mp.Value('i', -1)
+                ready=None):                         # Synchronization barrier to ensure everyone's ready before beginning
+        StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
         self.startTimeSharedValue = startTime
         self.audioFrequency = audioFrequency
@@ -2262,35 +2235,23 @@ class AudioAcquirer(mp.Process):
         self.syncChannel = syncChannel
         self.ready = ready
         self.errorMessages = []
-        self.messageQueue = messageQueue
         self.verbose = verbose
         self.exitFlag = False
-        self.stdoutQueue = stdoutQueue
-        self.stdoutBuffer = []
-        self.PID = mp.Value('i', -1)
 
     def setParams(self, **params):
         for key in params:
             if key in AudioAcquirer.settableParams:
                 setattr(self, key, params[key])
-                if self.verbose >= 1: syncPrint("AA - Param set: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
+                if self.verbose >= 1: self.log("AA - Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: syncPrint("AA - Param not settable: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
+                if self.verbose >= 0: self.log("AA - Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def rescaleAudio(data, maxV=10, minV=-10, maxD=32767, minD=-32767):
         return (data * ((maxD-minD)/(maxV-minV))).astype('int16')
 
-    def updatePublishedState(self, state):
-        if self.publishedStateVar is not None:
-            L = self.publishedStateVar.get_lock()
-            locked = L.acquire(block=False)
-            if locked:
-                self.publishedStateVar.value = state
-                L.release()
-
     def run(self):
         self.PID.value = os.getpid()
-        if self.verbose >= 1: syncPrint("AA - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
+        if self.verbose >= 1: self.log("AA - PID={pid}".format(pid=os.getpid()))
         state = AudioAcquirer.STOPPED
         nextState = AudioAcquirer.STOPPED
         lastState = AudioAcquirer.STOPPED
@@ -2308,7 +2269,7 @@ class AudioAcquirer(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=True)
+                        msg, arg = self.msgQueue.get(block=True)
                         if msg == AudioAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -2354,7 +2315,7 @@ class AudioAcquirer(mp.Process):
                     sampleCount = 0
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -2375,17 +2336,17 @@ class AudioAcquirer(mp.Process):
                     # DO STUFF
                     try:
                         if self.ready is not None:
-#                            if self.verbose >= 1: syncPrint('AA ready: {parties} {n_waiting}'.format(parties=self.ready.parties, n_waiting=self.ready.n_waiting), buffer=self.stdoutBuffer)
+#                            if self.verbose >= 1: self.log('AA ready: {parties} {n_waiting}'.format(parties=self.ready.parties, n_waiting=self.ready.n_waiting))
                             self.ready.wait()
                     except BrokenBarrierError:
-                        if self.verbose >= 0: syncPrint("AA - Simultaneous start failure", buffer=self.stdoutBuffer)
+                        if self.verbose >= 0: self.log("AA - Simultaneous start failure")
                         nextState = AudioAcquirer.STOPPING
 
-#                    if self.verbose >= 1: syncPrint('AA passed barrier', buffer=self.stdoutBuffer)
+#                    if self.verbose >= 1: self.log('AA passed barrier')
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -2410,10 +2371,10 @@ class AudioAcquirer(mp.Process):
 
                         # Get timestamp of first audio chunk acquisition
                         if startTime is None:
-                            if self.verbose >= 1: syncPrint("AA - Getting start time from sync process...", buffer=self.stdoutBuffer)
+                            if self.verbose >= 1: self.log("AA - Getting start time from sync process...")
                             while startTime == -1 or startTime is None:
                                 startTime = self.startTimeSharedValue.value
-                            if self.verbose >= 1: syncPrint("AA - Got start time from sync process:"+str(startTime), buffer=self.stdoutBuffer)
+                            if self.verbose >= 1: self.log("AA - Got start time from sync process:"+str(startTime))
 #                            startTime = time.time_ns() / 1000000000 - self.chunkSize / self.audioFrequency
 
                         chunkStartTime = startTime + sampleCount / self.audioFrequency.value
@@ -2423,7 +2384,7 @@ class AudioAcquirer(mp.Process):
                         if self.audioQueue is not None:
                             self.audioQueue.put(audioChunk)              # If a data queue is provided, queue up the new data
                         else:
-                            if self.verbose >= 2: syncPrint(processedData, buffer=self.stdoutBuffer)
+                            if self.verbose >= 2: self.log(processedData)
 
                         monitorDataCopy = np.copy(data)
                         if self.audioMonitorQueue is not None:
@@ -2432,11 +2393,11 @@ class AudioAcquirer(mp.Process):
                             self.audioAnalysisQueue.put((chunkStartTime, monitorDataCopy))
                     except nidaqmx.errors.DaqError:
 #                        traceback.print_exc()
-                        if self.verbose >= 0: syncPrint("AA - Audio Chunk acquisition timed out.", buffer=self.stdoutBuffer)
+                        if self.verbose >= 0: self.log("AA - Audio Chunk acquisition timed out.")
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -2460,7 +2421,7 @@ class AudioAcquirer(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -2482,13 +2443,13 @@ class AudioAcquirer(mp.Process):
                 elif state == AudioAcquirer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        syncPrint("AA - ERROR STATE. Error messages:\n\n", buffer=self.stdoutBuffer)
-                        syncPrint("\n\n".join(self.errorMessages), buffer=self.stdoutBuffer)
+                        self.log("AA - ERROR STATE. Error messages:\n\n")
+                        self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -2517,13 +2478,13 @@ class AudioAcquirer(mp.Process):
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* EXIT *********************************
                 elif state == AudioAcquirer.EXITING:
-                    if self.verbose >= 1: syncPrint('AA - Exiting!', buffer=self.stdoutBuffer)
+                    if self.verbose >= 1: self.log('AA - Exiting!')
                     break
                 else:
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 1: syncPrint("AA - Keyboard interrupt received - exiting", buffer=self.stdoutBuffer)
+                if self.verbose >= 1: self.log("AA - Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = AudioAcquirer.STOPPING
             except:
@@ -2532,24 +2493,22 @@ class AudioAcquirer(mp.Process):
                 nextState = AudioAcquirer.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                syncPrint("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag), buffer=self.stdoutBuffer)
-                syncPrint('*********************************** /\ AA ' + self.stateList[state] + ' /\ ********************************************', buffer=self.stdoutBuffer)
+                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log('*********************************** /\ AA ' + self.stateList[state] + ' /\ ********************************************')
 
-            if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
-            self.stdoutBuffer = []
+            self.flushStdout()
 
             # Prepare to advance to next state
             lastState = state
             state = nextState
 
-        clearQueue(self.messageQueue)
-        if self.verbose >= 1: syncPrint("Audio acquire process STOPPED", buffer=self.stdoutBuffer)
+        clearQueue(self.msgQueue)
+        if self.verbose >= 1: self.log("Audio acquire process STOPPED")
 
-        if len(self.stdoutBuffer) > 1: self.stdoutQueue.put(self.stdoutBuffer)
-        self.stdoutBuffer = []
+        self.flushStdout()
         self.updatePublishedState(self.DEAD)
 
-class AudioWriter(mp.Process):
+class AudioWriter(StateMachineProcess):
     # States:
     STOPPED = 0
     INITIALIZING = 1
@@ -2595,11 +2554,9 @@ class AudioWriter(mp.Process):
                 chunkSize=None,
                 verbose=False,
                 audioDepthBytes=2,
-                mergeMessageQueue=None,            # Queue to put (filename, trigger) in for merging
-                messageQueue=None,          # Queue for getting commands to change state
-                stdoutQueue=None):
-        mp.Process.__init__(self, daemon=True)
-        self.publishedStateVar = mp.Value('i', -1)
+                mergeMessageQueue=None, # Queue to put (filename, trigger) in for merging
+                **kwargs):
+        StateMachineProcess.__init__(self, **kwargs)
         self.audioDirectory = audioDirectory
         self.audioBaseFileName = audioBaseFileName
         self.audioQueue = audioQueue
@@ -2609,37 +2566,25 @@ class AudioWriter(mp.Process):
         self.numChannels = numChannels
         self.requestedBufferSizeSeconds = bufferSizeSeconds
         self.chunkSize = chunkSize
-        self.messageQueue = messageQueue
-        self.mergeMessageQueue = mergeMessageQueue
+        self.mergeProcess.msgQueue = mergeMessageQueue
         self.bufferSize = None
         self.buffer = None
         self.errorMessages = []
-        self.exitFlag = False
         self.verbose = verbose
         self.audioDepthBytes = audioDepthBytes
         self.stdoutQueue = stdoutQueue
-        self.stdoutBuffer = []
-        self.PID = mp.Value('i', -1)
 
     def setParams(self, **params):
         for key in params:
             if key in AudioWriter.settableParams:
                 setattr(self, key, params[key])
-                if self.verbose >= 1: syncPrint("AW - Param set: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
+                if self.verbose >= 1: self.log("AW - Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: syncPrint("AW - Param not settable: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
-
-    def updatePublishedState(self, state):
-        if self.publishedStateVar is not None:
-            L = self.publishedStateVar.get_lock()
-            locked = L.acquire(block=False)
-            if locked:
-                self.publishedStateVar.value = state
-                L.release()
+                if self.verbose >= 0: self.log("AW - Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
-        if self.verbose >= 1: syncPrint("AW - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
+        if self.verbose >= 1: self.log("AW - PID={pid}".format(pid=os.getpid()))
         state = AudioWriter.STOPPED
         nextState = AudioWriter.STOPPED
         lastState = AudioWriter.STOPPED
@@ -2657,7 +2602,7 @@ class AudioWriter(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=True)
+                        msg, arg = self.msgQueue.get(block=True)
                         if msg == AudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -2693,7 +2638,7 @@ class AudioWriter(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -2714,20 +2659,20 @@ class AudioWriter(mp.Process):
                     # DO STUFF
                     if len(self.buffer) >= self.buffer.maxlen:
                         # If buffer is full, pull oldest audio chunk from buffer
-                        if self.verbose >= 3: syncPrint("AW - Pulling audio chunk from buffer (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen), buffer=self.stdoutBuffer)
+                        if self.verbose >= 3: self.log("AW - Pulling audio chunk from buffer (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
                         audioChunk = self.buffer.popleft()
 
                     try:
                         # Get new audio chunk and push it into the buffer
                         newAudioChunk = self.audioQueue.get(block=True, timeout=0.1)
-                        if self.verbose >= 3: syncPrint("AW - Got audio chunk from acquirer. Pushing into the buffer.", buffer=self.stdoutBuffer)
+                        if self.verbose >= 3: self.log("AW - Got audio chunk from acquirer. Pushing into the buffer.")
                         self.buffer.append(newAudioChunk)
                     except queue.Empty: # None available
                         newAudioChunk = None
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                         elif msg == AudioWriter.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
@@ -2740,33 +2685,33 @@ class AudioWriter(mp.Process):
                         nextState = AudioWriter.STOPPING
                     elif len(triggers) > 0:
                         # We have triggers - next state will depend on them
-                        if self.verbose >= 2: syncPrint("AW - Trigger is active", buffer=self.stdoutBuffer)
+                        if self.verbose >= 2: self.log("AW - Trigger is active")
                         if audioChunk is not None:
                             # At least one audio chunk has been received - we can check if trigger period has begun
                             chunkStartTriggerState, chunkEndTriggerState = audioChunk.getTriggerState(triggers[0])
-                            if self.verbose >= 3: syncPrint("AW - |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState), buffer=self.stdoutBuffer)
+                            if self.verbose >= 3: self.log("AW - |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
                             if chunkStartTriggerState < 0 and chunkEndTriggerState < 0:
                                 # Entire chunk is before trigger range. Continue buffering until we get to trigger start time.
-                                if self.verbose >= 2: syncPrint("AW - Active trigger, but haven't gotten to start time yet, continue buffering.", buffer=self.stdoutBuffer)
+                                if self.verbose >= 2: self.log("AW - Active trigger, but haven't gotten to start time yet, continue buffering.")
                                 nextState = AudioWriter.BUFFERING
                             elif chunkEndTriggerState == 0 and chunkStartTriggerState < 0:
-                                if self.verbose >= 1: syncPrint("AW - Got trigger start!", buffer=self.stdoutBuffer)
+                                if self.verbose >= 1: self.log("AW - Got trigger start!")
                                 timeWrote = 0
                                 nextState = AudioWriter.WRITING
                             elif chunkStartTriggerState == 0 or (chunkStartTriggerState < 0 and chunkStartTriggerState > 0):
                                 # Time is now in trigger range
-                                if self.verbose >= 0: syncPrint("AW - Warning, partially missed audio trigger start!", buffer=self.stdoutBuffer)
+                                if self.verbose >= 0: self.log("AW - Warning, partially missed audio trigger start!")
                                 timeWrote = 0
                                 nextState = AudioWriter.WRITING
                             else:
                                 # Time is after trigger range...
-                                if self.verbose >= 0: syncPrint("AW - Warning, completely missed audio trigger start!", buffer=self.stdoutBuffer)
+                                if self.verbose >= 0: self.log("AW - Warning, completely missed audio trigger start!")
                                 timeWrote = 0
                                 nextState = AudioWriter.BUFFERING
                                 triggers.pop(0)   # Pop off trigger that we missed
                         else:
                             # No audio chunks have been received yet, can't evaluate if trigger time has begun yet
-                            if self.verbose >= 1: syncPrint("AW - No audio chunks yet, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen), buffer=self.stdoutBuffer)
+                            if self.verbose >= 1: self.log("AW - No audio chunks yet, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
                             nextState = AudioWriter.BUFFERING
                     elif msg in ['', AudioWriter.START]:
                         nextState = AudioWriter.BUFFERING
@@ -2776,8 +2721,8 @@ class AudioWriter(mp.Process):
                 elif state == AudioWriter.WRITING:
                     # DO STUFF
                     if self.verbose >= 3:
-                        syncPrint("AW - Audio queue size: ", self.audioQueue.qsize(), buffer=self.stdoutBuffer)
-                        syncPrint("AW - Audio chunks in buffer: ", len(self.buffer), buffer=self.stdoutBuffer)
+                        self.log("AW - Audio queue size: ", self.audioQueue.qsize())
+                        self.log("AW - Audio chunks in buffer: ", len(self.buffer))
                     if audioChunk is not None:
                         if audioFile is None:
                             # Start new audio file
@@ -2790,41 +2735,41 @@ class AudioWriter(mp.Process):
                         #     padStart = True  # Because this is the first chunk, pad the start of the chunk if it starts after the trigger period start
                         # else:
                         #     padStart = False
-                        if self.verbose >= 3: syncPrint("AW - Trimming audio", buffer=self.stdoutBuffer)
+                        if self.verbose >= 3: self.log("AW - Trimming audio")
                         audioChunk.trimToTrigger(triggers[0]) #, padStart=padStart)
 
                         # Write chunk of audio to file that was previously retrieved from the buffer
                         if self.verbose >= 3:
                             timeWrote += (audioChunk.data.shape[1] / audioChunk.audioFrequency)
-                            syncPrint("AW - Audio time wrote: {time}".format(time=timeWrote), buffer=self.stdoutBuffer)
+                            self.log("AW - Audio time wrote: {time}".format(time=timeWrote))
                         audioFile.writeframes(audioChunk.getAsBytes())
 
                     try:
                         # Pop the oldest buffered audio chunk from the back of the buffer.
                         audioChunk = self.buffer.popleft()
-                        if self.verbose >= 3: syncPrint("AW - Pulled audio from buffer", buffer=self.stdoutBuffer)
+                        if self.verbose >= 3: self.log("AW - Pulled audio from buffer")
                     except IndexError:
-                        if self.verbose >= 0: syncPrint("AW - No data in buffer", buffer=self.stdoutBuffer)
+                        if self.verbose >= 0: self.log("AW - No data in buffer")
                         audioChunk = None  # Buffer was empty
 
                     # Pull new audio chunk from AudioAcquirer and add to the front of the buffer.
                     try:
                         newAudioChunk = self.audioQueue.get(True, 0.05)
-                        if self.verbose >= 3: syncPrint("AW - Got audio chunk from acquirer. Pushing into buffer.", buffer=self.stdoutBuffer)
+                        if self.verbose >= 3: self.log("AW - Got audio chunk from acquirer. Pushing into buffer.")
                         self.buffer.append(newAudioChunk)
                     except queue.Empty:
                         # No data in audio queue yet - pass.
-                        if self.verbose >= 3: syncPrint("AW - No audio available from acquirer", buffer=self.stdoutBuffer)
+                        if self.verbose >= 3: self.log("AW - No audio available from acquirer")
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                         elif msg == AudioWriter.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if self.verbose >= 3: syncPrint("AW - |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState), buffer=self.stdoutBuffer)
+                    if self.verbose >= 3: self.log("AW - |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
                     if self.exitFlag:
                         nextState = AudioWriter.STOPPING
                     elif msg == AudioWriter.STOP:
@@ -2838,13 +2783,13 @@ class AudioWriter(mp.Process):
                             chunkStartTriggerState, chunkEndTriggerState = audioChunk.getTriggerState(triggers[0])
                             if chunkStartTriggerState * chunkEndTriggerState > 0:
                                 # Trigger period does not overlap the chunk at all - return to buffering
-                                if self.verbose >= 2: syncPrint("AW - Audio chunk does not overlap trigger. Switching to buffering.", buffer=self.stdoutBuffer)
+                                if self.verbose >= 2: self.log("AW - Audio chunk does not overlap trigger. Switching to buffering.")
                                 nextState = AudioWriter.BUFFERING
                                 if audioFile is not None:
                                     # Done with trigger, close file and clear audioFile
                                     audioFile.writeframes(b'')  # Recompute header info?
                                     audioFile.close()
-                                    if self.mergeMessageQueue is not None:
+                                    if self.mergeProcess.msgQueue is not None:
                                         # Send file for AV merging:
                                         fileEvent = dict(
                                             filePath=audioFile.audioFileName,
@@ -2852,8 +2797,8 @@ class AudioWriter(mp.Process):
                                             trigger=triggers[0],
                                             streamID='audio'
                                         )
-                                        if self.verbose >= 1: syncPrint("AW - Sending audio filename to merger", buffer=self.stdoutBuffer)
-                                        self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                                        if self.verbose >= 1: self.log("AW - Sending audio filename to merger")
+                                        self.mergeProcess.msgQueue.put((AVMerger.MERGE, fileEvent))
                                     audioFile = None
                                 # Remove current trigger
                                 triggers.pop(0)
@@ -2868,7 +2813,7 @@ class AudioWriter(mp.Process):
                     if audioFile is not None:
                         audioFile.writeframes(b'')  # Recompute header info?
                         audioFile.close()
-                        if self.mergeMessageQueue is not None:
+                        if self.mergeProcess.msgQueue is not None:
                             # Send file for AV merging:
                             fileEvent = dict(
                                 filePath=audioFile.audioFileName,
@@ -2876,13 +2821,13 @@ class AudioWriter(mp.Process):
                                 trigger=triggers[0],
                                 streamID='audio'
                             )
-                            self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                            self.mergeProcess.msgQueue.put((AVMerger.MERGE, fileEvent))
                         audioFile = None
                     triggers = []
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -2905,13 +2850,13 @@ class AudioWriter(mp.Process):
                     # DO STUFF
 
                     if self.verbose >= 0:
-                        syncPrint("AW - ERROR STATE. Error messages:\n\n", buffer=self.stdoutBuffer)
-                        syncPrint("\n\n".join(self.errorMessages), buffer=self.stdoutBuffer)
+                        self.log("AW - ERROR STATE. Error messages:\n\n")
+                        self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == AudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -2945,7 +2890,7 @@ class AudioWriter(mp.Process):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: syncPrint("AW - Keyboard interrupt received - exiting", buffer=self.stdoutBuffer)
+                if self.verbose >= 0: self.log("AW - Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = AudioWriter.STOPPING
             except:
@@ -2954,34 +2899,32 @@ class AudioWriter(mp.Process):
                 nextState = AudioWriter.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                syncPrint("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag), buffer=self.stdoutBuffer)
-                syncPrint('*********************************** /\ AW ' + self.stateList[state] + ' /\ ********************************************', buffer=self.stdoutBuffer)
+                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log('*********************************** /\ AW ' + self.stateList[state] + ' /\ ********************************************')
 
-            if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
-            self.stdoutBuffer = []
+            self.flushStdout()
 
             # Prepare to advance to next state
             lastState = state
             state = nextState
 
-        clearQueue(self.messageQueue)
-        if self.verbose >= 1: syncPrint("Audio write process STOPPED", buffer=self.stdoutBuffer)
+        clearQueue(self.msgQueue)
+        if self.verbose >= 1: self.log("Audio write process STOPPED")
 
-        if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
-        self.stdoutBuffer = []
+        self.flushStdout()
         self.updatePublishedState(self.DEAD)
 
     def updateTriggers(self, triggers, trigger):
         if len(triggers) > 0 and trigger.id == triggers[-1].id:
             # This is an updated trigger, not a new trigger
-            if self.verbose >= 2: syncPrint("AW - Updating trigger", buffer=self.stdoutBuffer)
+            if self.verbose >= 2: self.log("AW - Updating trigger")
             triggers[-1] = trigger
         else:
             # This is a new trigger
-            if self.verbose >= 2: syncPrint("AW - Adding new trigger", buffer=self.stdoutBuffer)
+            if self.verbose >= 2: self.log("AW - Adding new trigger")
             triggers.append(trigger)
 
-class VideoAcquirer(mp.Process):
+class VideoAcquirer(StateMachineProcess):
     # States:
     STOPPED = 0
     INITIALIZING = 1
@@ -3022,12 +2965,9 @@ class VideoAcquirer(mp.Process):
                 acquireSettings={},
                 frameRate=None,
                 monitorFrameRate=15,
-                messageQueue=None,
                 verbose=False,
-                ready=None,                        # Synchronization barrier to ensure everyone's ready before beginning
-                stdoutQueue=None):
-        mp.Process.__init__(self, daemon=True)
-        self.publishedStateVar = mp.Value('i', -1)
+                ready=None):                        # Synchronization barrier to ensure everyone's ready before beginning
+        StateMachineProcess.__init__(self, **kwargs)
         self.startTimeSharedValue = startTime
         self.camSerial = camSerial
         self.ID = 'VA_'+self.camSerial
@@ -3045,32 +2985,20 @@ class VideoAcquirer(mp.Process):
         self.monitorStopwatch = Stopwatch()
         self.exitFlag = False
         self.errorMessages = []
-        self.messageQueue = messageQueue
         self.verbose = verbose
-        self.stdoutQueue = stdoutQueue
-        self.stdoutBuffer = []
-        self.PID = mp.Value('i', -1)
 
     def setParams(self, **params):
         for key in params:
             if key in VideoAcquirer.settableParams:
                 setattr(self, key, params[key])
-                if self.verbose >= 1: syncPrint("VA - Param set: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
+                if self.verbose >= 1: self.log("VA - Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: syncPrint("VA - Param not settable: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
-
-    def updatePublishedState(self, state):
-        if self.publishedStateVar is not None:
-            L = self.publishedStateVar.get_lock()
-            locked = L.acquire(block=False)
-            if locked:
-                self.publishedStateVar.value = state
-                L.release()
+                if self.verbose >= 0: self.log("VA - Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
 #        if self.verbose >= 1: profiler = cProfile.Profile()
-        if self.verbose >= 1: syncPrint(self.ID + " PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
+        if self.verbose >= 1: self.log(self.ID + " PID={pid}".format(pid=os.getpid()))
 
         state = VideoAcquirer.STOPPED
         nextState = VideoAcquirer.STOPPED
@@ -3089,7 +3017,7 @@ class VideoAcquirer(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=True)
+                        msg, arg = self.msgQueue.get(block=True)
                         if msg == VideoAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -3118,7 +3046,7 @@ class VideoAcquirer(mp.Process):
                     self.setCameraAttributes(nodemap, self.acquireSettings)
 
                     monitorFramePeriod = 1.0/self.monitorMasterFrameRate
-                    if self.verbose >= 1: syncPrint("Monitoring with period", monitorFramePeriod, buffer=self.stdoutBuffer)
+                    if self.verbose >= 1: self.log("Monitoring with period", monitorFramePeriod)
                     thisTime = 0
                     lastTime = time.time()
                     imageCount = 0
@@ -3128,7 +3056,7 @@ class VideoAcquirer(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == VideoAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -3150,17 +3078,17 @@ class VideoAcquirer(mp.Process):
                     cam.BeginAcquisition()
                     try:
                         if self.ready is not None:
-#                            if self.verbose >= 1: syncPrint('{ID} ready: {parties} {n_waiting}'.format(ID=self.ID, parties=self.ready.parties, n_waiting=self.ready.n_waiting), buffer=self.stdoutBuffer)
+#                            if self.verbose >= 1: self.log('{ID} ready: {parties} {n_waiting}'.format(ID=self.ID, parties=self.ready.parties, n_waiting=self.ready.n_waiting))
                             self.ready.wait()
                     except BrokenBarrierError:
-                        if self.verbose >= 0: syncPrint(self.ID + " Simultaneous start failure", buffer=self.stdoutBuffer)
+                        if self.verbose >= 0: self.log(self.ID + " Simultaneous start failure")
                         nextState = VideoAcquirer.STOPPING
 
-#                    if self.verbose >= 1: syncPrint('{ID} passed barrier'.format(ID=self.ID), buffer=self.stdoutBuffer)
+#                    if self.verbose >= 1: self.log('{ID} passed barrier'.format(ID=self.ID))
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == VideoAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -3183,31 +3111,31 @@ class VideoAcquirer(mp.Process):
                         imageResult = cam.GetNextImage()
                         # Get timestamp of first image acquisition
                         if startTime is None:
-                            if self.verbose >= 1: syncPrint(self.ID+" - Getting start time from sync process...", buffer=self.stdoutBuffer)
+                            if self.verbose >= 1: self.log(self.ID+" - Getting start time from sync process...")
                             while startTime == -1 or startTime is None:
                                 startTime = self.startTimeSharedValue.value
-                            if self.verbose >= 1: syncPrint(self.ID+" - Got start time from sync process:"+str(startTime), buffer=self.stdoutBuffer)
+                            if self.verbose >= 1: self.log(self.ID+" - Got start time from sync process:"+str(startTime))
 #                            startTime = time.time_ns() / 1000000000
 
                         # Time frames, as an extra check
                         self.frameStopwatch.click()
-                        if self.verbose >= 3: syncPrint(self.ID + " Video freq: ", self.frameStopwatch.frequency(), buffer=self.stdoutBuffer)
+                        if self.verbose >= 3: self.log(self.ID + " Video freq: ", self.frameStopwatch.frequency())
 
                         #  Ensure image completion
                         if imageResult.IsIncomplete():
-                            if self.verbose >= 0: syncPrint('VA - Image incomplete with image status %d...' % imageResult.GetImageStatus(), buffer=self.stdoutBuffer)
+                            if self.verbose >= 0: self.log('VA - Image incomplete with image status %d...' % imageResult.GetImageStatus())
                         else:
 #                            imageConverted = imageResult.Convert(PySpin.PixelFormat_BGR8)
                             imageCount += 1
                             frameTime = startTime + imageCount / self.frameRate
 
-                            if self.verbose >= 3: syncPrint(self.ID + " Got image from camera, t="+str(frameTime), buffer=self.stdoutBuffer)
+                            if self.verbose >= 3: self.log(self.ID + " Got image from camera, t="+str(frameTime))
 
                             imp = PickleableImage(imageResult.GetWidth(), imageResult.GetHeight(), 0, 0, imageResult.GetPixelFormat(), imageResult.GetData(), frameTime)
 
                             # Put image into image queue
                             self.imageQueue.put(imp)
-                            if self.verbose >= 3: syncPrint(self.ID + " Pushed image into buffer", buffer=self.stdoutBuffer)
+                            if self.verbose >= 3: self.log(self.ID + " Pushed image into buffer")
 
                             if self.monitorImageQueue is not None:
                                 # Put the occasional image in the monitor queue for the UI
@@ -3216,19 +3144,19 @@ class VideoAcquirer(mp.Process):
                                 if (thisTime - lastTime) >= monitorFramePeriod:
                                     try:
                                         self.monitorImageQueue.put(imp, block=False)
-                                        if self.verbose >= 3: syncPrint(self.ID + " Sent frame for monitoring", buffer=self.stdoutBuffer)
+                                        if self.verbose >= 3: self.log(self.ID + " Sent frame for monitoring")
                                         lastTime = thisTime
                                     except queue.Full:
                                         pass
 
                         imageResult.Release()
                     except PySpin.SpinnakerException:
-                        syncPrint(traceback.format_exc(), buffer=self.stdoutBuffer)
-                        if self.verbose >= 0: syncPrint(self.ID + " Video frame acquisition timed out.", buffer=self.stdoutBuffer)
+                        self.log(traceback.format_exc())
+                        if self.verbose >= 0: self.log(self.ID + " Video frame acquisition timed out.")
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == VideoAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -3258,7 +3186,7 @@ class VideoAcquirer(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == VideoAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -3280,13 +3208,13 @@ class VideoAcquirer(mp.Process):
                 elif state == VideoAcquirer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        syncPrint(self.ID + " ERROR STATE. Error messages:\n\n", buffer=self.stdoutBuffer)
-                        syncPrint("\n\n".join(self.errorMessages), buffer=self.stdoutBuffer)
+                        self.log(self.ID + " ERROR STATE. Error messages:\n\n")
+                        self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == VideoAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -3320,7 +3248,7 @@ class VideoAcquirer(mp.Process):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: syncPrint(self.ID + " Keyboard interrupt received - exiting", buffer=self.stdoutBuffer)
+                if self.verbose >= 0: self.log(self.ID + " Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = VideoAcquirer.STOPPING
             except:
@@ -3329,40 +3257,39 @@ class VideoAcquirer(mp.Process):
                 nextState = VideoAcquirer.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                syncPrint("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag), buffer=self.stdoutBuffer)
-                syncPrint('*********************************** /\ ' + self.ID + ' ' + self.stateList[state] + ' /\ ********************************************', buffer=self.stdoutBuffer)
+                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log('*********************************** /\ ' + self.ID + ' ' + self.stateList[state] + ' /\ ********************************************')
 
-            if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
-            self.stdoutBuffer = []
+            self.flushStdout()
 
             # Prepare to advance to next state
             lastState = state
             state = nextState
 
-        clearQueue(self.messageQueue)
-        if self.verbose >= 1: syncPrint("Video acquire process STOPPED", buffer=self.stdoutBuffer)
+        clearQueue(self.msgQueue)
+        if self.verbose >= 1: self.log("Video acquire process STOPPED")
         # if self.verbose > 1:
         #     s = io.StringIO()
         #     ps = pstats.Stats(profiler, stream=s)
         #     ps.print_stats()
-        #     syncPrint(s.getvalue(), buffer=self.stdoutBuffer)
-        if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
-        self.stdoutBuffer = []
+        #     self.log(s.getvalue())
+
+        self.flushStdout()
         self.updatePublishedState(self.DEAD)
 
     def setCameraAttribute(self, nodemap, attributeName, attributeValue, type='enum'):
         # Set camera attribute. ReturnRetrusn True if successful, False otherwise.
-        if self.verbose >= 1: syncPrint('Setting', attributeName, 'to', attributeValue, 'as', type, buffer=self.stdoutBuffer)
+        if self.verbose >= 1: self.log('Setting', attributeName, 'to', attributeValue, 'as', type)
         nodeAttribute = nodeAccessorTypes[type](nodemap.GetNode(attributeName))
         if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsWritable(nodeAttribute):
-            if self.verbose >= 0: syncPrint('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (enum retrieval). Aborting...', buffer=self.stdoutBuffer)
+            if self.verbose >= 0: self.log('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (enum retrieval). Aborting...')
             return False
 
         if type == 'enum':
             # Retrieve entry node from enumeration node
             nodeAttributeValue = nodeAttribute.GetEntryByName(attributeValue)
             if not PySpin.IsAvailable(nodeAttributeValue) or not PySpin.IsReadable(nodeAttributeValue):
-                if self.verbose >= 0: syncPrint('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (entry retrieval). Aborting...', buffer=self.stdoutBuffer)
+                if self.verbose >= 0: self.log('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (entry retrieval). Aborting...')
                 return False
 
             # Set value
@@ -3377,9 +3304,9 @@ class VideoAcquirer(mp.Process):
         for attribute, value, type in attributeValueTriplets:
             result = self.setCameraAttribute(nodemap, attribute, value, type=type)
             if not result:
-                syncPrint("Failed to set", str(attribute), " to ", str(value), buffer=self.stdoutBuffer)
+                self.log("Failed to set", str(attribute), " to ", str(value))
 
-class VideoWriter(mp.Process):
+class VideoWriter(StateMachineProcess):
     # States:
     STOPPED = 0
     INITIALIZING = 1
@@ -3420,14 +3347,11 @@ class VideoWriter(mp.Process):
                 videoBaseFileName='videoFile',
                 imageQueue=None,
                 frameRate=10,
-                messageQueue=None,
                 mergeMessageQueue=None,            # Queue to put (filename, trigger) in for merging
                 bufferSizeSeconds=5,
                 camSerial='',
-                verbose=False,
-                stdoutQueue=None):
-        mp.Process.__init__(self, daemon=True)
-        self.publishedStateVar = mp.Value('i', -1)
+                verbose=False):
+        StateMachineProcess.__init__(self, **kwargs)
         self.camSerial = camSerial
         self.ID = 'VW_' + self.camSerial
         self.videoDirectory=videoDirectory
@@ -3436,38 +3360,25 @@ class VideoWriter(mp.Process):
         if self.imageQueue is not None:
             self.imageQueue.cancel_join_thread()
         self.frameRate = frameRate
-        self.messageQueue = messageQueue
-        self.mergeMessageQueue = mergeMessageQueue
+        self.mergeProcess.msgQueue = mergeMessageQueue
         self.bufferSize = int(2*bufferSizeSeconds * self.frameRate)
         self.buffer = deque(maxlen=self.bufferSize)
         self.errorMessages = []
-        self.exitFlag = False
         self.verbose = verbose
-        self.stdoutQueue = stdoutQueue
-        self.stdoutBuffer = []
         self.videoWriteMethod = 'PySpin'   # options are ffmpeg, PySpin, OpenCV
-        self.PID = mp.Value('i', -1)
 
     def setParams(self, **params):
         for key in params:
             if key in VideoWriter.settableParams:
                 setattr(self, key, params[key])
-                if self.verbose >= 1: syncPrint(self.ID + " - Param set: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
+                if self.verbose >= 1: self.log(self.ID + " - Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: syncPrint(self.ID + " - Param not settable: {key}={val}".format(key=key, val=params[key]), buffer=self.stdoutBuffer)
-
-    def updatePublishedState(self, state):
-        if self.publishedStateVar is not None:
-            L = self.publishedStateVar.get_lock()
-            locked = L.acquire(block=False)
-            if locked:
-                self.publishedStateVar.value = state
-                L.release()
+                if self.verbose >= 0: self.log(self.ID + " - Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
 #        if self.verbose >= 1: profiler = cProfile.Profile()
-        if self.verbose >= 1: syncPrint(self.ID + " - PID={pid}".format(pid=os.getpid()), buffer=self.stdoutBuffer)
+        if self.verbose >= 1: self.log(self.ID + " - PID={pid}".format(pid=os.getpid()))
         state = VideoWriter.STOPPED
         nextState = VideoWriter.STOPPED
         lastState = VideoWriter.STOPPED
@@ -3485,7 +3396,7 @@ class VideoWriter(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=True)
+                        msg, arg = self.msgQueue.get(block=True)
                         if msg == VideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -3513,7 +3424,7 @@ class VideoWriter(mp.Process):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == VideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -3533,24 +3444,24 @@ class VideoWriter(mp.Process):
                 elif state == VideoWriter.BUFFERING:
                     # DO STUFF
                     if self.verbose >= 3:
-                        syncPrint("Image queue size: ", self.imageQueue.qsize(), buffer=self.stdoutBuffer)
-                        syncPrint("Images in buffer: ", len(self.buffer), buffer=self.stdoutBuffer)
+                        self.log("Image queue size: ", self.imageQueue.qsize())
+                        self.log("Images in buffer: ", len(self.buffer))
                     if len(self.buffer) >= self.buffer.maxlen:
                         # If buffer is full, pull oldest video frame from buffer
                         imp = self.buffer.popleft()
-                        if self.verbose >= 3: syncPrint(self.ID + " - Pulling video frame from buffer. t="+str(imp.frameTime) + " (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen), buffer=self.stdoutBuffer)
+                        if self.verbose >= 3: self.log(self.ID + " - Pulling video frame from buffer. t="+str(imp.frameTime) + " (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
 
                     try:
                         # Get new video frame and push it into the buffer
                         newImp = self.imageQueue.get(block=True, timeout=0.1)
-                        if self.verbose >= 3: syncPrint(self.ID + " - Got video frame from acquirer. Pushing into the buffer. t="+str(newImp.frameTime), buffer=self.stdoutBuffer)
+                        if self.verbose >= 3: self.log(self.ID + " - Got video frame from acquirer. Pushing into the buffer. t="+str(newImp.frameTime))
                         self.buffer.append(newImp)
                     except queue.Empty: # None available
                         newImp = None
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == VideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                         elif msg == VideoWriter.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
@@ -3563,33 +3474,33 @@ class VideoWriter(mp.Process):
                         nextState = VideoWriter.STOPPING
                     elif len(triggers) > 0:
                         # We have triggers - next state will depend on them
-                        if self.verbose >= 2: syncPrint(self.ID + " - Trigger is active", buffer=self.stdoutBuffer)
+                        if self.verbose >= 2: self.log(self.ID + " - Trigger is active")
                         if imp is not None:
                             # At least one video frame has been received - we can check if trigger period has begun
                             triggerState = triggers[0].state(imp.frameTime)
-                            if self.verbose >= 2: syncPrint(self.ID + " - Trigger state: {state}".format(state=triggerState), buffer=self.stdoutBuffer)
+                            if self.verbose >= 2: self.log(self.ID + " - Trigger state: {state}".format(state=triggerState))
                             if triggerState < 0:        # Time is before trigger range
-                                if self.verbose >= 2: syncPrint(self.ID + " - Active trigger, but haven't gotten to start time yet, continue buffering.", buffer=self.stdoutBuffer)
+                                if self.verbose >= 2: self.log(self.ID + " - Active trigger, but haven't gotten to start time yet, continue buffering.")
                                 nextState = VideoWriter.BUFFERING
                             elif triggerState == 0:     # Time is now in trigger range
                                 if self.verbose >= 0:
                                     delta = imp.frameTime - triggers[0].startTime
                                     if delta <= 1/self.frameRate:
                                         # Within one frame of trigger start
-                                        syncPrint(self.ID + " - Got trigger start!", buffer=self.stdoutBuffer)
+                                        self.log(self.ID + " - Got trigger start!")
                                     else:
                                         # More than one frame after trigger start - we missed some
-                                        syncPrint(self.ID + " - partially missed trigger by {t} seconds, which is {f} frames!".format(t=delta, f=delta/self.frameRate), buffer=self.stdoutBuffer)
+                                        self.log(self.ID + " - partially missed trigger by {t} seconds, which is {f} frames!".format(t=delta, f=delta/self.frameRate))
                                 timeWrote = 0
                                 nextState = VideoWriter.WRITING
                             else:                       # Time is after trigger range
-                                if self.verbose >= 0: syncPrint(self.ID + " - Missed trigger start by {triggerState} seconds!".format(triggerState=triggerState), buffer=self.stdoutBuffer)
+                                if self.verbose >= 0: self.log(self.ID + " - Missed trigger start by {triggerState} seconds!".format(triggerState=triggerState))
                                 timeWrote = 0
                                 nextState = VideoWriter.BUFFERING
                                 triggers.pop(0)
                         else:
                             # No video frames have been received yet, can't evaluate if trigger time has begun yet
-                            if self.verbose >= 1: syncPrint(self.ID + " - No frames yet, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen), buffer=self.stdoutBuffer)
+                            if self.verbose >= 1: self.log(self.ID + " - No frames yet, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
                             nextState = VideoWriter.BUFFERING
 
                     elif msg in ['', VideoWriter.START]:
@@ -3601,8 +3512,8 @@ class VideoWriter(mp.Process):
                     # if self.verbose >= 1: profiler.enable()
                     # DO STUFF
                     if self.verbose >= 3:
-                        syncPrint(self.ID + " - Image queue size: ", self.imageQueue.qsize(), buffer=self.stdoutBuffer)
-                        syncPrint(self.ID + " - Images in buffer: ", len(self.buffer), buffer=self.stdoutBuffer)
+                        self.log(self.ID + " - Image queue size: ", self.imageQueue.qsize())
+                        self.log(self.ID + " - Images in buffer: ", len(self.buffer))
                     if imp is not None:
                         if videoFileInterface is None:
                             # Start new video file
@@ -3612,7 +3523,7 @@ class VideoWriter(mp.Process):
                                 videoFileInterface = PySpin.SpinVideo()
                                 option = PySpin.AVIOption()
                                 option.frameRate = self.frameRate
-                                if self.verbose >= 2: syncPrint(self.ID + " - Opening file to save video with frameRate ", option.frameRate, buffer=self.stdoutBuffer)
+                                if self.verbose >= 2: self.log(self.ID + " - Opening file to save video with frameRate ", option.frameRate)
                                 videoFileInterface.Open(videoFileName, option)
                                 stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
                                 videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
@@ -3622,7 +3533,7 @@ class VideoWriter(mp.Process):
                         # Write video frame to file that was previously retrieved from the buffer
                         if self.verbose >= 3:
                             timeWrote += 1/self.frameRate
-                            syncPrint(self.ID + " - Viedeo time wrote ="+str(timeWrote), buffer=self.stdoutBuffer)
+                            self.log(self.ID + " - Viedeo time wrote ="+str(timeWrote))
 
                         if self.videoWriteMethod == "PySpin":
                             # Reconstitute PySpin image from PickleableImage
@@ -3633,8 +3544,8 @@ class VideoWriter(mp.Process):
                             #     im.Release()
                             # except PySpin.SpinnakerException:
                             #     if self.verbose >= 0:
-                            #         syncPrint("Error releasing unconverted PySpin image after appending to AVI.", buffer=self.stdoutBuffer)
-                            #         syncPrint(traceback.format_exc(), buffer=self.stdoutBuffer)
+                            #         self.log("Error releasing unconverted PySpin image after appending to AVI.")
+                            #         self.log(traceback.format_exc())
                             del im
                         elif self.videoWriteMethod == "ffmpeg":
                             videoFileInterface.write(imp.data, shape=(imp.width, imp.height))
@@ -3642,23 +3553,23 @@ class VideoWriter(mp.Process):
                     try:
                         # Pop the oldest image frame from the back of the buffer.
                         imp = self.buffer.popleft()
-                        if self.verbose >= 3: syncPrint(self.ID + " - Pulled image from buffer", buffer=self.stdoutBuffer)
+                        if self.verbose >= 3: self.log(self.ID + " - Pulled image from buffer")
                     except IndexError:
-                        if self.verbose >= 3: syncPrint(self.ID + " - No images in buffer", buffer=self.stdoutBuffer)
+                        if self.verbose >= 3: self.log(self.ID + " - No images in buffer")
                         imp = None  # Buffer was empty
 
                     # Pull new image from VideoAcquirer and add to the front of the buffer.
                     try:
                         newImp = self.imageQueue.get(True, 0.1)
-                        if self.verbose >= 3: syncPrint(self.ID + " - Got image from acquirer. Pushing into buffer.", buffer=self.stdoutBuffer)
+                        if self.verbose >= 3: self.log(self.ID + " - Got image from acquirer. Pushing into buffer.")
                         self.buffer.append(newImp)
                     except queue.Empty:
                         # No data in image queue yet - pass.
-                        if self.verbose >= 0: syncPrint(self.ID + " - No images available from acquirer", buffer=self.stdoutBuffer)
+                        if self.verbose >= 0: self.log(self.ID + " - No images available from acquirer")
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == VideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                         elif msg == VideoWriter.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
@@ -3677,7 +3588,7 @@ class VideoWriter(mp.Process):
                             triggerState = triggers[0].state(imp.frameTime)
                             if triggerState != 0:
                                 # Frame is not in trigger period - return to buffering
-                                if self.verbose >= 2: syncPrint(self.ID + " - Frame does not overlap trigger. Switching to buffering.", buffer=self.stdoutBuffer)
+                                if self.verbose >= 2: self.log(self.ID + " - Frame does not overlap trigger. Switching to buffering.")
                                 nextState = VideoWriter.BUFFERING
                                 # Remove current trigger
                                 if videoFileInterface is not None:
@@ -3686,7 +3597,7 @@ class VideoWriter(mp.Process):
                                         videoFileInterface.Close()
                                     elif self.videoWriteMethod == "ffmpeg":
                                         videoFileInterface.close()
-                                    if self.mergeMessageQueue is not None:
+                                    if self.mergeProcess.msgQueue is not None:
                                         # Send file for AV merging:
                                         if self.videoWriteMethod == "PySpin":
                                             fileEvent = dict(
@@ -3702,8 +3613,8 @@ class VideoWriter(mp.Process):
                                                 trigger=triggers[0],
                                                 streamID=self.camSerial
                                             )
-                                        if self.verbose >= 2: syncPrint(self.ID + " - Sending video filename to merger", buffer=self.stdoutBuffer)
-                                        self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                                        if self.verbose >= 2: self.log(self.ID + " - Sending video filename to merger")
+                                        self.mergeProcess.msgQueue.put((AVMerger.MERGE, fileEvent))
                                     videoFileInterface = None
                                 triggers.pop(0)
                             else:
@@ -3720,7 +3631,7 @@ class VideoWriter(mp.Process):
                             videoFileInterface.Close()
                         elif self.videoWriteMethod == "ffmpeg":
                             videoFileInterface.close()
-                        if self.mergeMessageQueue is not None:
+                        if self.mergeProcess.msgQueue is not None:
                             # Send file for AV merging:
                             if self.videoWriteMethod == "PySpin":
                                 fileEvent = dict(
@@ -3736,13 +3647,13 @@ class VideoWriter(mp.Process):
                                     trigger=triggers[0],
                                     streamID=self.camSerial
                                 )
-                            self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                            self.mergeProcess.msgQueue.put((AVMerger.MERGE, fileEvent))
                         videoFileInterface = None
                     triggers = []
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == VideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -3764,13 +3675,13 @@ class VideoWriter(mp.Process):
                 elif state == VideoWriter.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        syncPrint(self.ID + " - ERROR STATE. Error messages:\n\n", buffer=self.stdoutBuffer)
-                        syncPrint("\n\n".join(self.errorMessages), buffer=self.stdoutBuffer)
+                        self.log(self.ID + " - ERROR STATE. Error messages:\n\n")
+                        self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.messageQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False)
                         if msg == VideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
@@ -3804,7 +3715,7 @@ class VideoWriter(mp.Process):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: syncPrint(self.ID + " - Keyboard interrupt received - exiting", buffer=self.stdoutBuffer)
+                if self.verbose >= 0: self.log(self.ID + " - Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = VideoWriter.STOPPING
             except:
@@ -3813,34 +3724,32 @@ class VideoWriter(mp.Process):
                 nextState = VideoWriter.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                syncPrint("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag), buffer=self.stdoutBuffer)
-                syncPrint('*********************************** /\ ' + self.ID + ' ' + self.stateList[state] + ' /\ ********************************************', buffer=self.stdoutBuffer)
+                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log('*********************************** /\ ' + self.ID + ' ' + self.stateList[state] + ' /\ ********************************************')
 
-            if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
-            self.stdoutBuffer = []
+            self.flushStdout()
 
             # Prepare to advance to next state
             lastState = state
             state = nextState
 
-        if self.verbose >= 1: syncPrint("Video write process STOPPED", buffer=self.stdoutBuffer)
+        if self.verbose >= 1: self.log("Video write process STOPPED")
         # if self.verbose > 1:
         #     s = io.StringIO()
         #     ps = pstats.Stats(profiler, stream=s)
         #     ps.print_stats()
-        #     syncPrint(s.getvalue(), buffer=self.stdoutBuffer)
-        if len(self.stdoutBuffer) > 0: self.stdoutQueue.put(self.stdoutBuffer)
-        self.stdoutBuffer = []
+        #     self.log(s.getvalue())
+        self.flushStdout()
         self.updatePublishedState(self.DEAD)
 
     def updateTriggers(self, triggers, trigger):
         if len(triggers) > 0 and trigger.id == triggers[-1].id:
             # This is an updated trigger, not a new trigger
-            if self.verbose >= 2: syncPrint(self.ID + " - Updating trigger", buffer=self.stdoutBuffer)
+            if self.verbose >= 2: self.log(self.ID + " - Updating trigger")
             triggers[-1] = trigger
         else:
             # This is a new trigger
-            if self.verbose >= 2: syncPrint(self.ID + " - Adding new trigger", buffer=self.stdoutBuffer)
+            if self.verbose >= 2: self.log(self.ID + " - Adding new trigger")
             triggers.append(trigger)
 
 def getCameraAttribute(nodemap, attributeName, attributeTypePtrFunction):
@@ -4258,20 +4167,19 @@ class PyVAQ:
         self.videoMonitorQueues = None
         self.audioMonitorQueue = None
         self.audioAnalysisQueue = None
-        self.mergeMessageQueue = None
         self.monitorMasterFrameRate = 15
-        self.audioMonitorData = None    #np.zeros((len(self.audioDAQChannels), self.audioMonitorSampleSize))
+        # self.audioMonitorData = None    #np.zeros((len(self.audioDAQChannels), self.audioMonitorSampleSize))
         self.stdoutQueue = None
         self.audioAnalysisMonitorQueue = None
 
         # Message queues for sending commands to processes
-        self.audioAcquireMessageQueue = None
-        self.audioWriteMessageQueue = None
-        self.syncMessageQueue = None
-        self.videoAcquireMessageQueues = {}
-        self.videoWriteMessageQueues = {}
-        self.mergeMessageQueue = None
-        self.audioTriggerMessageQueue = None
+        # self.audioAcquireProcess.msgQueue = None
+        # self.audioWriteProcess.msgQueue = None
+        # self.syncProcess.msgQueue = None
+        # self.videoAcquireMessageQueues = {}
+        # self.videoWriteMessageQueues = {}
+        # self.mergeProcess.msgQueue = None
+        # self.audioTriggerProcess.msgQueue = None
 
         # Pointers to processes
         self.videoWriteProcesses = {}
@@ -4372,19 +4280,19 @@ class PyVAQ:
         self.updateChildProcessVerbosity()
 
     def updateChildProcessVerbosity(self):
-        if self.audioAcquireMessageQueue is not None:
-            self.audioAcquireMessageQueue.put((AudioAcquirer.SETPARAMS, {'verbose':self.audioAcquireVerbose}))
-        if self.audioWriteMessageQueue is not None:
-            self.audioWriteMessageQueue.put((AudioWriter.SETPARAMS, {'verbose':self.audioWriteVerbose}))
-        if self.syncMessageQueue is not None:
-            self.syncMessageQueue.put((Synchronizer.SETPARAMS, {'verbose':self.syncVerbose}))
-        if self.mergeMessageQueue is not None:
-            self.mergeMessageQueue.put((AVMerger.SETPARAMS, {'verbose':self.mergeVerbose}))
-        if self.audioTriggerMessageQueue is not None:
-            self.audioTriggerMessageQueue.put((AudioTriggerer.SETPARAMS, {'verbose':self.audioTriggerVerbose}))
-        for camSerial in self.videoWriteMessageQueues:
-            self.videoAcquireMessageQueues[camSerial].put((VideoAcquirer.SETPARAMS, {'verbose':self.videoAcquireVerbose}))
-            self.videoWriteMessageQueues[camSerial].put((VideoWriter.SETPARAMS, {'verbose':self.videoWriteVerbose}))
+        if self.audioAcquireProcess is not None:
+            self.audioAcquireProcess.msgQueue.put((AudioAcquirer.SETPARAMS, {'verbose':self.audioAcquireVerbose}))
+        if self.audioWriteProcess is not None:
+            self.audioWriteProcess.msgQueue.put((AudioWriter.SETPARAMS, {'verbose':self.audioWriteVerbose}))
+        if self.syncProcess is not None:
+            self.syncProcess.msgQueue.put((Synchronizer.SETPARAMS, {'verbose':self.syncVerbose}))
+        if self.mergeProcess is not None:
+            self.mergeProcess.msgQueue.put((AVMerger.SETPARAMS, {'verbose':self.mergeVerbose}))
+        if self.audioTriggerProcess is not None:
+            self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, {'verbose':self.audioTriggerVerbose}))
+        for camSerial in self.videoAcquireProcesses:
+            self.videoAcquireProcesses[camSerial].msgQueue.put((VideoAcquirer.SETPARAMS, {'verbose':self.videoAcquireVerbose}))
+            self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.SETPARAMS, {'verbose':self.videoWriteVerbose}))
 
     def showHelpDialog(self, *args):
         msg = 'Sorry, nothing here yet.'
@@ -4543,7 +4451,7 @@ him know. Otherwise, I had nothing to do with it.
         self.update()
 
     def updateAudioTriggerSettings(self, *args):
-        if self.audioTriggerMessageQueue is not None:
+        if self.audioTriggerProcess.msgQueue is not None:
             paramList = [
                 'triggerHighLevel',
                 'triggerLowLevel',
@@ -4567,7 +4475,7 @@ him know. Otherwise, I had nothing to do with it.
             #     multiChannelStartBehavior=self.multiChannelStartBehaviorVar.get(),
             #     multiChannelStopBehavior=self.multiChannelStopBehaviorVar.get()
             # )
-            self.audioTriggerMessageQueue.put((AudioTriggerer.SETPARAMS, params))
+            self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, params))
 
     def updateAVMergerState(self, *args):
         merging = self.mergeFilesVar.get()
@@ -4578,43 +4486,43 @@ him know. Otherwise, I had nothing to do with it.
             self.deleteMergedFilesCheckbutton.config(state=tk.DISABLED)
             self.montageMergeCheckbutton.config(state=tk.DISABLED)
 
-        if self.mergeMessageQueue is not None:
+        if self.mergeProcess.msgQueue is not None:
             if merging:
-                self.mergeMessageQueue.put((AVMerger.START, None))
+                self.mergeProcess.msgQueue.put((AVMerger.START, None))
             else:
-                self.mergeMessageQueue.put((AVMerger.CHILL, None))
+                self.mergeProcess.msgQueue.put((AVMerger.CHILL, None))
 
     def changeAVMergerParams(self, **params):
-        if self.mergeMessageQueue is not None:
-            self.mergeMessageQueue.put((AVMerger.SETPARAMS, params))
+        if self.mergeProcess.msgQueue is not None:
+            self.mergeProcess.msgQueue.put((AVMerger.SETPARAMS, params))
 
     def videoDirectoryChangeHandler(self, *args):
         p = self.getParams(
             'videoDirectories',
             'videoBaseFileNames'
             )
-        for camSerial in self.videoWriteMessageQueues:
+        for camSerial in self.videoWriteProcesses:
             if len(p['videoDirectories'][camSerial]) == 0 or os.path.isdir(p['videoDirectories'][camSerial]):
                 # Notify VideoWriter child process of new write directory
-                self.videoWriteMessageQueues[camSerial].put((VideoWriter.SETPARAMS, dict(videoDirectory=p['videoDirectories'][camSerial])))
+                self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.SETPARAMS, dict(videoDirectory=p['videoDirectories'][camSerial].msgQueue)))
     def audioDirectoryChangeHandler(self, *args):
         p = self.getParams(
             'audioDirectory',
             'audioBaseFileName'
             )
-        if self.audioWriteMessageQueue is not None:
+        if self.audioWriteProcess.msgQueue is not None:
             if len(p['audioDirectory']) == 0 or os.path.isdir(p['audioDirectory']):
                 # Notify AudioWriter child process of new write directory
-                self.audioWriteMessageQueue.put((AudioWriter.SETPARAMS, dict(audioDirectory=p['audioDirectory'])))
+                self.audioWriteProcess.msgQueue.put((AudioWriter.SETPARAMS, dict(audioDirectory=p['audioDirectory'])))
     def mergeDirectoryChangeHandler(self, *args):
         p = self.getParams(
             'mergeDirectory',
             'mergeBaseFileName'
         )
-        if self.mergeMessageQueue is not None:
+        if self.mergeProcess.msgQueue is not None:
             if len(p['mergeDirectory']) == 0 or os.path.isdir(p['mergeDirectory']):
                 # Notify AVMerger child process of new write directory
-                self.mergeMessageQueue.put((AVMerger.SETPARAMS, dict(directory=p['mergeDirectory'])))
+                self.mergeProcess.msgQueue.put((AVMerger.SETPARAMS, dict(directory=p['mergeDirectory'])))
 
     def selectMergedWriteDirectory(self, *args):
         directory = askdirectory(
@@ -4636,12 +4544,12 @@ him know. Otherwise, I had nothing to do with it.
             self.master.after_cancel(self.audioAnalysisMonitorUpdateJob)
 
         if newMode == "Audio":
-            if self.audioTriggerMessageQueue is not None:
-                self.audioTriggerMessageQueue.put((AudioTriggerer.STARTANALYZE, None))
+            if self.audioTriggerProcess.msgQueue is not None:
+                self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STARTANALYZE, None))
             self.autoUpdateAudioAnalysisMonitors()
         else:
-            if self.audioTriggerMessageQueue is not None:
-                self.audioTriggerMessageQueue.put((AudioTriggerer.STOPANALYZE, None))
+            if self.audioTriggerProcess.msgQueue is not None:
+                self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOPANALYZE, None))
 
         self.update()
 
@@ -4946,7 +4854,7 @@ him know. Otherwise, I had nothing to do with it.
         print("main>> audioAnalysisQueue size:", self.audioAnalysisQueue.qsize())
         print("main>> audioMonitorQueue size:", self.audioMonitorQueue.qsize())
         print("main>> audioAnalysisMonitorQueue size:", self.audioAnalysisMonitorQueue.qsize())
-        print("main>> mergeMessageQueue size:", self.mergeMessageQueue.qsize())
+        print("main>> mergeMessageQueue size:", self.mergeProcess.msgQueue.qsize())
         print("main>> stdoutQueue size:", self.stdoutQueue.qsize())
         print("main>> ...get qsizes")
 
@@ -5214,15 +5122,12 @@ him know. Otherwise, I had nothing to do with it.
 
         ready = mp.Barrier(p["numSyncedProcesses"])
 
-        self.stdoutQueue = mp.Queue()
-        self.StdoutManager = StdoutManager(self.stdoutQueue)
+        self.StdoutManager = StdoutManager()
         self.StdoutManager.start()
 
         self.videoMonitorQueues = {}
         self.audioMonitorQueue = mp.Queue()
         self.audioAnalysisQueue = mp.Queue()
-        self.mergeMessageQueue = mp.Queue()
-        self.audioTriggerMessageQueue = mp.Queue()
         self.audioAnalysisMonitorQueue = mp.Queue()
 
         # Shared values so all processes can access actual DAQ frequencies
@@ -5234,8 +5139,22 @@ him know. Otherwise, I had nothing to do with it.
 
         startTime = mp.Value('d', -1)
 
+        if p["numStreams"] >= 2:
+            # Create merge process
+            self.mergeProcess = AVMerger(
+                directory=p["mergeDirectory"],
+                numFilesPerTrigger=p["numStreams"],
+                messageQueue=self.mergeProcess.msgQueue,
+                verbose=self.mergeVerbose,
+                stdoutQueue=self.StdoutManager.queue,
+                baseFileName=p["mergeBaseFileName"],
+                montage=p["montageMerge"],
+                deleteMergedFiles=p["deleteMergedFiles"]
+                )
+        else:
+            self.mergeProcess = None
+
         # Create sync process
-        self.syncMessageQueue = mp.Queue()
         self.syncProcess = Synchronizer(
             actualVideoFrequency=self.actualVideoFrequency,
             actualAudioFrequency=self.actualAudioFrequency,
@@ -5244,33 +5163,28 @@ him know. Otherwise, I had nothing to do with it.
             videoSyncChannel=self.videoSyncTerminal,
             requestedAudioFrequency=p["audioFrequency"],
             requestedVideoFrequency=p["videoFrequency"],
-            messageQueue=self.syncMessageQueue,
             verbose=self.syncVerbose,
             ready=ready,
-            stdoutQueue=self.stdoutQueue)
+            stdoutQueue=self.StdoutManager.queue)
 
         if len(self.audioDAQChannels) > 0:
             audioQueue = mp.Queue()
-            self.audioAcquireMessageQueue = mp.Queue()
-            self.audioWriteMessageQueue = mp.Queue()
             self.audioWriteProcess = AudioWriter(
                 audioDirectory=p["audioDirectory"],
                 audioBaseFileName=p["audioBaseFileName"],
                 audioQueue=audioQueue,
-                messageQueue=self.audioWriteMessageQueue,
-                mergeMessageQueue=self.mergeMessageQueue,
+                mergeMessageQueue=self.mergeProcess.msgQueue,
                 chunkSize=p["chunkSize"],
                 bufferSizeSeconds=p["bufferSizeSeconds"],
                 audioFrequency=self.actualAudioFrequency,
                 numChannels=len(self.audioDAQChannels),
                 verbose=self.audioWriteVerbose,
-                stdoutQueue=self.stdoutQueue)
+                stdoutQueue=self.StdoutManager.queue)
             self.audioAcquireProcess = AudioAcquirer(
                 startTime=startTime,
                 audioQueue=audioQueue,
                 audioMonitorQueue=self.audioMonitorQueue,
                 audioAnalysisQueue=self.audioAnalysisQueue,
-                messageQueue=self.audioAcquireMessageQueue,
                 chunkSize=p["chunkSize"],
                 audioFrequency=self.actualAudioFrequency,
                 bufferSize=None,
@@ -5278,13 +5192,13 @@ him know. Otherwise, I had nothing to do with it.
                 syncChannel=self.audioSyncSource,
                 verbose=self.audioAcquireVerbose,
                 ready=ready,
-                stdoutQueue=self.stdoutQueue)
+                stdoutQueue=self.StdoutManager.queue)
 
         for camSerial in self.camSerials:
             imageQueue = mp.Queue()
             self.videoMonitorQueues[camSerial] = mp.Queue(maxsize=1)
-            self.videoAcquireMessageQueues[camSerial] = mp.Queue()
-            self.videoWriteMessageQueues[camSerial] = mp.Queue()
+            self.videoAcquireProcesses[camSerial].msgQueue = mp.Queue()
+            self.videoWriteProcesses[camSerial].msgQueue = mp.Queue()
             processes = {}
 
             videoAcquireProcess = VideoAcquirer(
@@ -5295,39 +5209,23 @@ him know. Otherwise, I had nothing to do with it.
                 acquireSettings=p["acquireSettings"],
                 frameRate=p["videoFrequency"],
                 monitorFrameRate=self.monitorMasterFrameRate,
-                messageQueue=self.videoAcquireMessageQueues[camSerial],
                 verbose=self.videoAcquireVerbose,
                 ready=ready,
-                stdoutQueue=self.stdoutQueue)
+                stdoutQueue=self.StdoutManager.queue)
             videoWriteProcess = VideoWriter(
                 camSerial=camSerial,
                 videoDirectory=p["videoDirectories"][camSerial],
                 videoBaseFileName=p["videoBaseFileNames"][camSerial],
                 imageQueue=imageQueue,
                 frameRate=p["videoFrequency"],
-                messageQueue=self.videoWriteMessageQueues[camSerial],
-                mergeMessageQueue=self.mergeMessageQueue,
+                messageQueue=self.videoWriteProcesses[camSerial].msgQueue,
+                mergeMessageQueue=self.mergeProcess.msgQueue,
                 bufferSizeSeconds=p["bufferSizeSeconds"],
                 verbose=self.videoWriteVerbose,
-                stdoutQueue=self.stdoutQueue
+                stdoutQueue=self.StdoutManager.queue
                 )
             self.videoAcquireProcesses[camSerial] = videoAcquireProcess
             self.videoWriteProcesses[camSerial] = videoWriteProcess
-
-        if p["numStreams"] >= 2:
-            # Create merge process
-            self.mergeProcess = AVMerger(
-                directory=p["mergeDirectory"],
-                numFilesPerTrigger=p["numStreams"],
-                messageQueue=self.mergeMessageQueue,
-                verbose=self.mergeVerbose,
-                stdoutQueue=self.stdoutQueue,
-                baseFileName=p["mergeBaseFileName"],
-                montage=p["montageMerge"],
-                deleteMergedFiles=p["deleteMergedFiles"]
-                )
-        else:
-            self.mergeProcess = None
 
         self.audioTriggerProcess = AudioTriggerer(
             audioQueue=self.audioAnalysisQueue,
@@ -5346,16 +5244,16 @@ him know. Otherwise, I had nothing to do with it.
             multiChannelStopBehavior=p["multiChannelStopBehavior"],
             bandpassFrequencies=(p['triggerLowBandpass'], p['triggerHighBandpass']),
             verbose=self.audioTriggerVerbose,
-            audioMessageQueue=self.audioWriteMessageQueue,
-            videoMessageQueues=self.videoWriteMessageQueues,
-            messageQueue=self.audioTriggerMessageQueue,
-            stdoutQueue=self.stdoutQueue
+            audioMessageQueue=self.audioWriteProcess.msgQueue,
+            videoMessageQueues=dict([(camSerial, self.videoWriteProcesses[camSerial].msgQueue) for camSerial in self.videoWriteProcesses]),
+            messageQueue=self.audioTriggerProcess.msgQueue,
+            stdoutQueue=self.StdoutManager.queue
             )
 
         if len(self.audioDAQChannels) > 0:
             self.audioTriggerProcess.start()
             if self.getParams('triggerMode') == "Audio":
-                self.audioTriggerMessageQueue.put((AudioTriggerer.STARTANALYZE, None))
+                self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STARTANALYZE, None))
             self.audioWriteProcess.start()
             self.audioAcquireProcess.start()
 
@@ -5370,25 +5268,25 @@ him know. Otherwise, I had nothing to do with it.
 
         if len(self.audioDAQChannels) > 0:
             # Start audio trigger process
-            self.audioTriggerMessageQueue.put((AudioTriggerer.START, None))
+            self.audioTriggerProcess.msgQueue.put((AudioTriggerer.START, None))
             self.updateTriggerMode()
 
             # Start AudioWriter
-            self.audioWriteMessageQueue.put((AudioWriter.START, None))
+            self.audioWriteProcess.msgQueue.put((AudioWriter.START, None))
 
             # Start AudioAcquirer
-            self.audioAcquireMessageQueue.put((AudioAcquirer.START, None))
+            self.audioAcquireProcess.msgQueue.put((AudioAcquirer.START, None))
 
         # For each camera
         for camSerial in self.camSerials:
             # Start VideoWriter
-            self.videoWriteMessageQueues[camSerial].put((VideoWriter.START, None))
+            self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.START, None))
             # Start VideoAcquirer
-            self.videoAcquireMessageQueues[camSerial].put((VideoAcquirer.START, None))
+            self.videoAcquireProcesses[camSerial].msgQueue.put((VideoAcquirer.START, None))
 
         if len(self.audioDAQChannels) + len(self.camSerials) >= 2:
             # Start sync process
-            self.syncMessageQueue.put((Synchronizer.START, None))
+            self.syncProcess.msgQueue.put((Synchronizer.START, None))
 
             # Start merge process
             self.updateAVMergerState()
@@ -5397,33 +5295,33 @@ him know. Otherwise, I had nothing to do with it.
         # Tell all child processes to stop
 
         if self.audioTriggerProcess is not None:
-            self.audioTriggerMessageQueue.put((AudioTriggerer.STOP, None))
+            self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOP, None))
         for camSerial in self.camSerials:
-            self.videoAcquireMessageQueues[camSerial].put((VideoAcquirer.STOP, None))
+            self.videoAcquireProcesses[camSerial].msgQueue.put((VideoAcquirer.STOP, None))
         if self.audioAcquireProcess is not None:
-            self.audioAcquireMessageQueue.put((AudioAcquirer.STOP, None))
+            self.audioAcquireProcess.msgQueue.put((AudioAcquirer.STOP, None))
         if self.audioWriteProcess is not None:
-            self.audioWriteMessageQueue.put((AudioWriter.STOP, None))
+            self.audioWriteProcess.msgQueue.put((AudioWriter.STOP, None))
         if self.mergeProcess is not None:
-            self.mergeMessageQueue.put((AVMerger.STOP, None))
+            self.mergeProcess.msgQueue.put((AVMerger.STOP, None))
         if self.syncProcess is not None:
-            self.syncMessageQueue.put((Synchronizer.STOP, None))
+            self.syncProcess.msgQueue.put((Synchronizer.STOP, None))
 
     def exitChildProcesses(self):
         if self.audioTriggerProcess is not None:
-            self.audioTriggerMessageQueue.put((AudioTriggerer.EXIT, None))
+            self.audioTriggerProcess.msgQueue.put((AudioTriggerer.EXIT, None))
         for camSerial in self.camSerials:
-            self.videoAcquireMessageQueues[camSerial].put((VideoAcquirer.EXIT, None))
+            self.videoAcquireProcesses[camSerial].msgQueue.put((VideoAcquirer.EXIT, None))
         if self.audioAcquireProcess is not None:
-            self.audioAcquireMessageQueue.put((AudioAcquirer.EXIT, None))
+            self.audioAcquireProcess.msgQueue.put((AudioAcquirer.EXIT, None))
         if self.audioWriteProcess is not None:
-            self.audioWriteMessageQueue.put((AudioWriter.EXIT, None))
+            self.audioWriteProcess.msgQueue.put((AudioWriter.EXIT, None))
         if self.mergeProcess is not None:
-            self.mergeMessageQueue.put((AVMerger.EXIT, None))
+            self.mergeProcess.msgQueue.put((AVMerger.EXIT, None))
         if self.syncProcess is not None:
-            self.syncMessageQueue.put((Synchronizer.EXIT, None))
+            self.syncProcess.msgQueue.put((Synchronizer.EXIT, None))
         if self.StdoutManager is not None:
-            self.stdoutQueue.put(StdoutManager.EXIT)
+            self.StdoutManager.queue.put(StdoutManager.EXIT)
 
     def destroyChildProcesses(self):
         self.exitChildProcesses()
@@ -5456,33 +5354,33 @@ him know. Otherwise, I had nothing to do with it.
             print('main>> Error printing profiler stats')
 
         try:
-            if self.audioTriggerProcess is not None:
-                self.audioTriggerProcess = None
-                clearQueue(self.audioTriggerMessageQueue)
-            if self.audioAcquireProcess is not None:
-                self.audioAcquireProcess = None
-                clearQueue(self.audioMonitorQueue)
-                clearQueue(self.audioAcquireMessageQueue)
-                self.audioMonitorData = None
-            if self.audioWriteProcess is not None:
-                self.audioWriteProcess = None
-                clearQueue(self.audioWriteMessageQueue)
-            for camSerial in self.camSerials:
-                self.videoAcquireProcesses = {}
-                self.videoWriteProcesses = {}
-                clearQueue(self.videoMonitorQueues[camSerial])
-                clearQueue(self.videoAcquireMessageQueues[camSerial])
-                clearQueue(self.videoWriteMessageQueues[camSerial])
-            if self.mergeProcess is not None:
-                clearQueue(self.mergeMessageQueue)
-            if self.syncProcess is not None:
-                self.syncProcess = None
-                clearQueue(self.syncMessageQueue)
-            if self.StdoutManager is not None:
-                self.stdoutQueue.put(StdoutManager.EXIT)
-                clearQueue(self.stdoutQueue)
-                self.stdoutQueue = None
-                self.StdoutManager = None
+            # if self.audioTriggerProcess is not None:
+            self.audioTriggerProcess = None
+                # clearQueue(self.audioTriggerProcess.msgQueue)
+            # if self.audioAcquireProcess is not None:
+            self.audioAcquireProcess = None
+            clearQueue(self.audioMonitorQueue)
+                # clearQueue(self.audioAcquireProcess.msgQueue)
+            # self.audioMonitorData = None
+            # if self.audioWriteProcess is not None:
+            self.audioWriteProcess = None
+                # clearQueue(self.audioWriteProcess.msgQueue)
+            self.videoAcquireProcesses = {}
+            self.videoWriteProcesses = {}
+            # for camSerial in self.camSerials:
+            #     clearQueue(self.videoMonitorQueues[camSerial])
+                # clearQueue(self.videoAcquireMessageQueues[camSerial])
+                # clearQueue(self.videoWriteProcesses[camSerial].msgQueue)
+            # if self.mergeProcess is not None:
+                # clearQueue(self.mergeProcess.msgQueue)
+            self.mergeProcess = None
+            # if self.syncProcess is not None:
+                # clearQueue(self.syncProcess.msgQueue)
+            self.syncProcess = None
+            # if self.StdoutManager is not None:
+                # self.StdoutManager.queue.put(StdoutManager.EXIT)
+                # clearQueue(self.stdoutQueue)
+            self.StdoutManager = None
 
             # Clear/destroy monitoring queues
             if self.videoMonitorQueues is not None:
@@ -5492,9 +5390,9 @@ him know. Otherwise, I had nothing to do with it.
             if self.audioMonitorQueue is not None:
                 clearQueue(self.audioMonitorQueue)
                 self.audioMonitorQueue = None
-            if self.mergeMessageQueue is not None:
-                clearQueue(self.mergeMessageQueue)
-                self.mergeMessageQueue = None
+            # if self.mergeProcess.msgQueue is not None:
+            #     clearQueue(self.mergeProcess.msgQueue)
+                # self.mergeProcess.msgQueue = None
         except:
             traceback.print_exc()
 
@@ -5504,10 +5402,10 @@ him know. Otherwise, I had nothing to do with it.
         trig = Trigger(t-2, t, t+2)
         print("main>> Sending manual trigger!")
         for camSerial in self.camSerials:
-            self.videoWriteMessageQueues[camSerial].put((VideoWriter.TRIGGER, trig))
+            self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.TRIGGER, trig))
             print("main>> ...sent to", camSerial, "video writer")
         if self.audioWriteProcess is not None:
-            self.audioWriteMessageQueue.put((AudioWriter.TRIGGER, trig))
+            self.audioWriteProcess.msgQueue.put((AudioWriter.TRIGGER, trig))
             print("main>> ...sent to audio writer")
 
     def update(self):
