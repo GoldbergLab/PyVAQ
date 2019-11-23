@@ -4310,9 +4310,8 @@ him know. Otherwise, I had nothing to do with it.
         p = self.getParams()
         audioMonitorSampleLength = round(self.audioMonitor.historyLength / p['audioFrequency'], 2)
         params = [
-            Param(name='Audio autoscale', widgetType=Param.MONOCHOICE, options=['Auto', 'Manual'], default='Manual'),
-            Param(name='Audio range', widgetType=Param.TEXT, options=None, default=str(-self.audioMonitorAmplitude)),
-            Param(name='Audio max', widgetType=Param.TEXT, options=None, default=str(self.audioMonitorAmplitude)),
+            Param(name='Audio autoscale', widgetType=Param.MONOCHOICE, options=['Auto', 'Manual'], default=('Auto' if self.audioMonitor.autoscale else 'Manual'),
+            Param(name='Audio range', widgetType=Param.TEXT, options=None, default=str(-self.audioMonitor.displayAmplitude)),
             Param(name='Audio history length (s)', widgetType=Param.TEXT, options=None, default=str(audioMonitorSampleLength))
         ]
         pd = ParamDialog(self.master, params=params, title="Configure audio monitoring")
@@ -4321,14 +4320,14 @@ him know. Otherwise, I had nothing to do with it.
             if 'Audio autoscale' in choices and len(choices['Audio autoscale']) > 0:
                 try:
                     if choices['Audio autoscale'] == "Manual":
-                        self.audioMonitorAutoscale = False
+                        self.audioMonitor.autoscale = False
                     elif choices['Audio autoscale'] == "Auto":
-                        self.audioMonitorAutoscale = True
+                        self.audioMonitor.autoscale = True
                 except ValueError:
                     pass
             if 'Audio range' in choices and len(choices['Audio range']) > 0:
                 try:
-                    self.audioMonitorAmplitude = abs(float(choices['Audio range']))
+                    self.audioMonitor.displayAmplitude = abs(float(choices['Audio range']))
                 except ValueError:
                     pass
             if 'Audio history length' in choices and len(choices['Audio history length']) > 0:
