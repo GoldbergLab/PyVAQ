@@ -1,5 +1,6 @@
 import tkinter as tk
 import tkinter.ttk as ttk
+import math
 
 class Param():
     TEXT='text'
@@ -126,19 +127,25 @@ class ParamDialog(tk.Toplevel):
 
     def createParameterWidgets(self):
         # Create widgets for inputting parameters
+        if self.arrangement == ParamDialog.BOX:
+            nW, nH = getOptimalBoxGrid(len(self.params))
         for k, param in enumerate(self.params):
             param.createWidgets(self.paramFrame)
             if self.arrangement == ParamDialog.HORIZONTAL:
-                self.paramFrame.columnconfigure(k, weight=1)
-                row=0; column=k;
+                row=0; col=k;
+                self.paramFrame.columnconfigure(col, weight=1)
             elif self.arrangement == ParamDialog.VERTICAL:
-                self.paramFrame.rowconfigure(k, weight=1)
-                row=k; column=0;
+                row=k; col=0;
+                self.paramFrame.rowconfigure(row, weight=1)
             elif self.arrangement == ParamDialog.BOX:
-                raise NotImplementedError("Box arrangement has not been implemented yet.")
+                row = k // nW
+                col = k % nW
+                self.paramFrame.rowconfigure(row, weight=1)
+                self.paramFrame.columnconfigure(col, weight=1)
+                # raise NotImplementedError("Box arrangement has not been implemented yet.")
             else:
                 raise NameError("Unknown arrangement type: "+str(self.arrangement))
-            param.grid(row=row, column=column, sticky=tk.NSEW)
+            param.grid(row=row, column=col, sticky=tk.NSEW)
 
         okButton = ttk.Button(self.buttonFrame, text="OK", width=10, command=self.ok, default=tk.ACTIVE)
         okButton.grid(row=0, column=0)
@@ -176,3 +183,10 @@ class ParamDialog(tk.Toplevel):
     #
     # def apply(self):
     #     pass # override
+
+def getOptimalBoxGrid(N):
+    if N == 0:
+        return (0,0)
+    h = round(math.sqrt(N))
+    w = math.ceil(N/h)
+    return (w, h)

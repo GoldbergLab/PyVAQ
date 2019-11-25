@@ -4261,7 +4261,7 @@ class PyVAQ:
             params.append(
                 Param(name=name, widgetType=Param.MONOCHOICE, default=default, options=verbosityOptions)
             )
-        pd = ParamDialog(self.master, params=params, title="Set child process verbosity levels")
+        pd = ParamDialog(self.master, params=params, title="Set child process verbosity levels", arrangement=ParamDialog.BOX)
         choices = pd.results
         if choices is not None:
             self.audioAcquireVerbose = int(choices['AudioAcquirer verbosity'])
