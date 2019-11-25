@@ -51,10 +51,8 @@ class FileWritingEntry(ttk.LabelFrame):
         newDir = self.directoryVar.get()
         if len(newDir) == 0 or os.path.isdir(newDir):
             self.directoryEntry['style'] = 'ValidDirectory.TEntry'
-            print("Valid directory")
         else:
             self.directoryEntry['style'] = 'InvalidDirectory.TEntry'
-            print("Invalid directory")
 
     def baseFileNameChangeMetaHandler(self, *args):
         # Regularize filename
