@@ -1736,7 +1736,6 @@ class AudioTriggerer(StateMachineProcess):
 
     def __init__(self,
                 audioQueue=None,
-                audioAnalysisMonitorQueue=None,  # A queue to send analysis results to GUI for monitoring
                 audioFrequency=None,                # Shared var: Number of audio samples per second
                 chunkSize=1000,                     # Number of audio samples per audio chunk
                 triggerHighLevel=0.5,               # Volume level above which the audio must stay for triggerHighTime seconds to generate a start trigger
@@ -1762,7 +1761,7 @@ class AudioTriggerer(StateMachineProcess):
         self.audioQueue = audioQueue
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
-        self.audioAnalysisMonitorQueue = audioAnalysisMonitorQueue
+        self.analysisMonitorQueue = mp.Queue()  # A queue to send analysis results to GUI for monitoring
         self.audioMessageQueue = audioMessageQueue
         self.videoMessageQueues = videoMessageQueues
         self.audioFrequency = audioFrequency
@@ -2000,30 +1999,29 @@ class AudioTriggerer(StateMachineProcess):
                                 self.sendTrigger(activeTrigger)
                                 if self.verbose >= 1: self.log("Update trigger to stop now")
 
-                            if self.audioAnalysisMonitorQueue is not None:
-                                # Send analysis summary of this chunk to the GUI
-                                summary = dict(
-                                    volume=volume,
-                                    triggerHighLevel=self.triggerHighLevel,
-                                    triggerLowLevel=self.triggerLowLevel,
-                                    low=low,
-                                    high=high,
-                                    lowChunks=lowChunks,
-                                    highChunks=highChunks,
-                                    triggerLowChunks=self.triggerLowChunks,
-                                    triggerHighChunks=self.triggerHighChunks,
-                                    highFrac=highFrac,
-                                    lowFrac=lowFrac,
-                                    lowTrigger=lowTrigger,
-                                    highTrigger=highTrigger,
-                                    triggerLowFrac=self.triggerLowFraction,
-                                    triggerHighFrac=self.triggerHighFraction,
-                                    chunkStartTime=chunkStartTime,
-                                    chunkSize = self.chunkSize,
-                                    audioFrequency = self.audioFrequency.value,
-                                    activeTrigger = activeTrigger
-                                )
-                                self.audioAnalysisMonitorQueue.put(summary)
+                            # Send analysis summary of this chunk to the GUI
+                            summary = dict(
+                                volume=volume,
+                                triggerHighLevel=self.triggerHighLevel,
+                                triggerLowLevel=self.triggerLowLevel,
+                                low=low,
+                                high=high,
+                                lowChunks=lowChunks,
+                                highChunks=highChunks,
+                                triggerLowChunks=self.triggerLowChunks,
+                                triggerHighChunks=self.triggerHighChunks,
+                                highFrac=highFrac,
+                                lowFrac=lowFrac,
+                                lowTrigger=lowTrigger,
+                                highTrigger=highTrigger,
+                                triggerLowFrac=self.triggerLowFraction,
+                                triggerHighFrac=self.triggerHighFraction,
+                                chunkStartTime=chunkStartTime,
+                                chunkSize = self.chunkSize,
+                                audioFrequency = self.audioFrequency.value,
+                                activeTrigger = activeTrigger
+                            )
+                            self.analysisMonitorQueue.put(summary)
 
                             if self.verbose >= 3: self.log('h% =', highFrac, 'l% =', lowFrac, 'hT =', highTrigger, 'lT =', lowTrigger)
 
@@ -2136,6 +2134,7 @@ class AudioTriggerer(StateMachineProcess):
             state = nextState
 
         clearQueue(self.msgQueue)
+        clearQueue(self.analysisMonitorQueue)
         if self.verbose >= 1: self.log("Audio write process STOPPED")
 
         self.flushStdout()
@@ -2200,8 +2199,6 @@ class AudioAcquirer(StateMachineProcess):
     def __init__(self,
                 startTime=None,
                 audioQueue = None,                  # A multiprocessing queue to send data to another proces for writing to disk
-                audioMonitorQueue = None,           # A multiprocessing queue to send data to the UI to monitor the audio
-                audioAnalysisQueue = None,          # A multiprocessing queue to send data to the audio triggerer process for analysis
                 chunkSize = 4410,                   # Size of the read chunk in samples
                 audioFrequency = 44100,               # Maximum expected rate of the specified synchronization channel
                 bufferSize = None,                  # Size of device buffer. Defaults to 1 second's worth of data
@@ -2218,10 +2215,10 @@ class AudioAcquirer(StateMachineProcess):
         self.audioQueue = audioQueue
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
-        self.audioMonitorQueue = audioMonitorQueue
-        self.audioAnalysisQueue = audioAnalysisQueue
-        # if len(self.audioMonitorQueue) > 0:
-        #     self.audioMonitorQueue.cancel_join_thread()
+        self.monitorQueue = mp.Queue()      # A multiprocessing queue to send data to the UI to monitor the audio
+        self.analysisQueue = mp.Queue()    # A multiprocessing queue to send data to the audio triggerer process for analysis
+        # if len(self.monitorQueue) > 0:
+        #     self.monitorQueue.cancel_join_thread()
         self.chunkSize = chunkSize
         self.inputChannels = channelNames
         self.syncChannel = syncChannel
@@ -2379,10 +2376,10 @@ class AudioAcquirer(StateMachineProcess):
                             if self.verbose >= 2: self.log(processedData)
 
                         monitorDataCopy = np.copy(data)
-                        if self.audioMonitorQueue is not None:
-                            self.audioMonitorQueue.put((self.inputChannels, chunkStartTime, monitorDataCopy))      # If a monitoring queue is provided, queue up the data
-                        if self.audioAnalysisQueue is not None:
-                            self.audioAnalysisQueue.put((chunkStartTime, monitorDataCopy))
+                        if self.monitorQueue is not None:
+                            self.monitorQueue.put((self.inputChannels, chunkStartTime, monitorDataCopy))      # If a monitoring queue is provided, queue up the data
+                        if self.analysisQueue is not None:
+                            self.analysisQueue.put((chunkStartTime, monitorDataCopy))
                     except nidaqmx.errors.DaqError:
 #                        traceback.print_exc()
                         if self.verbose >= 0: self.log("AA - Audio Chunk acquisition timed out.")
@@ -2495,6 +2492,8 @@ class AudioAcquirer(StateMachineProcess):
             state = nextState
 
         clearQueue(self.msgQueue)
+        clearQueue(self.monitorQueue)
+        clearQueue(self.analysisQueue)
         if self.verbose >= 1: self.log("Audio acquire process STOPPED")
 
         self.flushStdout()
@@ -2951,8 +2950,6 @@ class VideoAcquirer(StateMachineProcess):
     def __init__(self,
                 startTime=None,
                 camSerial='',
-                imageQueue=None,
-                monitorImageQueue=None,
                 acquireSettings={},
                 frameRate=None,
                 monitorFrameRate=15,
@@ -2965,12 +2962,10 @@ class VideoAcquirer(StateMachineProcess):
         self.ID = 'VA_'+self.camSerial
         self.acquireSettings = acquireSettings
         self.frameRate = frameRate
-        self.imageQueue = imageQueue
-        if self.imageQueue is not None:
-            self.imageQueue.cancel_join_thread()
-        self.monitorImageQueue = monitorImageQueue
-        if self.monitorImageQueue is not None:
-            self.monitorImageQueue.cancel_join_thread()
+        self.imageQueue = mp.Queue()
+        self.imageQueue.cancel_join_thread()
+        self.monitorImageQueue = mp.Queue(maxsize=1)
+        self.monitorImageQueue.cancel_join_thread()
         self.monitorMasterFrameRate = monitorFrameRate
         self.ready = ready
         self.frameStopwatch = Stopwatch()
@@ -3259,6 +3254,8 @@ class VideoAcquirer(StateMachineProcess):
             state = nextState
 
         clearQueue(self.msgQueue)
+        clearQueue(self.imageQueue)
+        clearQueue(self.monitorImageQueue)
         if self.verbose >= 1: self.log("Video acquire process STOPPED")
         # if self.verbose > 1:
         #     s = io.StringIO()
@@ -4157,11 +4154,7 @@ class PyVAQ:
         ########### Child process objects #####################
 
         # Monitoring queues for collecting audio and video data for user monitoring purposes
-        self.videoMonitorQueues = None
-        self.audioMonitorQueue = None
-        self.audioAnalysisQueue = None
         self.monitorMasterFrameRate = 15
-        self.audioAnalysisMonitorQueue = None
 
         # Pointers to processes
         self.videoWriteProcesses = {}
@@ -4595,7 +4588,7 @@ him know. Otherwise, I had nothing to do with it.
             self.master.after_cancel(self.triggerIndicatorUpdateJob)
         if self.autoDebugAllJob is not None:
             self.master.after_cancel(self.autoDebugAllJob)
-            
+
     def startMonitors(self):
         self.autoUpdateAudioMonitors()
         self.autoUpdateVideoMonitors()
@@ -4603,11 +4596,11 @@ him know. Otherwise, I had nothing to do with it.
         self.autoUpdateAudioAnalysisMonitors()
 
     def autoUpdateAudioAnalysisMonitors(self, beginAuto=True):
-        if self.audioAnalysisMonitorQueue is not None:
+        if self.audioTriggerProcess is not None:
             analysisSummary = None
             try:
                 while True:
-                    analysisSummary = self.audioAnalysisMonitorQueue.get(block=True, timeout=0.01)
+                    analysisSummary = self.audioTriggerProcess.analysisMonitorQueue.get(block=True, timeout=0.01)
 
                     self.audioAnalysisSummaryHistory.append(analysisSummary)
 
@@ -4618,7 +4611,7 @@ him know. Otherwise, I had nothing to do with it.
                 # print(analysisSummary)
                 lag = time.time_ns()/1000000000 - analysisSummary['chunkStartTime']
                 if lag > 1.5:
-                    print("main>> WARNING, high analysis monitoring lag:", lag, 's', 'qsize:', self.audioAnalysisMonitorQueue.qsize())
+                    print("main>> WARNING, high analysis monitoring lag:", lag, 's', 'qsize:', self.audioTriggerProcess.analysisMonitorQueue.qsize())
 
                 # Update bar charts using last received analysis summary
 
@@ -4691,12 +4684,12 @@ him know. Otherwise, I had nothing to do with it.
             self.audioAnalysisMonitorUpdateJob = self.master.after(100, self.autoUpdateAudioAnalysisMonitors)
 
     def autoUpdateAudioMonitors(self, beginAuto=True):
-        if self.audioMonitorQueue is not None:
+        if self.audioAcquireProcess is not None:
             newAudioData = None
             try:
                 for chunkCount in range(100):
                     # Get audio data from monitor queue
-                    channels, chunkStartTime, audioData = self.audioMonitorQueue.get(block=True, timeout=0.001)
+                    channels, chunkStartTime, audioData = self.audioAcquireProcess.monitorQueue.get(block=True, timeout=0.001)
                     # audioData = np.ones(audioData.shape) * cc
                     # Accumulate all new audio chunks together
                     if newAudioData is not None:
@@ -4715,11 +4708,11 @@ him know. Otherwise, I had nothing to do with it.
             self.audioMonitorUpdateJob = self.master.after(100, self.autoUpdateAudioMonitors)
 
     def autoUpdateVideoMonitors(self, beginAuto=True):
-        if self.videoMonitorQueues is not None:
+        if self.videoAcquireProcesses is not None:
             availableImages = {}
-            for camSerial in self.videoMonitorQueues:
+            for camSerial in self.videoAcquireProcesses:
                 try:
-                    pImage = self.videoMonitorQueues[camSerial].get(block=False)
+                    pImage = self.videoAcquireProcesses[camSerial].monitorImageQueue.get(block=False)
                     availableImages[camSerial] = pImage  # Discard older images
                 except queue.Empty:
                     pass
@@ -4844,14 +4837,18 @@ him know. Otherwise, I had nothing to do with it.
     def getQueueSizes(self):
         print("main>> Get qsizes...")
         for camSerial in self.videoAcquireProcesses:
-            print("main>> videoMonitorQueues[", camSerial, "] size:", self.videoMonitorQueues[camSerial].qsize())
-            print("main>> imageQueues[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].imageQueue.qsize())
-        print("main>> audioAcquireProcess.audioQueue size:", self.audioAcquireProcess.audioQueue.qsize())
-        print("main>> audioAnalysisQueue size:", self.audioAnalysisQueue.qsize())
-        print("main>> audioMonitorQueue size:", self.audioMonitorQueue.qsize())
-        print("main>> audioAnalysisMonitorQueue size:", self.audioAnalysisMonitorQueue.qsize())
-        print("main>> mergeMessageQueue size:", self.mergeProcess.msgQueue.qsize())
-        print("main>> stdoutQueue size:", self.StdoutManager.queue.qsize())
+            print("main>>   videoMonitorQueues[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].monitorImageQueue.qsize())
+            print("main>>   imageQueues[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].imageQueue.qsize())
+        if self.audioAcquireProcess is not None:
+            print("main>>   audioAcquireProcess.audioQueue size:", self.audioAcquireProcess.audioQueue.qsize())
+            print("main>>   audioAnalysisQueue size:", self.audioAcquireProcess.analysisQueue.qsize())
+            print("main>>   audioMonitorQueue size:", self.audioAcquireProcess.monitorQueue.qsize())
+        if self.audioTriggerProcess is not None:
+            print("main>>   audioAnalysisMonitorQueue size:", self.audioTriggerProcess.analysisMonitorQueue.qsize())
+        if self.mergeProcess is not None:
+            print("main>>   mergeMessageQueue size:", self.mergeProcess.msgQueue.qsize())
+        if self.StdoutManager is not None:
+            print("main>>   stdoutQueue size:", self.StdoutManager.queue.qsize())
         print("main>> ...get qsizes")
 
     def getPIDs(self):
@@ -4866,22 +4863,22 @@ him know. Otherwise, I had nothing to do with it.
         print("main>> main thread:", os.getpid())
         for camSerial in self.videoWriteProcesses:
             videoWritePIDs[camSerial] = self.videoWriteProcesses[camSerial].PID.value
-            print("main>> videoWritePIDs["+camSerial+"]:", videoWritePIDs[camSerial])
+            print("main>>   videoWritePIDs["+camSerial+"]:", videoWritePIDs[camSerial])
         for camSerial in self.videoAcquireProcesses:
             videoAcquirePIDs[camSerial] = self.videoAcquireProcesses[camSerial].PID.value
-            print("main>> videoAcquirePIDs["+camSerial+"]:", videoAcquirePIDs[camSerial])
+            print("main>>   videoAcquirePIDs["+camSerial+"]:", videoAcquirePIDs[camSerial])
         if self.audioWriteProcess is not None:
             audioWritePID = self.audioWriteProcess.PID.value
-            print("main>> audioWritePID:", audioWritePID)
+            print("main>>   audioWritePID:", audioWritePID)
         if self.audioAcquireProcess is not None:
             audioAcquirePID = self.audioAcquireProcess.PID.value
-            print("main>> audioAcquirePID:", audioAcquirePID)
+            print("main>>   audioAcquirePID:", audioAcquirePID)
         if self.syncProcess is not None:
             syncPID = self.syncProcess.PID.value
-            print("main>> syncPID:", syncPID)
+            print("main>>   syncPID:", syncPID)
         if self.mergeProcess is not None:
             mergePID = self.mergeProcess.PID.value
-            print("main>> mergePID:", mergePID)
+            print("main>>   mergePID:", mergePID)
         print("main>> ...PIDs:")
 
     def checkStates(self):
@@ -5146,11 +5143,6 @@ him know. Otherwise, I had nothing to do with it.
         self.StdoutManager = StdoutManager()
         self.StdoutManager.start()
 
-        self.videoMonitorQueues = {}
-        self.audioMonitorQueue = mp.Queue()
-        self.audioAnalysisQueue = mp.Queue()
-        self.audioAnalysisMonitorQueue = mp.Queue()
-
         # Shared values so all processes can access actual DAQ frequencies
         #   determined by Synchronizer process. This value should only change
         #   once when the Synchronizer is initialized, and not again until
@@ -5189,6 +5181,17 @@ him know. Otherwise, I had nothing to do with it.
 
         if len(self.audioDAQChannels) > 0:
             audioQueue = mp.Queue()
+            self.audioAcquireProcess = AudioAcquirer(
+                startTime=startTime,
+                audioQueue=audioQueue,
+                chunkSize=p["chunkSize"],
+                audioFrequency=self.actualAudioFrequency,
+                bufferSize=None,
+                channelNames=self.audioDAQChannels,
+                syncChannel=self.audioSyncSource,
+                verbose=self.audioAcquireVerbose,
+                ready=ready,
+                stdoutQueue=self.StdoutManager.queue)
             self.audioWriteProcess = AudioWriter(
                 audioDirectory=p["audioDirectory"],
                 audioBaseFileName=p["audioBaseFileName"],
@@ -5200,30 +5203,13 @@ him know. Otherwise, I had nothing to do with it.
                 numChannels=len(self.audioDAQChannels),
                 verbose=self.audioWriteVerbose,
                 stdoutQueue=self.StdoutManager.queue)
-            self.audioAcquireProcess = AudioAcquirer(
-                startTime=startTime,
-                audioQueue=audioQueue,
-                audioMonitorQueue=self.audioMonitorQueue,
-                audioAnalysisQueue=self.audioAnalysisQueue,
-                chunkSize=p["chunkSize"],
-                audioFrequency=self.actualAudioFrequency,
-                bufferSize=None,
-                channelNames=self.audioDAQChannels,
-                syncChannel=self.audioSyncSource,
-                verbose=self.audioAcquireVerbose,
-                ready=ready,
-                stdoutQueue=self.StdoutManager.queue)
 
         for camSerial in self.camSerials:
-            imageQueue = mp.Queue()
-            self.videoMonitorQueues[camSerial] = mp.Queue(maxsize=1)
             processes = {}
 
             videoAcquireProcess = VideoAcquirer(
                 startTime=startTime,
                 camSerial=camSerial,
-                imageQueue=imageQueue,
-                monitorImageQueue=self.videoMonitorQueues[camSerial],
                 acquireSettings=p["acquireSettings"],
                 frameRate=p["videoFrequency"],
                 monitorFrameRate=self.monitorMasterFrameRate,
@@ -5234,7 +5220,7 @@ him know. Otherwise, I had nothing to do with it.
                 camSerial=camSerial,
                 videoDirectory=p["videoDirectories"][camSerial],
                 videoBaseFileName=p["videoBaseFileNames"][camSerial],
-                imageQueue=imageQueue,
+                imageQueue=videoAcquireProcess.imageQueue,
                 frameRate=p["videoFrequency"],
                 mergeMessageQueue=self.mergeProcess.msgQueue,
                 bufferSizeSeconds=p["bufferSizeSeconds"],
@@ -5245,8 +5231,7 @@ him know. Otherwise, I had nothing to do with it.
             self.videoWriteProcesses[camSerial] = videoWriteProcess
 
         self.audioTriggerProcess = AudioTriggerer(
-            audioQueue=self.audioAnalysisQueue,
-            audioAnalysisMonitorQueue=self.audioAnalysisMonitorQueue,
+            audioQueue=self.audioAcquireProcess.analysisQueue,
             audioFrequency=self.actualAudioFrequency,
             chunkSize=p["chunkSize"],
             triggerHighLevel=p["triggerHighLevel"],
@@ -5342,19 +5327,6 @@ him know. Otherwise, I had nothing to do with it.
     def destroyChildProcesses(self):
         self.exitChildProcesses()
 
-        # # Clear and destroy published state variables
-        # for camSerial in self.camSerials:
-        #     self.videoWriteProcesses[camSerial].publishedStateVar.value = -1
-        #     self.videoAcquireProcesses[camSerial].publishedStateVar.value = -1
-        # if self.audioWriteProcess is not None:
-        #     self.audioWriteProcess.publishedStateVar.value = -1
-        # if self.audioAcquireProcess is not None:
-        #     self.audioAcquireProcess.publishedStateVar.value = -1
-        # if self.syncProcess is not None:
-        #     self.syncProcess.publishedStateVar.value = -1
-        # if self.mergeProcess is not None:
-        #     self.mergeProcess.publishedStateVar.value = -1
-
         self.actualVideoFrequency = None
         self.actualAudioFrequency = None
 
@@ -5369,48 +5341,14 @@ him know. Otherwise, I had nothing to do with it.
         except:
             print('main>> Error printing profiler stats')
 
-        try:
-            # if self.audioTriggerProcess is not None:
-            self.audioTriggerProcess = None
-                # clearQueue(self.audioTriggerProcess.msgQueue)
-            # if self.audioAcquireProcess is not None:
-            self.audioAcquireProcess = None
-            clearQueue(self.audioMonitorQueue)
-                # clearQueue(self.audioAcquireProcess.msgQueue)
-            # self.audioMonitorData = None
-            # if self.audioWriteProcess is not None:
-            self.audioWriteProcess = None
-                # clearQueue(self.audioWriteProcess.msgQueue)
-            self.videoAcquireProcesses = {}
-            self.videoWriteProcesses = {}
-            # for camSerial in self.camSerials:
-            #     clearQueue(self.videoMonitorQueues[camSerial])
-                # clearQueue(self.videoAcquireMessageQueues[camSerial])
-                # clearQueue(self.videoWriteProcesses[camSerial].msgQueue)
-            # if self.mergeProcess is not None:
-                # clearQueue(self.mergeProcess.msgQueue)
-            self.mergeProcess = None
-            # if self.syncProcess is not None:
-                # clearQueue(self.syncProcess.msgQueue)
-            self.syncProcess = None
-            # if self.StdoutManager is not None:
-                # self.StdoutManager.queue.put(StdoutManager.EXIT)
-                # clearQueue(self.stdoutQueue)
-            self.StdoutManager = None
-
-            # Clear/destroy monitoring queues
-            if self.videoMonitorQueues is not None:
-                for camSerial in self.videoMonitorQueues:
-                    clearQueue(self.videoMonitorQueues[camSerial])
-                self.videoMonitorQueues = {}
-            if self.audioMonitorQueue is not None:
-                clearQueue(self.audioMonitorQueue)
-                self.audioMonitorQueue = None
-            # if self.mergeProcess.msgQueue is not None:
-            #     clearQueue(self.mergeProcess.msgQueue)
-                # self.mergeProcess.msgQueue = None
-        except:
-            traceback.print_exc()
+        self.audioTriggerProcess = None
+        self.audioAcquireProcess = None
+        self.audioWriteProcess = None
+        self.videoAcquireProcesses = {}
+        self.videoWriteProcesses = {}
+        self.mergeProcess = None
+        self.syncProcess = None
+        self.StdoutManager = None
 
     def sendWriteTrigger(self, t=None):
         if t is None:
