@@ -688,8 +688,8 @@ class CameraMonitor(ttk.LabelFrame):
 
     def destroy(self):
         ttk.LabelFrame.destroy(self)
-        self.fileWidget.grid_forget()
-        self.canvas.grid_forget()
+        # self.fileWidget.grid_forget()
+        # self.canvas.grid_forget()
         self.imageID = None
         self.currentImage = None
         # self.cameraAttributeBrowserButton.grid_forget()
@@ -3493,7 +3493,7 @@ class VideoWriter(StateMachineProcess):
                                 triggers.pop(0)
                         else:
                             # No video frames have been received yet, can't evaluate if trigger time has begun yet
-                            if self.verbose >= 1: self.log(self.ID + " - No frames yet, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
+                            if self.verbose >= 2: self.log(self.ID + " - No frames yet, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
                             nextState = VideoWriter.BUFFERING
 
                     elif msg in ['', VideoWriter.START]:
@@ -4205,6 +4205,9 @@ class PyVAQ:
         if self.triggerModeVar.get() == "Audio":
             self.autoUpdateAudioAnalysisMonitors()
 
+        self.autoDebugAllJob = None
+        self.autoDebugAll()
+
         self.master.update_idletasks()
 
     # def createSetting(self, settingName, parent, varType, initialValue, labelText, width=None):
@@ -4590,7 +4593,9 @@ him know. Otherwise, I had nothing to do with it.
             self.master.after_cancel(self.audioAnalysisMonitorUpdateJob)
         if self.triggerIndicatorUpdateJob is not None:
             self.master.after_cancel(self.triggerIndicatorUpdateJob)
-
+        if self.autoDebugAllJob is not None:
+            self.master.after_cancel(self.autoDebugAllJob)
+            
     def startMonitors(self):
         self.autoUpdateAudioMonitors()
         self.autoUpdateVideoMonitors()
@@ -4889,17 +4894,29 @@ him know. Otherwise, I had nothing to do with it.
 
         print("main>> Check states...")
         for camSerial in self.videoWriteProcesses:
+            # print("main>> Getting VideoWriter {camSerial} state...".format(camSerial=camSerial))
             videoWriteStates[camSerial] = VideoWriter.stateList[self.videoWriteProcesses[camSerial].publishedStateVar.value]
+            # print("main>> ...one getting VideoWriter {camSerial} state".format(camSerial=camSerial))
         for camSerial in self.videoAcquireProcesses:
+            # print("main>> Getting VideoAcquirer {camSerial} state...".format(camSerial=camSerial))
             videoAcquireStates[camSerial] = VideoAcquirer.stateList[self.videoAcquireProcesses[camSerial].publishedStateVar.value]
+            # print("main>> ...one getting VideoAcquirer {camSerial} state".format(camSerial=camSerial))
         if self.audioWriteProcess is not None:
+            # print("main>> Getting AudioWriter state...")
             audioWriteState = AudioWriter.stateList[self.audioWriteProcess.publishedStateVar.value]
+            # print("main>> ...done getting AudioWriter state")
         if self.audioAcquireProcess is not None:
+            # print("main>> Getting AudioAcquirer state...")
             audioAcquireState = AudioAcquirer.stateList[self.audioAcquireProcess.publishedStateVar.value]
+            # print("main>> ...done getting AudioAcquirer state")
         if self.syncProcess is not None:
+            # print("main>> Getting Synchronizer state...")
             syncState = Synchronizer.stateList[self.syncProcess.publishedStateVar.value]
+            # print("main>> ...done getting Synchronizer state...")
         if self.mergeProcess is not None:
+            # print("main>> Getting AVMerger state...")
             mergeState = AVMerger.stateList[self.mergeProcess.publishedStateVar.value]
+            # print("main>> ...done getting AVMerger state")
 
         for camSerial in videoWriteStates:
             print("main>> videoWriteStates[", camSerial, "]:", videoWriteStates[camSerial])
@@ -4910,6 +4927,19 @@ him know. Otherwise, I had nothing to do with it.
         print("main>> syncState:", syncState)
         print("main>> mergeState:", mergeState)
         print("main>> ...check states")
+
+    def debugAll(self):
+        print(r"main>> ****************************** \/ \/ DEBUG ALL \/ \/ *******************************")
+        self.getQueueSizes()
+        self.getPIDs()
+        self.checkStates()
+        print(r"main>> ****************************** /\ /\ DEBUG ALL /\ /\ *******************************")
+
+    def autoDebugAll(self, *args, interval=3000, startAuto=True):
+        self.debugAll()
+
+        if startAuto:
+            self.autoDebugAllJob = self.master.after(interval, self.autoDebugAll)
 
     def acquisitionActive(self):
         # Check if at least one audio or video process is acquiring
