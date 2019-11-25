@@ -651,23 +651,11 @@ class CameraMonitor(ttk.LabelFrame):
 
         return {'widgets':widgets, 'childWidgets':childWidgets, 'childCategoryWidgets':childCategoryWidgets, 'childCategoryHolder':childCategoryHolder}
 
-    def directoryChangeMetaHandler(self, *args):
-        newDir = self.directoryVar.get()
-        if len(newDir) == 0 or os.path.isdir(newDir):
-            self.directoryEntry['style'] = 'ValidDirectory.TEntry'
-        else:
-            self.directoryEntry['style'] = 'InvalidDirectory.TEntry'
-
-        self.directoryChangeHandler()
-
-    def baseFileNameChangeMetaHandler(self, *args):
-        self.baseFileNameChangeHandler()
-
     def setDirectoryChangeHandler(self, function):
-        self.directoryChangeHandler = function
+        self.fileWidget.setDirectoryChangeHandler(function)
 
     def setBaseFileNameChangeHandler(self, function):
-        self.baseFileNameChangeHandler = function
+        self.fileWidget.setBaseFileNameChangeHandler(function)
 
     def updateImage(self, image):
         # Expects a PIL image object
@@ -4494,6 +4482,7 @@ him know. Otherwise, I had nothing to do with it.
             self.mergeProcess.msgQueue.put((AVMerger.SETPARAMS, params))
 
     def videoDirectoryChangeHandler(self, *args):
+        print("main>> videoDirectoryChangeHandler")
         p = self.getParams(
             'videoDirectories',
             'videoBaseFileNames'
@@ -4501,8 +4490,10 @@ him know. Otherwise, I had nothing to do with it.
         for camSerial in self.videoWriteProcesses:
             if len(p['videoDirectories'][camSerial]) == 0 or os.path.isdir(p['videoDirectories'][camSerial]):
                 # Notify VideoWriter child process of new write directory
-                self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.SETPARAMS, dict(videoDirectory=p['videoDirectories'][camSerial].msgQueue)))
+                print("main>> sending new video write directory: "+p['videoDirectories'][camSerial])
+                self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.SETPARAMS, dict(videoDirectory=p['videoDirectories'][camSerial])))
     def audioDirectoryChangeHandler(self, *args):
+        print("main>> audioDirectoryChangeHandler")
         p = self.getParams(
             'audioDirectory',
             'audioBaseFileName'
@@ -4510,8 +4501,10 @@ him know. Otherwise, I had nothing to do with it.
         if self.audioWriteProcess is not None:
             if len(p['audioDirectory']) == 0 or os.path.isdir(p['audioDirectory']):
                 # Notify AudioWriter child process of new write directory
+                print("main>> sending new audio write directory: "+p['audioDirectory'])
                 self.audioWriteProcess.msgQueue.put((AudioWriter.SETPARAMS, dict(audioDirectory=p['audioDirectory'])))
     def mergeDirectoryChangeHandler(self, *args):
+        print("main>> mergeDirectoryChangeHandler")
         p = self.getParams(
             'mergeDirectory',
             'mergeBaseFileName'
@@ -4519,6 +4512,7 @@ him know. Otherwise, I had nothing to do with it.
         if self.mergeProcess is not None:
             if len(p['mergeDirectory']) == 0 or os.path.isdir(p['mergeDirectory']):
                 # Notify AVMerger child process of new write directory
+                print("main>> sending new video write directory: "+p['mergeDirectory'])
                 self.mergeProcess.msgQueue.put((AVMerger.SETPARAMS, dict(directory=p['mergeDirectory'])))
 
     def selectMergedWriteDirectory(self, *args):
