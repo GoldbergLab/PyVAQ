@@ -2,32 +2,36 @@ import multiprocessing as mp
 import time
 
 class testProcess(mp.Process):
-    def __init__(self, id='', e=None, q=None, writer=False):
+    def __init__(self, b, ID, ac, re, q=None):
         mp.Process.__init__(self)
-        self.a = 22
-        self.e = e
-        self.id = id
         self.q = q
-        self.writer = writer
+        self.b = b
+        self.ID = ID
+        self.ac = ac
+        self.re = re
 
     def run(self):
-        self.e.wait()
-        print(self.id, "EVENT SET!")
-        if self.writer:
-            self.q.put("hello there!")
-        else:
-            print("GOT: ", self.q.get())
+        print(self.ID, "semaphore?")
+        self.b.release()
+        with self.ac.get_lock():
+            self.ac.value += 1
+        print(self.ID, "semaphore!")
+        # time.sleep(0.5)
+        # self.b.release()
+        # with self.re.get_lock():
+        #     self.re.value += 1
 
 
 if __name__ == "__main__":
-    e = mp.Event()
-    q = mp.Queue()
-    x = testProcess(id='x', e=e, q=q)
-    y = testProcess(id='y', e=e, q=q, writer=True)
-    del q
-    time.sleep(1)
+    b = mp.BoundedSemaphore(value=5)
+    p = []
+    ac = mp.Value('i', 0)
+    re = mp.Value('i', 0)
+    for k in range(100):
+        p.append(testProcess(b, k, ac, re))
+        p[-1].start()
 
-    x.start()
-    y.start()
-    input("Hit a key to continue")
-    e.set()
+    input("Hit a key to continue\n")
+
+    print("Total acquires:", ac.value)
+    print("Total releases:", re.value)
