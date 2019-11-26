@@ -145,6 +145,7 @@ def acquire_images(cam, nodemap, nodemap_tldevice):
                 #  needed, the image must be released in order to keep the
                 #  buffer from filling up.
                 image_result = cam.GetNextImage()
+                print("PF:", image_result.GetPixelFormat())
                 a = image_result.GetNDArray()
                 w = image_result.GetWidth()
                 h = image_result.GetHeight()
