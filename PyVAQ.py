@@ -34,6 +34,7 @@ from decimal import Decimal
 from TimeInput import TimeVar, TimeEntry
 from ParamDialog import ParamDialog, Param
 from fileWritingEntry import FileWritingEntry
+from SharedImageQueue import SharedImageSender
 import cProfile, pstats, io
 from scipy.signal import butter, lfilter
 # For audio monitor graph embedding:
@@ -2952,6 +2953,7 @@ class VideoAcquirer(StateMachineProcess):
                 camSerial='',
                 acquireSettings={},
                 frameRate=None,
+                # acquisitionBufferSize=100,
                 monitorFrameRate=15,
                 verbose=False,
                 ready=None,                        # Synchronization barrier to ensure everyone's ready before beginning
@@ -2964,8 +2966,16 @@ class VideoAcquirer(StateMachineProcess):
         self.frameRate = frameRate
         self.imageQueue = mp.Queue()
         self.imageQueue.cancel_join_thread()
-        self.monitorImageQueue = mp.Queue(maxsize=1)
-        self.monitorImageQueue.cancel_join_thread()
+        self.monitorImageSender = SharedImageSender(
+            width=1280,
+            height=1024,
+            outputType='PIL',
+            outputCopy=False,
+            lockForOutput=False,
+            maxBufferSize=1
+        )
+        self.monitorImageReceiver = self.monitorImageSender.getReceiver()
+#        self.monitorImageQueue.cancel_join_thread()
         self.monitorMasterFrameRate = monitorFrameRate
         self.ready = ready
         self.frameStopwatch = Stopwatch()
@@ -2986,6 +2996,8 @@ class VideoAcquirer(StateMachineProcess):
         self.PID.value = os.getpid()
 #        if self.verbose >= 1: profiler = cProfile.Profile()
         if self.verbose >= 1: self.log(self.ID + " PID={pid}".format(pid=os.getpid()))
+
+        self.monitorImageSender.setupBuffers()
 
         state = VideoAcquirer.STOPPED
         nextState = VideoAcquirer.STOPPED
@@ -3124,13 +3136,13 @@ class VideoAcquirer(StateMachineProcess):
                             self.imageQueue.put(imp)
                             if self.verbose >= 3: self.log(self.ID + " Pushed image into buffer")
 
-                            if self.monitorImageQueue is not None:
+                            if self.monitorImageSender is not None:
                                 # Put the occasional image in the monitor queue for the UI
                                 thisTime = time.time()
                                 actualMonitorFramePeriod = thisTime - lastTime
                                 if (thisTime - lastTime) >= monitorFramePeriod:
                                     try:
-                                        self.monitorImageQueue.put(imp, block=False)
+                                        self.monitorImageSender.putImage(imageResult)
                                         if self.verbose >= 3: self.log(self.ID + " Sent frame for monitoring")
                                         lastTime = thisTime
                                     except queue.Full:
@@ -3255,7 +3267,7 @@ class VideoAcquirer(StateMachineProcess):
 
         clearQueue(self.msgQueue)
         clearQueue(self.imageQueue)
-        clearQueue(self.monitorImageQueue)
+        # clearQueue(self.monitorImageQueue)
         if self.verbose >= 1: self.log("Video acquire process STOPPED")
         # if self.verbose > 1:
         #     s = io.StringIO()
@@ -4712,17 +4724,17 @@ him know. Otherwise, I had nothing to do with it.
             availableImages = {}
             for camSerial in self.videoAcquireProcesses:
                 try:
-                    pImage = self.videoAcquireProcesses[camSerial].monitorImageQueue.get(block=False)
-                    availableImages[camSerial] = pImage  # Discard older images
+                    availableImages[camSerial] = self.videoAcquireProcesses[camSerial].monitorImageReceiver.getImage()
                 except queue.Empty:
                     pass
 
             for camSerial in availableImages:   # Display the most recent available image for each camera
-                # syncPrint("Received frame for monitoring")
-                pImage = availableImages[camSerial]
-                imData = np.reshape(pImage.data, (pImage.height, pImage.width, 3))
-                im = Image.fromarray(imData)
-                self.cameraMonitors[camSerial].updateImage(im)
+                print("main>> Received frame for monitoring")
+                print("main>> {sample}".format(sample=list(availableImages[camSerial].getdata())[0:10]))
+                # pImage = availableImages[camSerial]
+                # imData = np.reshape(pImage.data, (pImage.height, pImage.width, 3))
+                # im = Image.fromarray(imData)
+                self.cameraMonitors[camSerial].updateImage(availableImages[camSerial])
 
         if beginAuto:
             period = int(round(1000.0/(self.monitorMasterFrameRate)))
@@ -5163,21 +5175,24 @@ him know. Otherwise, I had nothing to do with it.
                 montage=p["montageMerge"],
                 deleteMergedFiles=p["deleteMergedFiles"]
                 )
+            mergeMsgQueue = self.mergeProcess.msgQueue
         else:
-            self.mergeProcess = None
+            mergeMsgQueue = None
 
-        # Create sync process
-        self.syncProcess = Synchronizer(
-            actualVideoFrequency=self.actualVideoFrequency,
-            actualAudioFrequency=self.actualAudioFrequency,
-            startTime=startTime,
-            audioSyncChannel=self.audioSyncTerminal,
-            videoSyncChannel=self.videoSyncTerminal,
-            requestedAudioFrequency=p["audioFrequency"],
-            requestedVideoFrequency=p["videoFrequency"],
-            verbose=self.syncVerbose,
-            ready=ready,
-            stdoutQueue=self.StdoutManager.queue)
+
+        if self.audioSyncTerminal is not None or self.videoSyncTerminal is not None:
+            # Create sync process
+            self.syncProcess = Synchronizer(
+                actualVideoFrequency=self.actualVideoFrequency,
+                actualAudioFrequency=self.actualAudioFrequency,
+                startTime=startTime,
+                audioSyncChannel=self.audioSyncTerminal,
+                videoSyncChannel=self.videoSyncTerminal,
+                requestedAudioFrequency=p["audioFrequency"],
+                requestedVideoFrequency=p["videoFrequency"],
+                verbose=self.syncVerbose,
+                ready=ready,
+                stdoutQueue=self.StdoutManager.queue)
 
         if len(self.audioDAQChannels) > 0:
             audioQueue = mp.Queue()
@@ -5196,7 +5211,7 @@ him know. Otherwise, I had nothing to do with it.
                 audioDirectory=p["audioDirectory"],
                 audioBaseFileName=p["audioBaseFileName"],
                 audioQueue=audioQueue,
-                mergeMessageQueue=self.mergeProcess.msgQueue,
+                mergeMessageQueue=mergeMsgQueue,
                 chunkSize=p["chunkSize"],
                 bufferSizeSeconds=p["bufferSizeSeconds"],
                 audioFrequency=self.actualAudioFrequency,
@@ -5222,7 +5237,7 @@ him know. Otherwise, I had nothing to do with it.
                 videoBaseFileName=p["videoBaseFileNames"][camSerial],
                 imageQueue=videoAcquireProcess.imageQueue,
                 frameRate=p["videoFrequency"],
-                mergeMessageQueue=self.mergeProcess.msgQueue,
+                mergeMessageQueue=mergeMsgQueue,
                 bufferSizeSeconds=p["bufferSizeSeconds"],
                 verbose=self.videoWriteVerbose,
                 stdoutQueue=self.StdoutManager.queue
@@ -5230,26 +5245,27 @@ him know. Otherwise, I had nothing to do with it.
             self.videoAcquireProcesses[camSerial] = videoAcquireProcess
             self.videoWriteProcesses[camSerial] = videoWriteProcess
 
-        self.audioTriggerProcess = AudioTriggerer(
-            audioQueue=self.audioAcquireProcess.analysisQueue,
-            audioFrequency=self.actualAudioFrequency,
-            chunkSize=p["chunkSize"],
-            triggerHighLevel=p["triggerHighLevel"],
-            triggerLowLevel=p["triggerLowLevel"],
-            triggerHighTime=p["triggerHighTime"],
-            triggerLowTime=p["triggerLowTime"],
-            triggerHighFraction=p["triggerHighFraction"],
-            triggerLowFraction=p["triggerLowFraction"],
-            maxAudioTriggerTime=p["maxAudioTriggerTime"],
-            preTriggerTime=p["preTriggerTime"],
-            multiChannelStartBehavior=p["multiChannelStartBehavior"],
-            multiChannelStopBehavior=p["multiChannelStopBehavior"],
-            bandpassFrequencies=(p['triggerLowBandpass'], p['triggerHighBandpass']),
-            verbose=self.audioTriggerVerbose,
-            audioMessageQueue=self.audioWriteProcess.msgQueue,
-            videoMessageQueues=dict([(camSerial, self.videoWriteProcesses[camSerial].msgQueue) for camSerial in self.videoWriteProcesses]),
-            stdoutQueue=self.StdoutManager.queue
-            )
+        if self.audioAcquireProcess is not None:
+            self.audioTriggerProcess = AudioTriggerer(
+                audioQueue=self.audioAcquireProcess.analysisQueue,
+                audioFrequency=self.actualAudioFrequency,
+                chunkSize=p["chunkSize"],
+                triggerHighLevel=p["triggerHighLevel"],
+                triggerLowLevel=p["triggerLowLevel"],
+                triggerHighTime=p["triggerHighTime"],
+                triggerLowTime=p["triggerLowTime"],
+                triggerHighFraction=p["triggerHighFraction"],
+                triggerLowFraction=p["triggerLowFraction"],
+                maxAudioTriggerTime=p["maxAudioTriggerTime"],
+                preTriggerTime=p["preTriggerTime"],
+                multiChannelStartBehavior=p["multiChannelStartBehavior"],
+                multiChannelStopBehavior=p["multiChannelStopBehavior"],
+                bandpassFrequencies=(p['triggerLowBandpass'], p['triggerHighBandpass']),
+                verbose=self.audioTriggerVerbose,
+                audioMessageQueue=self.audioWriteProcess.msgQueue,
+                videoMessageQueues=dict([(camSerial, self.videoWriteProcesses[camSerial].msgQueue) for camSerial in self.videoWriteProcesses]),
+                stdoutQueue=self.StdoutManager.queue
+                )
 
         if len(self.audioDAQChannels) > 0:
             self.audioTriggerProcess.start()
