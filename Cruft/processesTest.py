@@ -1,37 +1,40 @@
 import multiprocessing as mp
 import time
+import numpy as np
+import ctypes
 
 class testProcess(mp.Process):
-    def __init__(self, b, ID, ac, re, q=None):
-        mp.Process.__init__(self)
-        self.q = q
-        self.b = b
-        self.ID = ID
-        self.ac = ac
-        self.re = re
+    def __init__(self, *args, **kwargs):
+        mp.Process.__init__(self, *args, **kwargs)
+        self.width=10
+        self.height=12
+        self.channels=3
+        self.x = mp.RawArray(ctypes.c_uint8, 10*12*3)
 
     def run(self):
-        print(self.ID, "semaphore?")
-        self.b.release()
-        with self.ac.get_lock():
-            self.ac.value += 1
-        print(self.ID, "semaphore!")
-        # time.sleep(0.5)
-        # self.b.release()
-        # with self.re.get_lock():
-        #     self.re.value += 1
-
+        print("shared mem addr:", self.x)
+        self.y = np.frombuffer(self.x, dtype=ctypes.c_uint8).reshape((self.height, self.width, self.channels))
+        print('numpy in child:', self.y[0, 0, 0])
+        print('shared mem in child:', self.x[0])
+        new = np.random.randint(100, size=(self.height, self.width, self.channels), dtype=ctypes.c_uint8)
+        print('random in child:', new[0, 0, 0])
+        print()
+        np.copyto(self.y, new)
+        print('numpy in child after copy: ', self.y[0, 0, 0])
+        print('shared mem in child after copy:', self.x[0])
+        pass
 
 if __name__ == "__main__":
-    b = mp.BoundedSemaphore(value=5)
-    p = []
-    ac = mp.Value('i', 0)
-    re = mp.Value('i', 0)
-    for k in range(100):
-        p.append(testProcess(b, k, ac, re))
-        p[-1].start()
+
+
+    p = testProcess()
+    p.start()
+
+
+
+
 
     input("Hit a key to continue\n")
 
-    print("Total acquires:", ac.value)
-    print("Total releases:", re.value)
+
+    print('shared mem in main:', p.x[0])
