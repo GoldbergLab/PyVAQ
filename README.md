@@ -22,6 +22,16 @@ Video capture is designed for FLIR Blackfly S USB cameras, but should theoretica
 
 The audio streams are written to disk as a single multi-track .wav file, and each video stream is written to disk separately. On-line asynchronous merging of audio and video can be configured in the GUI.
 
+## Non-standard library dependencies
+
+numpy (image buffer handling, audio processing)
+scipy (audio filtering)
+Pillow (PIL) (GUI image display)
+matplotlib (GUI display of audio stream and statistics)
+pympler (finding memory leaks - will be removed when all the bugs are gone)
+nidaqmx (interacting with the NI DAQ - acquiring audio and synchronizing audio/video)
+PySpin (interacting with the FLIR Blackfly S USB camera)
+
 ## Known issues
 
  - Memory-related lock-up and sometimes crashes occur after several hours of operation due to a memory leak (still working on it!)
