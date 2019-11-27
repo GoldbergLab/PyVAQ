@@ -10,7 +10,7 @@ class SharedImageSender():
     def __init__(self,
                 width,
                 height,
-                pixelFormat=None, #PySpin.PixelFormat_BayerRG8,
+                pixelFormat=PySpin.PixelFormat_BayerRG8,
                 offsetX=0,
                 offsetY=0,
                 channels=3,                    # Number of color channels in images (for example, 1 for grayscale, 3 for RGB, 4 for RGBA)
@@ -26,17 +26,20 @@ class SharedImageSender():
         self.maxBufferSize = maxBufferSize
         if self.maxBufferSize < 1:
             raise ValueError("maxBufferSize must be greater than 1")
-        self.readLag = mp.Value(ctypes.c_uint32, 0)
-        self.nextID = 0
-
         self.width = width
         self.height = height
         self.channels = channels
 
-        imageDataSize = self.width * self.height * imageBitsPerPixel * self.channels // 8
-        if imageDataSize > 8000000000:
-            print("Warning, super big buffer! Do you have enough RAM? Buffer will be {b} GB".format(b=round(imageDataSize/8000000000, 2)))
+        self.metadataQueue = mp.Queue(maxsize=maxBufferSize)
 
+        imageDataSize = self.width * self.height * imageBitsPerPixel * self.channels // 8
+        if True or imageDataSize > 8000000000:
+            print("Warning, super big buffer! Do you have enough RAM? Buffer will be {f} frames and {b} GB".format(f=maxBufferSize, b=round(maxBufferSize*imageDataSize/8000000000, 2)))
+
+        self.readLag = mp.Value(ctypes.c_uint32, 0)
+        self.nextID = 0
+
+        self.buffersReady = False
         self.buffers = []
         self.bufferLocks = []
         self.npBuffers = []
@@ -46,6 +49,7 @@ class SharedImageSender():
             # Create synchronization locks to ensure that any given buffer element
             #   is not being read from and written to at the same time
             self.bufferLocks.append(mp.Lock())
+
         self.receiver = SharedImageReceiver(
             width=self.width,
             height=self.height,
@@ -60,10 +64,14 @@ class SharedImageSender():
             fileWriter=fileWriter,
             imageDataType=imageDataType,
             lockForOutput=lockForOutput,
+            metadataQueue=self.metadataQueue,
             readLag=self.readLag)
-        self.buffersReady = False
+
+    def qsize(self):
+        return self.readLag.value
 
     def setupBuffers(self):
+        # Prepare numpy buffer views inside putter process
         for k in range(self.maxBufferSize):
             # Create a series of numpy array views into that shared memory location.
             #   The numpy arrays share an underlying memory buffer with the shared memory arrays,
@@ -79,7 +87,7 @@ class SharedImageSender():
         self.nextID += 1
         return nextID
 
-    def putImage(self, image):
+    def put(self, image, metadata=None):
         if not self.buffersReady:
             raise IOError("setupBuffers must be called process where putting will happen before putting any images")
         # image is a PySpin ImagePtr that must match the characteristics passed to the SharedImageSender constructor
@@ -94,6 +102,7 @@ class SharedImageSender():
         nextID = self.getNextID()
         with self.bufferLocks[nextID % self.maxBufferSize]:
             np.copyto(self.npBuffers[nextID % self.maxBufferSize], imarray)
+        self.metadataQueue.put(metadata)
 
 class SharedImageReceiver():
     def __init__(self,
@@ -110,6 +119,7 @@ class SharedImageReceiver():
                 fileWriter=None,
                 outputCopy=True,
                 lockForOutput=True,
+                metadataQueue=None,
                 readLag=None
                 ):
         self.width = width
@@ -126,6 +136,7 @@ class SharedImageReceiver():
         self.fileWriter = fileWriter
         self.imageDataType = imageDataType
         self.lockForOutput = lockForOutput
+        self.metadataQueue = metadataQueue
         self.nextID = 0
 
     def getNextID(self):
@@ -133,15 +144,18 @@ class SharedImageReceiver():
         self.nextID += 1
         return nextID
 
+    def qsize(self):
+        return self.readLag.value
+
     def prepareOutput(self, data):
         # As specified, copies, converts, and/or writes data to a file
         if self.outputType == 'PySpin':
-            imarray = np.frombuffer(imageBuffer, dtype=imageDataType).reshape(self.height, self.width)
-            output = PySpin.Image.Create(self.width, self.height, self.offsetX, self.offsetY, self.pixelFormat, data)
+            imarray = np.frombuffer(data, dtype=self.imageDataType).reshape((self.width, self.height, 3))
+            output = PySpin.Image.Create(self.width, self.height, self.offsetX, self.offsetY, self.pixelFormat, imarray)
             if self.outputCopy:
                 pass # Do we need to copy this? Does PySpin.Image.Create already copy the buffer? Dunno, need to test to find out
         elif self.outputType == 'numpy':
-            output = np.frombuffer(imageBuffer, dtype=imageDataType).reshape(self.height, self.width)
+            output = np.frombuffer(data, dtype=self.imageDataType).reshape((self.height, self.width, 3))
             if self.outputCopy:
                 output = np.copy(output)
         elif self.outputType == 'PIL':
@@ -159,7 +173,7 @@ class SharedImageReceiver():
             self.fileWriter(output)
         return output
 
-    def getImage(self):
+    def get(self, includeMetadata=False):
         # Returns a PySpin image, if one is available in the buffer, otherwise
         #   raise queue.Empty
         with self.readLag.get_lock():
@@ -173,7 +187,11 @@ class SharedImageReceiver():
             data = self.buffers[nextID % self.maxBufferSize]
             if self.lockForOutput:
                 output = self.prepareOutput(data)
+        metadata = self.metadataQueue.get()
 
         if not self.lockForOutput:
             output = self.prepareOutput(data)
-        return output
+        if includeMetadata:
+            return output, metadata
+        else:
+            return output
