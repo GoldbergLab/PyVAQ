@@ -3,7 +3,11 @@ import multiprocessing as mp
 from queue import Empty as qEmpty
 from queue import Full as qFull
 import ctypes
-import PySpin
+try:
+    import PySpin
+except ModuleNotFoundError:
+    # pip seems to install PySpin as pyspin sometimes...
+    import pyspin as PySpin
 from PIL import Image
 
 class SharedImageSender():
