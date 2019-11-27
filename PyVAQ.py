@@ -3969,6 +3969,7 @@ WIDGET_COLORS = [
 class PyVAQ:
     def __init__(self, master):
         self.master = master
+        self.master.resizable(height=False, width=False)  # Disallow resizing window
         self.customTitleBar = False
         if self.customTitleBar:
             self.master.overrideredirect(True) # Disable title bar
