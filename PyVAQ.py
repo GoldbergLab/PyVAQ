@@ -11,11 +11,6 @@ import multiprocessing as mp
 import nidaqmx
 from nidaqmx.stream_readers import AnalogMultiChannelReader
 import nidaqmx.system as nisys
-try:
-    import PySpin
-except ModuleNotFoundError:
-    # pip seems to install PySpin as pyspin sometimes...
-    import pyspin as PySpin
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter.filedialog import askdirectory, asksaveasfilename, askopenfilename
@@ -48,6 +43,12 @@ import matplotlib.gridspec as gridspec
 from matplotlib.lines import Line2D
 import ffmpegWriter as fw
 from pympler import tracker
+try:
+    import PySpin
+except ModuleNotFoundError:
+    # pip seems to install PySpin as pyspin sometimes...
+    import pyspin as PySpin
+
 
 VERSION='0.2.0'
 
@@ -741,15 +742,15 @@ class Trigger():
             return time - self.endTime
         return 0
 
-class PickleableImage():
-    def __init__(self, width, height, offsetX, offsetY, pixelFormat, data, frameTime):
-        self.width = width
-        self.height = height
-        self.offsetX = offsetX
-        self.offsetY = offsetY
-        self.pixelFormat = pixelFormat
-        self.data = data
-        self.frameTime = frameTime
+# class PickleableImage():
+#     def __init__(self, width, height, offsetX, offsetY, pixelFormat, data, frameTime):
+#         self.width = width
+#         self.height = height
+#         self.offsetX = offsetX
+#         self.offsetY = offsetY
+#         self.pixelFormat = pixelFormat
+#         self.data = data
+#         self.frameTime = frameTime
 
 class AudioChunk():
     # A class to wrap a chunk of audio data.
@@ -2954,6 +2955,7 @@ class VideoAcquirer(StateMachineProcess):
                 acquireSettings={},
                 frameRate=None,
                 # acquisitionBufferSize=100,
+                bufferSizeSeconds=2.2,
                 monitorFrameRate=15,
                 verbose=False,
                 ready=None,                        # Synchronization barrier to ensure everyone's ready before beginning
@@ -2964,8 +2966,19 @@ class VideoAcquirer(StateMachineProcess):
         self.ID = 'VA_'+self.camSerial
         self.acquireSettings = acquireSettings
         self.frameRate = frameRate
-        self.imageQueue = mp.Queue()
-        self.imageQueue.cancel_join_thread()
+        # self.imageQueue = mp.Queue()
+        # self.imageQueue.cancel_join_thread()
+        self.bufferSize = int(2*bufferSizeSeconds * self.frameRate)
+        print("Creating shared image sender with max buffer size:", self.bufferSize)
+        self.imageQueue = SharedImageSender(
+            width=1280,
+            height=1024,
+            outputType='PySpin',
+            outputCopy=True,
+            lockForOutput=False,
+            maxBufferSize=self.bufferSize
+        )
+        self.imageQueueReceiver = self.imageQueue.getReceiver()
         self.monitorImageSender = SharedImageSender(
             width=1280,
             height=1024,
@@ -2998,6 +3011,7 @@ class VideoAcquirer(StateMachineProcess):
         if self.verbose >= 1: self.log(self.ID + " PID={pid}".format(pid=os.getpid()))
 
         self.monitorImageSender.setupBuffers()
+        self.imageQueue.setupBuffers()
 
         state = VideoAcquirer.STOPPED
         nextState = VideoAcquirer.STOPPED
@@ -3130,10 +3144,10 @@ class VideoAcquirer(StateMachineProcess):
 
                             if self.verbose >= 3: self.log(self.ID + " Got image from camera, t="+str(frameTime))
 
-                            imp = PickleableImage(imageResult.GetWidth(), imageResult.GetHeight(), 0, 0, imageResult.GetPixelFormat(), imageResult.GetData(), frameTime)
+                            # imp = PickleableImage(imageResult.GetWidth(), imageResult.GetHeight(), 0, 0, imageResult.GetPixelFormat(), imageResult.GetData(), frameTime)
 
                             # Put image into image queue
-                            self.imageQueue.put(imp)
+                            self.imageQueue.put(imageResult, metadata={'frameTime':frameTime})
                             if self.verbose >= 3: self.log(self.ID + " Pushed image into buffer")
 
                             if self.monitorImageSender is not None:
@@ -3142,10 +3156,11 @@ class VideoAcquirer(StateMachineProcess):
                                 actualMonitorFramePeriod = thisTime - lastTime
                                 if (thisTime - lastTime) >= monitorFramePeriod:
                                     try:
-                                        self.monitorImageSender.putImage(imageResult)
+                                        self.monitorImageSender.put(imageResult)
                                         if self.verbose >= 3: self.log(self.ID + " Sent frame for monitoring")
                                         lastTime = thisTime
                                     except queue.Full:
+                                        if self.verbose >= 3: self.log("Can't put frame in for monitoring - no room")
                                         pass
 
                         imageResult.Release()
@@ -3266,7 +3281,7 @@ class VideoAcquirer(StateMachineProcess):
             state = nextState
 
         clearQueue(self.msgQueue)
-        clearQueue(self.imageQueue)
+        # clearQueue(self.imageQueue)
         # clearQueue(self.monitorImageQueue)
         if self.verbose >= 1: self.log("Video acquire process STOPPED")
         # if self.verbose > 1:
@@ -3349,7 +3364,7 @@ class VideoWriter(StateMachineProcess):
                 imageQueue=None,
                 frameRate=10,
                 mergeMessageQueue=None,            # Queue to put (filename, trigger) in for merging
-                bufferSizeSeconds=5,
+                bufferSizeSeconds=2.2,
                 camSerial='',
                 verbose=False,
                 **kwargs):
@@ -3359,8 +3374,8 @@ class VideoWriter(StateMachineProcess):
         self.videoDirectory=videoDirectory
         self.videoBaseFileName = videoBaseFileName
         self.imageQueue = imageQueue
-        if self.imageQueue is not None:
-            self.imageQueue.cancel_join_thread()
+        # if self.imageQueue is not None:
+        #     self.imageQueue.cancel_join_thread()
         self.frameRate = frameRate
         self.mergeMessageQueue = mergeMessageQueue
         self.bufferSize = int(2*bufferSizeSeconds * self.frameRate)
@@ -3381,6 +3396,7 @@ class VideoWriter(StateMachineProcess):
         self.PID.value = os.getpid()
 #        if self.verbose >= 1: profiler = cProfile.Profile()
         if self.verbose >= 1: self.log(self.ID + " - PID={pid}".format(pid=os.getpid()))
+
         state = VideoWriter.STOPPED
         nextState = VideoWriter.STOPPED
         lastState = VideoWriter.STOPPED
@@ -3420,7 +3436,7 @@ class VideoWriter(StateMachineProcess):
                 elif state == VideoWriter.INITIALIZING:
                     # DO STUFF
                     triggers = []
-                    imp = None
+                    im = None
                     videoFileInterface = None
                     timeWrote = 0
 
@@ -3450,16 +3466,16 @@ class VideoWriter(StateMachineProcess):
                         self.log("Images in buffer: ", len(self.buffer))
                     if len(self.buffer) >= self.buffer.maxlen:
                         # If buffer is full, pull oldest video frame from buffer
-                        imp = self.buffer.popleft()
-                        if self.verbose >= 3: self.log(self.ID + " - Pulling video frame from buffer. t="+str(imp.frameTime) + " (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
+                        im, metadata = self.buffer.popleft()
+                        if self.verbose >= 3: self.log(self.ID + " - Pulling video frame from buffer (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
 
                     try:
                         # Get new video frame and push it into the buffer
-                        newImp = self.imageQueue.get(block=True, timeout=0.1)
-                        if self.verbose >= 3: self.log(self.ID + " - Got video frame from acquirer. Pushing into the buffer. t="+str(newImp.frameTime))
-                        self.buffer.append(newImp)
+                        newIm, metadata = self.imageQueue.get(includeMetadata=True) #block=True, timeout=0.1)
+                        if self.verbose >= 3: self.log(self.ID + " - Got video frame from acquirer. Pushing into the buffer. t="+str(newMetadata['frameTime']))
+                        self.buffer.append((newIm, metadata))
                     except queue.Empty: # None available
-                        newImp = None
+                        newIm = None
 
                     # CHECK FOR MESSAGES
                     try:
@@ -3477,22 +3493,22 @@ class VideoWriter(StateMachineProcess):
                     elif len(triggers) > 0:
                         # We have triggers - next state will depend on them
                         if self.verbose >= 2: self.log(self.ID + " - Trigger is active")
-                        if imp is not None:
+                        if im is not None:
                             # At least one video frame has been received - we can check if trigger period has begun
-                            triggerState = triggers[0].state(imp.frameTime)
+                            triggerState = triggers[0].state(metadata['frameTime'])
                             if self.verbose >= 2: self.log(self.ID + " - Trigger state: {state}".format(state=triggerState))
                             if triggerState < 0:        # Time is before trigger range
                                 if self.verbose >= 2: self.log(self.ID + " - Active trigger, but haven't gotten to start time yet, continue buffering.")
                                 nextState = VideoWriter.BUFFERING
                             elif triggerState == 0:     # Time is now in trigger range
                                 if self.verbose >= 0:
-                                    delta = imp.frameTime - triggers[0].startTime
+                                    delta = metadata['frameTime'] - triggers[0].startTime
                                     if delta <= 1/self.frameRate:
                                         # Within one frame of trigger start
                                         self.log(self.ID + " - Got trigger start!")
                                     else:
                                         # More than one frame after trigger start - we missed some
-                                        self.log(self.ID + " - partially missed trigger by {t} seconds, which is {f} frames!".format(t=delta, f=delta/self.frameRate))
+                                        self.log(self.ID + " - partially missed trigger by {t} seconds, which is {f} frames!".format(t=delta, f=delta * self.frameRate))
                                 timeWrote = 0
                                 nextState = VideoWriter.WRITING
                             else:                       # Time is after trigger range
@@ -3516,7 +3532,7 @@ class VideoWriter(StateMachineProcess):
                     if self.verbose >= 3:
                         self.log(self.ID + " - Image queue size: ", self.imageQueue.qsize())
                         self.log(self.ID + " - Images in buffer: ", len(self.buffer))
-                    if imp is not None:
+                    if im is not None:
                         if videoFileInterface is None:
                             # Start new video file
                             videoFileName = generateFileName(directory=self.videoDirectory, baseName=self.videoBaseFileName, extension='', trigger=triggers[0])
@@ -3539,7 +3555,7 @@ class VideoWriter(StateMachineProcess):
 
                         if self.videoWriteMethod == "PySpin":
                             # Reconstitute PySpin image from PickleableImage
-                            im = PySpin.Image.Create(imp.width, imp.height, imp.offsetX, imp.offsetY, imp.pixelFormat, imp.data)
+                            # im = PySpin.Image.Create(imp.width, imp.height, imp.offsetX, imp.offsetY, imp.pixelFormat, imp.data)
                             # Convert image to desired format
                             videoFileInterface.Append(im.Convert(PySpin.PixelFormat_RGB8, PySpin.HQ_LINEAR))
                             # try:
@@ -3554,17 +3570,17 @@ class VideoWriter(StateMachineProcess):
 
                     try:
                         # Pop the oldest image frame from the back of the buffer.
-                        imp = self.buffer.popleft()
+                        im, metadata = self.buffer.popleft()
                         if self.verbose >= 3: self.log(self.ID + " - Pulled image from buffer")
                     except IndexError:
                         if self.verbose >= 3: self.log(self.ID + " - No images in buffer")
-                        imp = None  # Buffer was empty
+                        im = None  # Buffer was empty
 
                     # Pull new image from VideoAcquirer and add to the front of the buffer.
                     try:
-                        newImp = self.imageQueue.get(True, 0.1)
+                        newIm, newMetadata = self.imageQueue.get() #True, 0.1)
                         if self.verbose >= 3: self.log(self.ID + " - Got image from acquirer. Pushing into buffer.")
-                        self.buffer.append(newImp)
+                        self.buffer.append((newIm, newMetadata))
                     except queue.Empty:
                         # No data in image queue yet - pass.
                         if self.verbose >= 0: self.log(self.ID + " - No images available from acquirer")
@@ -3586,8 +3602,8 @@ class VideoWriter(StateMachineProcess):
                         nextState = VideoWriter.STOPPING
                     elif msg in ['', VideoWriter.START]:
                         nextState = VideoWriter.WRITING
-                        if len(triggers) > 0 and imp is not None:
-                            triggerState = triggers[0].state(imp.frameTime)
+                        if len(triggers) > 0 and im is not None:
+                            triggerState = triggers[0].state(metadata['frameTime'])
                             if triggerState != 0:
                                 # Frame is not in trigger period - return to buffering
                                 if self.verbose >= 2: self.log(self.ID + " - Frame does not overlap trigger. Switching to buffering.")
@@ -4724,20 +4740,18 @@ him know. Otherwise, I had nothing to do with it.
             availableImages = {}
             for camSerial in self.videoAcquireProcesses:
                 try:
-                    availableImages[camSerial] = self.videoAcquireProcesses[camSerial].monitorImageReceiver.getImage()
+                    availableImages[camSerial] = self.videoAcquireProcesses[camSerial].monitorImageReceiver.get()
                 except queue.Empty:
                     pass
 
             for camSerial in availableImages:   # Display the most recent available image for each camera
-                print("main>> Received frame for monitoring")
-                print("main>> {sample}".format(sample=list(availableImages[camSerial].getdata())[0:10]))
                 # pImage = availableImages[camSerial]
                 # imData = np.reshape(pImage.data, (pImage.height, pImage.width, 3))
                 # im = Image.fromarray(imData)
                 self.cameraMonitors[camSerial].updateImage(availableImages[camSerial])
 
         if beginAuto:
-            period = int(round(1000.0/(self.monitorMasterFrameRate)))
+            period = int(round(1000.0/(2*self.monitorMasterFrameRate)))
             self.videoMonitorUpdateJob = self.master.after(period, self.autoUpdateVideoMonitors)
 
     def autoUpdateTriggerIndicator(self, beginAuto=True):
@@ -4849,7 +4863,7 @@ him know. Otherwise, I had nothing to do with it.
     def getQueueSizes(self):
         print("main>> Get qsizes...")
         for camSerial in self.videoAcquireProcesses:
-            print("main>>   videoMonitorQueues[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].monitorImageQueue.qsize())
+            print("main>>   videoMonitorQueues[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].monitorImageReceiver.qsize())
             print("main>>   imageQueues[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].imageQueue.qsize())
         if self.audioAcquireProcess is not None:
             print("main>>   audioAcquireProcess.audioQueue size:", self.audioAcquireProcess.audioQueue.qsize())
@@ -5229,13 +5243,14 @@ him know. Otherwise, I had nothing to do with it.
                 frameRate=p["videoFrequency"],
                 monitorFrameRate=self.monitorMasterFrameRate,
                 verbose=self.videoAcquireVerbose,
+                bufferSizeSeconds=p["bufferSizeSeconds"],
                 ready=ready,
                 stdoutQueue=self.StdoutManager.queue)
             videoWriteProcess = VideoWriter(
                 camSerial=camSerial,
                 videoDirectory=p["videoDirectories"][camSerial],
                 videoBaseFileName=p["videoBaseFileNames"][camSerial],
-                imageQueue=videoAcquireProcess.imageQueue,
+                imageQueue=videoAcquireProcess.imageQueueReceiver,
                 frameRate=p["videoFrequency"],
                 mergeMessageQueue=mergeMsgQueue,
                 bufferSizeSeconds=p["bufferSizeSeconds"],
