@@ -344,42 +344,6 @@ pixelFormats = [
 
 np.set_printoptions(linewidth=200)
 
-def generateButterBandpassCoeffs(lowcut, highcut, fs, order=5):
-    nyq = 0.5 * fs
-    low = lowcut / nyq
-    high = highcut / nyq
-    b, a = butter(order, [low, high], btype='band')
-    return b, a
-
-def cPrint(*args, color=None, sep='', end='\n', file=sys.stdout, flush=False, lock=None):
-    colors = {
-        "black"     :'b[30m',
-        "red"       :'b[31m',
-        "green"     :'b[32m',
-        "yellow"    :'b[33m',
-        "blue"      :'b[34m',
-        "magenta"   :'b[35m',
-        "cyan"      :'b[36m',
-        "White"     :'b[37m',
-        "reset"     :'b[39m',
-        None        :''}
-    sys.stdout.buffer.write(bytes(0x1B)+bytes('[{color}m'.format(color=colors[color]).encode('utf8')))
-    syncPrint(*args, sep=sep, end=end, file=file, flush=flush, lock=lock)
-    sys.stdout.buffer.write(bytes(0x1B)+bytes('[{color}m'.format(color=colors["reset"]).encode('utf8')))
-
-class DummyExecutor:
-    def __enter__(self):
-        pass
-    def __exit__(self, type, value, traceback):
-        pass
-
-def syncPrintOld(*args, sep=' ', end='\n', file=sys.stdout, flush=True, lock=None):
-    d = DummyExecutor()
-    if lock is None:
-        lock = d
-    with lock:
-        print(*args, sep=sep, end=end, file=file, flush=flush)
-
 def syncPrint(*args, sep=' ', end='\n', flush=True, buffer=None):
     kwargs = dict(sep=sep, end=end, flush=flush)
     buffer.append((args, kwargs))
@@ -395,14 +359,6 @@ def getStringIntersections(s1, s2, minLength=1):
                 intersections.append(s1[k:k+L])
     return intersections
 
-def timeToSerializable(time):
-    return dict(
-        hour=time.hour,
-        minute=time.minute,
-        second=time.second,
-        microsecond=time.microsecond
-    )
-
 def serializableToTime(serializable):
     return dt.time(
         hour=serializable['hour'],
@@ -410,26 +366,6 @@ def serializableToTime(serializable):
         second=serializable['second'],
         microsecond=serializable['microsecond']
     )
-
-def format_diff(diff):
-    # Diff is a list of the form output by pympler.summary.diff()
-    output = '\n'.join(str(d) for d in sorted(diff, key=lambda dd:-dd[2]))
-
-def slugify(value, allow_unicode=False):
-    """
-    Convert to ASCII if 'allow_unicode' is False. Convert spaces to hyphens.
-    Remove characters that aren't alphanumerics, underscores, or hyphens.
-    Convert to lowercase. Also strip leading and trailing whitespace.
-
-    Adapter from Django utils
-    """
-    value = str(value)
-    if allow_unicode:
-        value = unicodedata.normalize('NFKC', value)
-    else:
-        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
-    value = re.sub(r'[^\w\s-]', '', value).strip().lower()
-    return re.sub(r'[-\s]+', '-', value)
 
 ### Main recording and writing functions
 
@@ -831,34 +767,12 @@ def generateFileName(directory, baseName, extension, trigger):
     fileName = baseName + '_' + timeString + extension
     return os.path.join(directory, fileName)
 
-def discoverDAQAudioChannels():
-    s = nisys.System.local()
-    channels = {}
-    for d in s.devices:
-        channels[d.name] = [c.name for c in d.ai_physical_chans]
-    return channels
-
-def discoverDAQClockChannels():
-    s = nisys.System.local()
-    channels = {}
-    for d in s.devices:
-        channels[d.name] = [c.name for c in d.co_physical_chans]
-    return channels
-
-def discoverCameras(numFakeCameras=0):
-    system = PySpin.System.GetInstance()
-    camList = system.GetCameras()
-    camSerials = []
-    for cam in camList:
-        cam.Init()
-        camSerials.append(getCameraAttribute(cam.GetTLDeviceNodeMap(), 'DeviceSerialNumber', PySpin.CStringPtr))
-        cam.DeInit()
-        del cam
-    for k in range(numFakeCameras):
-        camSerials.append('fake_camera_'+str(k))
-    camList.Clear()
-    system.ReleaseInstance()
-    return camSerials
+def generateButterBandpassCoeffs(lowcut, highcut, fs, order=5):
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    high = highcut / nyq
+    b, a = butter(order, [low, high], btype='band')
+    return b, a
 
 class StdoutManager(mp.Process):
     # A process for printing output to stdout from other processes.
@@ -3770,21 +3684,6 @@ class VideoWriter(StateMachineProcess):
             if self.verbose >= 2: self.log(self.ID + " - Adding new trigger")
             triggers.append(trigger)
 
-def getCameraAttribute(nodemap, attributeName, attributeTypePtrFunction):
-    nodeAttribute = attributeTypePtrFunction(nodemap.GetNode(attributeName))
-
-    if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsReadable(nodeAttribute):
-        raise AttributeError('Unable to retrieve '+attributeName+'. Aborting...')
-        return None
-
-    try:
-        value = nodeAttribute.GetValue()
-    except AttributeError:
-        # Maybe it's an enum?
-        valueEntry = nodeAttribute.GetCurrentEntry()
-        value = (valueEntry.GetName(), valueEntry.GetDisplayName())
-    return value
-
 nodeAccessorFunctions = {
     PySpin.intfIString:('string', PySpin.CStringPtr),
     PySpin.intfIInteger:('integer', PySpin.CIntegerPtr),
@@ -3957,6 +3856,78 @@ def checkCameraSpeed(camSerial):
 
 def flattenList(l):
     return [item for sublist in l for item in sublist]
+
+def discoverDAQAudioChannels():
+    s = nisys.System.local()
+    channels = {}
+    for d in s.devices:
+        channels[d.name] = [c.name for c in d.ai_physical_chans]
+    return channels
+
+def discoverDAQClockChannels():
+    s = nisys.System.local()
+    channels = {}
+    for d in s.devices:
+        channels[d.name] = [c.name for c in d.co_physical_chans]
+    return channels
+
+def discoverCameras(numFakeCameras=0):
+    system = PySpin.System.GetInstance()
+    camList = system.GetCameras()
+    camSerials = []
+    for cam in camList:
+        cam.Init()
+        camSerials.append(getCameraAttribute(cam.GetTLDeviceNodeMap(), 'DeviceSerialNumber', PySpin.CStringPtr))
+        cam.DeInit()
+        del cam
+    for k in range(numFakeCameras):
+        camSerials.append('fake_camera_'+str(k))
+    camList.Clear()
+    system.ReleaseInstance()
+    return camSerials
+
+def getCameraAttribute(nodemap, attributeName, attributeTypePtrFunction):
+    nodeAttribute = attributeTypePtrFunction(nodemap.GetNode(attributeName))
+
+    if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsReadable(nodeAttribute):
+        raise AttributeError('Unable to retrieve '+attributeName+'. Aborting...')
+        return None
+
+    try:
+        value = nodeAttribute.GetValue()
+    except AttributeError:
+        # Maybe it's an enum?
+        valueEntry = nodeAttribute.GetCurrentEntry()
+        value = (valueEntry.GetName(), valueEntry.GetDisplayName())
+    return value
+
+def timeToSerializable(time):
+    return dict(
+        hour=time.hour,
+        minute=time.minute,
+        second=time.second,
+        microsecond=time.microsecond
+    )
+
+def format_diff(diff):
+    # Diff is a list of the form output by pympler.summary.diff()
+    output = '\n'.join(str(d) for d in sorted(diff, key=lambda dd:-dd[2]))
+
+def slugify(value, allow_unicode=False):
+    """
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces to hyphens.
+    Remove characters that aren't alphanumerics, underscores, or hyphens.
+    Convert to lowercase. Also strip leading and trailing whitespace.
+
+    Adapter from Django utils
+    """
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\w\s-]', '', value).strip().lower()
+    return re.sub(r'[-\s]+', '-', value)
 
 LINE_STYLES = [c+'-' for c in 'bykcmgr']
 WIDGET_COLORS = [
