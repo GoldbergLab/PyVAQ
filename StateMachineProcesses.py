@@ -1,9 +1,12 @@
 import os
 import struct
 import time
+import numpy as np
 import multiprocessing as mp
 import datetime as dt
+from scipy.signal import butter, lfilter
 import wave
+import queue
 from PIL import Image
 from collections import defaultdict, deque
 from threading import BrokenBarrierError
@@ -11,11 +14,33 @@ import itertools
 import ffmpegWriter as fw
 import nidaqmx
 from nidaqmx.stream_readers import AnalogMultiChannelReader
+from SharedImageQueue import SharedImageSender
+import traceback
 try:
     import PySpin
 except ModuleNotFoundError:
     # pip seems to install PySpin as pyspin sometimes...
     import pyspin as PySpin
+
+nodeAccessorFunctions = {
+    PySpin.intfIString:('string', PySpin.CStringPtr),
+    PySpin.intfIInteger:('integer', PySpin.CIntegerPtr),
+    PySpin.intfIFloat:('float', PySpin.CFloatPtr),
+    PySpin.intfIBoolean:('boolean', PySpin.CBooleanPtr),
+    PySpin.intfICommand:('command', PySpin.CEnumerationPtr),
+    PySpin.intfIEnumeration:('enum', PySpin.CEnumerationPtr),
+    PySpin.intfICategory:('category', PySpin.CCategoryPtr)
+}
+
+nodeAccessorTypes = {
+    'string':PySpin.CStringPtr,
+    'integer':PySpin.CIntegerPtr,
+    'float':PySpin.CFloatPtr,
+    'boolean':PySpin.CBooleanPtr,
+    'command':PySpin.CEnumerationPtr,
+    'enum':PySpin.CEnumerationPtr,
+    'category':PySpin.CCategoryPtr
+}
 
 def syncPrint(*args, sep=' ', end='\n', flush=True, buffer=None):
     kwargs = dict(sep=sep, end=end, flush=flush)

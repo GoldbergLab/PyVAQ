@@ -1,5 +1,6 @@
 import tkinter as tk
 import tkinter.ttk as ttk
+import numpy as np
 from PIL import Image, ImageTk
 from SharedImageQueue import SharedImageSender
 from scipy.signal import butter, lfilter
@@ -11,6 +12,13 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from fileWritingEntry import FileWritingEntry
 
+WIDGET_COLORS = [
+    '#050505', # near black
+    '#e6f5ff', # very light blue
+    '#c1ffc1', # light green
+    '#FFC1C1'  # light red
+]
+LINE_STYLES = [c+'-' for c in 'bykcmgr']
 
 class AudioMonitor(ttk.LabelFrame):
     def __init__(self, *args, historyLength=44100*2, displayAmplitude=5, autoscale=False, **kwargs):

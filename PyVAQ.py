@@ -36,8 +36,7 @@ except ModuleNotFoundError:
     # pip seems to install PySpin as pyspin sometimes...
     import pyspin as PySpin
 from MonitorWidgets import AudioMonitor, CameraMonitor
-from StateMachineProcesses import Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter
-
+from StateMachineProcesses import Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, nodeAccessorFunctions, nodeAccessorTypes
 
 VERSION='0.2.0'
 
@@ -332,25 +331,6 @@ pixelFormats = [
 ]
 
 np.set_printoptions(linewidth=200)
-nodeAccessorFunctions = {
-    PySpin.intfIString:('string', PySpin.CStringPtr),
-    PySpin.intfIInteger:('integer', PySpin.CIntegerPtr),
-    PySpin.intfIFloat:('float', PySpin.CFloatPtr),
-    PySpin.intfIBoolean:('boolean', PySpin.CBooleanPtr),
-    PySpin.intfICommand:('command', PySpin.CEnumerationPtr),
-    PySpin.intfIEnumeration:('enum', PySpin.CEnumerationPtr),
-    PySpin.intfICategory:('category', PySpin.CCategoryPtr)
-}
-
-nodeAccessorTypes = {
-    'string':PySpin.CStringPtr,
-    'integer':PySpin.CIntegerPtr,
-    'float':PySpin.CFloatPtr,
-    'boolean':PySpin.CBooleanPtr,
-    'command':PySpin.CEnumerationPtr,
-    'enum':PySpin.CEnumerationPtr,
-    'category':PySpin.CCategoryPtr
-}
 
 def queryAttributeNode(nodePtr, nodeType):
     """
