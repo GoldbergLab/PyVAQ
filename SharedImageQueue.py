@@ -14,9 +14,10 @@ class SharedImageSender():
     def __init__(self,
                 width,
                 height,
-                pixelFormat=PySpin.PixelFormat_BayerRG8,
+                pixelFormat=PySpin.PixelFormat_BGR8,  #PySpin.PixelFormat_BayerRG8,
                 offsetX=0,
                 offsetY=0,
+                verbose=False,
                 channels=3,                    # Number of color channels in images (for example, 1 for grayscale, 3 for RGB, 4 for RGBA)
                 imageDataType=ctypes.c_uint8,       # ctype of data of each pixel's channel value
                 imageBitsPerPixel=8,                # Number of bits per pixel
@@ -27,6 +28,7 @@ class SharedImageSender():
                 maxBufferSize=1                     # Maximum number of images to allocate. Attempting to allocate more than that will raise an index error
                 ):
 
+        self.verbose = verbose
         self.maxBufferSize = maxBufferSize
         if self.maxBufferSize < 1:
             raise ValueError("maxBufferSize must be greater than 1")
@@ -37,7 +39,7 @@ class SharedImageSender():
         self.metadataQueue = mp.Queue(maxsize=maxBufferSize)
 
         imageDataSize = self.width * self.height * imageBitsPerPixel * self.channels // 8
-        if True or imageDataSize > 8000000000:
+        if imageDataSize > 8000000000:
             print("Warning, super big buffer! Do you have enough RAM? Buffer will be {f} frames and {b} GB".format(f=maxBufferSize, b=round(maxBufferSize*imageDataSize/8000000000, 2)))
 
         self.readLag = mp.Value(ctypes.c_uint32, 0)
@@ -59,6 +61,7 @@ class SharedImageSender():
             height=self.height,
             channels=self.channels,
             pixelFormat=pixelFormat,
+            verbose=self.verbose,
             offsetX=offsetX,
             offsetY=offsetY,
             buffers=self.buffers,
@@ -80,7 +83,7 @@ class SharedImageSender():
             # Create a series of numpy array views into that shared memory location.
             #   The numpy arrays share an underlying memory buffer with the shared memory arrays,
             #   so changing the numpy array changes the shared memory buffer (and vice versa)
-            self.npBuffers.append(np.frombuffer(self.buffers[-1], dtype=ctypes.c_uint8).reshape((self.height, self.width, self.channels)))
+            self.npBuffers.append(np.frombuffer(self.buffers[k], dtype=ctypes.c_uint8).reshape((self.height, self.width, self.channels)))
         self.buffersReady = True
 
     def getReceiver(self):
@@ -106,7 +109,8 @@ class SharedImageSender():
         nextID = self.getNextID()
         with self.bufferLocks[nextID % self.maxBufferSize]:
             np.copyto(self.npBuffers[nextID % self.maxBufferSize], imarray)
-        self.metadataQueue.put(metadata)
+        if self.verbose: print("PUT! buffer #", nextID % self.maxBufferSize, " readlag=", readLag+1, "data=", imarray[0:5, 0, 0])
+        self.metadataQueue.put(metadata, block=False)
 
 class SharedImageReceiver():
     def __init__(self,
@@ -114,6 +118,7 @@ class SharedImageReceiver():
                 height,
                 channels,
                 pixelFormat,
+                verbose=False,
                 offsetX=0,
                 offsetY=0,
                 buffers=None,
@@ -141,6 +146,7 @@ class SharedImageReceiver():
         self.imageDataType = imageDataType
         self.lockForOutput = lockForOutput
         self.metadataQueue = metadataQueue
+        self.verbose = verbose
         self.nextID = 0
 
     def getNextID(self):
@@ -154,19 +160,21 @@ class SharedImageReceiver():
     def prepareOutput(self, data):
         # As specified, copies, converts, and/or writes data to a file
         if self.outputType == 'PySpin':
-            imarray = np.frombuffer(data, dtype=self.imageDataType).reshape((self.width, self.height, 3))
+            imarray = np.frombuffer(data, dtype=self.imageDataType).reshape((self.height, self.width, 3))
             output = PySpin.Image.Create(self.width, self.height, self.offsetX, self.offsetY, self.pixelFormat, imarray)
+            if self.verbose: print("Got image: ", imarray[0:5, 0, 0])
             if self.outputCopy:
                 pass # Do we need to copy this? Does PySpin.Image.Create already copy the buffer? Dunno, need to test to find out
-        elif self.outputType == 'numpy':
-            output = np.frombuffer(data, dtype=self.imageDataType).reshape((self.height, self.width, 3))
-            if self.outputCopy:
-                output = np.copy(output)
         elif self.outputType == 'PIL':
             if self.outputCopy:
                 output = Image.frombytes("RGB", (self.width, self.height), data, "raw", 'RGB')
             else:
                 output = Image.frombuffer("RGB", (self.width, self.height), data, "raw", 'RGB')
+            if self.verbose: print("Got image: ", np.array(output)[0:5, 0, 0])
+        elif self.outputType == 'numpy':
+            output = np.frombuffer(data, dtype=self.imageDataType).reshape((self.height, self.width, 3))
+            if self.outputCopy:
+                output = np.copy(output)
         elif self.outputType == 'rawBuffer':
             output = data
             if self.outputCopy:
@@ -183,18 +191,22 @@ class SharedImageReceiver():
         with self.readLag.get_lock():
             readLag = self.readLag.value
             if readLag == 0:
+                # if self.verbose: print("NO GET!")
                 raise qEmpty('No images available')
             self.readLag.value = readLag - 1
         nextID = self.getNextID()
         output = None
         with self.bufferLocks[nextID % self.maxBufferSize]:
             data = self.buffers[nextID % self.maxBufferSize]
+            if self.verbose: print("GET! buffer #", nextID % self.maxBufferSize, " readlag=", readLag-1)
             if self.lockForOutput:
                 output = self.prepareOutput(data)
-        metadata = self.metadataQueue.get()
-
         if not self.lockForOutput:
             output = self.prepareOutput(data)
+
+        metadata = self.metadataQueue.get(block=False)
+
+
         if includeMetadata:
             return output, metadata
         else:
