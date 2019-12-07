@@ -304,7 +304,8 @@ class AVMerger(StateMachineProcess):
         'numFilesPerTrigger',
         'baseFileName',
         'montage',
-        'deleteMergedFiles'
+        'deleteMergedAudioFiles'
+        'deleteMergedVideoFiles'
     ]
 
     def __init__(self,
@@ -312,7 +313,8 @@ class AVMerger(StateMachineProcess):
         numFilesPerTrigger=2,       # Number of files expected per trigger event (audio + video)
         directory='.',              # Directory for writing merged files
         baseFileName='',            # Base filename (sans extension) for writing merged files
-        deleteMergedFiles=False,    # After merging, delete unmerged originals
+        deleteMergedAudioFiles=False,    # After merging, delete unmerged audio originals
+        deleteMergedVideoFiles=False,    # After merging, delete unmerged video originals
         montage=False,              # Combine videos side by side
         **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
@@ -324,7 +326,8 @@ class AVMerger(StateMachineProcess):
         self.directory = directory
         self.baseFileName = baseFileName
         self.montage = montage
-        self.deleteMergedFiles = deleteMergedFiles
+        self.deleteMergedAudioFiles = deleteMergedAudioFiles
+        self.deleteMergedVideoFiles = deleteMergedVideoFiles
         if self.numFilesPerTrigger < 2:
             if self.verbose >= 0: self.log("Warning! AVMerger can't merge less than 2 files!")
 
@@ -573,13 +576,17 @@ class AVMerger(StateMachineProcess):
                             status = os.system(mergeCommand)
                             mergeSuccess = mergeSuccess and (status == 0)
                             if self.verbose >= 1: self.log("M - Merge exit status: {status}".format(status=status))
-                        if self.deleteMergedFiles:
-                            if mergeSuccess:
-                                for fileEvent in audioFileEvents + videoFileEvents:
-                                    if self.verbose >= 1: self.log('M - deleting source file: {file}'.format(file=fileEvent['filePath']))
+                        if mergeSuccess:
+                            if self.deleteMergedAudioFiles:
+                                for fileEvent in audioFileEvents:
+                                    if self.verbose >= 1: self.log('M - deleting source audio file: {file}'.format(file=fileEvent['filePath']))
                                     os.remove(fileEvent['filePath'])
-                            else:
-                                if self.verbose >= 0: self.log('M - Merge failure - keeping source files in place!')
+                            if self.deleteMergedVideoFiles:
+                                for fileEvent in videoFileEvents:
+                                    if self.verbose >= 1: self.log('M - deleting source video file: {file}'.format(file=fileEvent['filePath']))
+                                    os.remove(fileEvent['filePath'])
+                        else:
+                            if self.verbose >= 0: self.log('M - Merge failure - keeping all source files in place!')
 
                     # Clear merged files
                     groupedFileEventList = []

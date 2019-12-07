@@ -688,9 +688,13 @@ class PyVAQ:
         self.mergeFilesCheckbutton = ttk.Checkbutton(self.mergeFrame, text="Merge audio/video", variable=self.mergeFilesVar, offvalue=False, onvalue=True)
         self.mergeFilesVar.trace('w', self.updateAVMergerState)
 
-        self.deleteMergedFilesVar = tk.BooleanVar(); self.deleteMergedFilesVar.set(False)
-        self.deleteMergedFilesCheckbutton = ttk.Checkbutton(self.mergeFrame, text="Delete merged files", variable=self.deleteMergedFilesVar, offvalue=False, onvalue=True)
-        self.deleteMergedFilesVar.trace('w', lambda *args: self.changeAVMergerParams(deleteMergedFiles=self.deleteMergedFilesVar.get()))
+        self.deleteMergedAudioFilesVar = tk.BooleanVar(); self.deleteMergedAudioFilesVar.set(False)
+        self.deleteMergedAudioFilesCheckbutton = ttk.Checkbutton(self.mergeFrame, text="Delete merged audio files", variable=self.deleteMergedAudioFilesVar, offvalue=False, onvalue=True)
+        self.deleteMergedAudioFilesVar.trace('w', lambda *args: self.changeAVMergerParams(deleteMergedAudioFiles=self.deleteMergedAudioFilesVar.get()))
+
+        self.deleteMergedVideoFilesVar = tk.BooleanVar(); self.deleteMergedVideoFilesVar.set(False)
+        self.deleteMergedVideoFilesCheckbutton = ttk.Checkbutton(self.mergeFrame, text="Delete merged video files", variable=self.deleteMergedVideoFilesVar, offvalue=False, onvalue=True)
+        self.deleteMergedVideoFilesVar.trace('w', lambda *args: self.changeAVMergerParams(deleteMergedVideoFiles=self.deleteMergedVideoFilesVar.get()))
 
         self.montageMergeVar = tk.BooleanVar(); self.montageMergeVar.set(False)
         self.montageMergeCheckbutton = ttk.Checkbutton(self.mergeFrame, text="Montage-merge videos", variable=self.montageMergeVar, offvalue=False, onvalue=True)
@@ -1089,10 +1093,12 @@ him know. Otherwise, I had nothing to do with it.
     def updateAVMergerState(self, *args):
         merging = self.mergeFilesVar.get()
         if merging:
-            self.deleteMergedFilesCheckbutton.config(state=tk.NORMAL)
+            self.deleteMergedVideoFilesCheckbutton.config(state=tk.NORMAL)
+            self.deleteMergedAudioFilesCheckbutton.config(state=tk.NORMAL)
             self.montageMergeCheckbutton.config(state=tk.NORMAL)
         else:
-            self.deleteMergedFilesCheckbutton.config(state=tk.DISABLED)
+            self.deleteMergedVideoFilesCheckbutton.config(state=tk.DISABLED)
+            self.deleteMergedAudioFilesCheckbutton.config(state=tk.DISABLED)
             self.montageMergeCheckbutton.config(state=tk.DISABLED)
 
         if self.mergeProcess is not None:
@@ -1659,7 +1665,8 @@ him know. Otherwise, I had nothing to do with it.
         self.baseFileNameVar.set(params['baseFileName'])
         self.directoryVar.set(params['directory'])
         self.mergeFilesVar.set(params['mergeFiles'])
-        self.deleteMergedFilesVar.set(params['deleteMergedFiles'])
+        self.deleteMergedAudioFilesVar.set(params['deleteMergedAudioFiles'])
+        self.deleteMergedVideoFilesVar.set(params['deleteMergedVideoFiles'])
         self.montageMergeVar.set(params['montageMerge'])
         self.scheduleEnabledVar.set(params['scheduleEnabled'])
         self.scheduleStartVar.set(params['scheduleStart'])
@@ -1703,7 +1710,8 @@ him know. Otherwise, I had nothing to do with it.
         if getAllParams or 'mergeBaseFileName' in paramList: params['mergeBaseFileName'] = self.mergeFileWidget.getBaseFileName()
         if getAllParams or 'mergeDirectory' in paramList: params['mergeDirectory'] = self.mergeFileWidget.getDirectory()
         if getAllParams or 'mergeFiles' in paramList: params['mergeFiles'] = self.mergeFilesVar.get()
-        if getAllParams or 'deleteMergedFiles' in paramList: params['deleteMergedFiles'] = self.deleteMergedFilesVar.get()
+        if getAllParams or 'deleteMergedAudioFiles' in paramList: params['deleteMergedAudioFiles'] = self.deleteMergedAudioFilesVar.get()
+        if getAllParams or 'deleteMergedVideoFiles' in paramList: params['deleteMergedVideoFiles'] = self.deleteMergedVideoFilesVar.get()
         if getAllParams or 'montageMerge' in paramList: params['montageMerge'] = self.montageMergeVar.get()
         if getAllParams or 'scheduleEnabled' in paramList: params['scheduleEnabled'] = self.scheduleEnabledVar.get()
         if getAllParams or 'scheduleStart' in paramList: params['scheduleStart'] = self.scheduleStartVar.get()
@@ -1787,7 +1795,8 @@ him know. Otherwise, I had nothing to do with it.
                 stdoutQueue=self.StdoutManager.queue,
                 baseFileName=p["mergeBaseFileName"],
                 montage=p["montageMerge"],
-                deleteMergedFiles=p["deleteMergedFiles"]
+                deleteMergedAudioFiles=p["deleteMergedAudioFiles"],
+                deleteMergedVideoFiles=p["deleteMergedVideoFiles"]
                 )
             mergeMsgQueue = self.mergeProcess.msgQueue
         else:
@@ -2056,7 +2065,8 @@ him know. Otherwise, I had nothing to do with it.
 
         self.mergeFrame.grid(row=4, column=0, sticky=tk.NSEW)
         self.mergeFilesCheckbutton.grid(row=1, column=0, sticky=tk.NW)
-        self.deleteMergedFilesCheckbutton.grid(row=2, column=0, sticky=tk.NW)
+        self.deleteMergedAudioFilesCheckbutton.grid(row=2, column=0, sticky=tk.NW)
+        self.deleteMergedVideoFilesCheckbutton.grid(row=2, column=1, sticky=tk.NW)
         self.montageMergeCheckbutton.grid(row=3, column=0, stick=tk.NW)
 
         self.mergeFileWidget.grid(row=4, column=0)
