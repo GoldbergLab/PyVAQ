@@ -688,12 +688,14 @@ class PyVAQ:
         self.mergeFilesCheckbutton = ttk.Checkbutton(self.mergeFrame, text="Merge audio/video", variable=self.mergeFilesVar, offvalue=False, onvalue=True)
         self.mergeFilesVar.trace('w', self.updateAVMergerState)
 
+        self.deleteMergedFilesFrame = ttk.LabelFrame(self.mergeFrame, text="Delete merged...")
+
         self.deleteMergedAudioFilesVar = tk.BooleanVar(); self.deleteMergedAudioFilesVar.set(False)
-        self.deleteMergedAudioFilesCheckbutton = ttk.Checkbutton(self.mergeFrame, text="Delete merged audio files", variable=self.deleteMergedAudioFilesVar, offvalue=False, onvalue=True)
+        self.deleteMergedAudioFilesCheckbutton = ttk.Checkbutton(self.deleteMergedFilesFrame, text="Audio files", variable=self.deleteMergedAudioFilesVar, offvalue=False, onvalue=True)
         self.deleteMergedAudioFilesVar.trace('w', lambda *args: self.changeAVMergerParams(deleteMergedAudioFiles=self.deleteMergedAudioFilesVar.get()))
 
         self.deleteMergedVideoFilesVar = tk.BooleanVar(); self.deleteMergedVideoFilesVar.set(False)
-        self.deleteMergedVideoFilesCheckbutton = ttk.Checkbutton(self.mergeFrame, text="Delete merged video files", variable=self.deleteMergedVideoFilesVar, offvalue=False, onvalue=True)
+        self.deleteMergedVideoFilesCheckbutton = ttk.Checkbutton(self.deleteMergedFilesFrame, text="Video files", variable=self.deleteMergedVideoFilesVar, offvalue=False, onvalue=True)
         self.deleteMergedVideoFilesVar.trace('w', lambda *args: self.changeAVMergerParams(deleteMergedVideoFiles=self.deleteMergedVideoFilesVar.get()))
 
         self.montageMergeVar = tk.BooleanVar(); self.montageMergeVar.set(False)
@@ -2065,8 +2067,9 @@ him know. Otherwise, I had nothing to do with it.
 
         self.mergeFrame.grid(row=4, column=0, sticky=tk.NSEW)
         self.mergeFilesCheckbutton.grid(row=1, column=0, sticky=tk.NW)
-        self.deleteMergedAudioFilesCheckbutton.grid(row=2, column=0, sticky=tk.NW)
-        self.deleteMergedVideoFilesCheckbutton.grid(row=2, column=1, sticky=tk.NW)
+        self.deleteMergedFilesFrame.grid(row=2, column=0, stick=tk.NW)
+        self.deleteMergedAudioFilesCheckbutton.grid(row=0, column=0, sticky=tk.NW)
+        self.deleteMergedVideoFilesCheckbutton.grid(row=0, column=1, sticky=tk.NW)
         self.montageMergeCheckbutton.grid(row=3, column=0, stick=tk.NW)
 
         self.mergeFileWidget.grid(row=4, column=0)
