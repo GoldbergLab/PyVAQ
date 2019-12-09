@@ -304,8 +304,9 @@ class AVMerger(StateMachineProcess):
         'numFilesPerTrigger',
         'baseFileName',
         'montage',
-        'deleteMergedAudioFiles'
-        'deleteMergedVideoFiles'
+        'deleteMergedAudioFiles',
+        'deleteMergedVideoFiles',
+        'compression'
     ]
 
     def __init__(self,
@@ -316,6 +317,7 @@ class AVMerger(StateMachineProcess):
         deleteMergedAudioFiles=False,    # After merging, delete unmerged audio originals
         deleteMergedVideoFiles=False,    # After merging, delete unmerged video originals
         montage=False,              # Combine videos side by side
+        compression='0',            # CRF factor for libx264 compression. '0'=lossless '23'=default '51'=terrible
         **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
@@ -328,6 +330,7 @@ class AVMerger(StateMachineProcess):
         self.montage = montage
         self.deleteMergedAudioFiles = deleteMergedAudioFiles
         self.deleteMergedVideoFiles = deleteMergedVideoFiles
+        self.compression = compression
         if self.numFilesPerTrigger < 2:
             if self.verbose >= 0: self.log("Warning! AVMerger can't merge less than 2 files!")
 
@@ -538,7 +541,7 @@ class AVMerger(StateMachineProcess):
                         audioFileInputText = ' '.join(['-i "{{audioFile{k}}}"'.format(k=k) for k in range(len(audioFileEvents))])
                         if not self.montage:  # Make a separate file for each video stream
                             # Construct command template
-                            mergeCommandTemplate = 'ffmpeg -i "{videoFile}" ' + audioFileInputText + ' -c:v libx264 -preset veryfast -crf 0 -shortest -nostdin -y "{outputFile}"'
+                            mergeCommandTemplate = 'ffmpeg -i "{videoFile}" ' + audioFileInputText + ' -c:v libx264 -preset veryfast -crf {compression} -shortest -nostdin -y "{outputFile}"'
                             # Set up dictionary of strings to substitute into command template
                             kwargs = dict([('audioFile{k}'.format(k=k), audioFileEvents[k]['filePath']) for k in range(len(audioFileEvents))])
                             for videoFileEvent in videoFileEvents:
@@ -546,6 +549,7 @@ class AVMerger(StateMachineProcess):
                                 kwargs['videoFile'] = videoFileEvent['filePath']
                                 baseVideoName = self.baseFileName + '_' + videoFileEvent['streamID'] + '_merged'
                                 kwargs['outputFile'] = generateFileName(directory=self.directory, baseName=baseVideoName, extension='.avi', trigger=videoFileEvent['trigger'])
+                                kwargs['compression'] = self.compression
                                 # Substitute strings into command template
                                 mergeCommand = mergeCommandTemplate.format(**kwargs)
                                 if self.verbose >= 1:
@@ -560,13 +564,14 @@ class AVMerger(StateMachineProcess):
                             # Construct the video part of the ffmpeg command template
                             videoFileInputText = ' '.join(['-i "{{videoFile{k}}}"'.format(k=k) for k in range(len(videoFileEvents))])
                             # Construct command template
-                            mergeCommandTemplate = "ffmpeg " + videoFileInputText + " " + audioFileInputText + ' -c:v libx264 -preset veryfast -crf 0 -shortest -nostdin -y -filter_complex hstack "{outputFile}"'
+                            mergeCommandTemplate = "ffmpeg " + videoFileInputText + " " + audioFileInputText + ' -c:v libx264 -preset veryfast -crf {compression} -shortest -nostdin -y -filter_complex hstack "{outputFile}"'
                             # Set up dictionary of strings to substitute into command template
                             kwargs = dict(
                                 [('audioFile{k}'.format(k=k), audioFileEvents[k]['filePath']) for k in range(len(audioFileEvents))] + \
                                 [('videoFile{k}'.format(k=k), videoFileEvents[k]['filePath']) for k in range(len(videoFileEvents))])
                             baseVideoName = self.baseFileName + '_montage'
                             kwargs['outputFile'] = generateFileName(directory=self.directory, baseName=baseVideoName, extension='.avi', trigger=videoFileEvents[0]['trigger'])
+                            kwargs['compression'] = self.compression
                             mergeCommand = mergeCommandTemplate.format(**kwargs)
                             if self.verbose >= 1:
                                 self.log("M - Merging with kwargs: "+str(kwargs))

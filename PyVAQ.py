@@ -702,6 +702,11 @@ class PyVAQ:
         self.montageMergeCheckbutton = ttk.Checkbutton(self.mergeFrame, text="Montage-merge videos", variable=self.montageMergeVar, offvalue=False, onvalue=True)
         self.montageMergeVar.trace('w', lambda *args: self.changeAVMergerParams(montage=self.montageMergeVar.get()))
 
+        self.mergeCompressionFrame = ttk.LabelFrame(self.mergeFrame, text="Compression:")
+        self.mergeCompressionVar = tk.StringVar(); self.mergeCompressionVar.set('0')
+        self.mergeCompression = ttk.Combobox(self.mergeCompressionFrame, textvariable=self.mergeCompressionVar, values=[str(k) for k in range(52)], width=12)
+        self.mergeCompressionVar.trace('w', lambda *args: self.changeAVMergerParams(mergeCompression=self.mergeCompressionVar.get()))
+
         self.scheduleFrame = ttk.LabelFrame(self.acquisitionFrame, text="Trigger enable schedule")
         self.scheduleEnabledVar = tk.BooleanVar(); self.scheduleEnabledVar.set(False)
         self.scheduleEnabledCheckbutton = ttk.Checkbutton(self.scheduleFrame, text="Restrict trigger to schedule", variable=self.scheduleEnabledVar)
@@ -1715,6 +1720,7 @@ him know. Otherwise, I had nothing to do with it.
         if getAllParams or 'deleteMergedAudioFiles' in paramList: params['deleteMergedAudioFiles'] = self.deleteMergedAudioFilesVar.get()
         if getAllParams or 'deleteMergedVideoFiles' in paramList: params['deleteMergedVideoFiles'] = self.deleteMergedVideoFilesVar.get()
         if getAllParams or 'montageMerge' in paramList: params['montageMerge'] = self.montageMergeVar.get()
+        if getAllParams or 'mergeCompression' in paramList: params['mergeCompression'] = self.mergeCompressionVar.get()
         if getAllParams or 'scheduleEnabled' in paramList: params['scheduleEnabled'] = self.scheduleEnabledVar.get()
         if getAllParams or 'scheduleStart' in paramList: params['scheduleStart'] = self.scheduleStartVar.get()
         if getAllParams or 'scheduleStop' in paramList: params['scheduleStop'] = self.scheduleStopVar.get()
@@ -1798,7 +1804,8 @@ him know. Otherwise, I had nothing to do with it.
                 baseFileName=p["mergeBaseFileName"],
                 montage=p["montageMerge"],
                 deleteMergedAudioFiles=p["deleteMergedAudioFiles"],
-                deleteMergedVideoFiles=p["deleteMergedVideoFiles"]
+                deleteMergedVideoFiles=p["deleteMergedVideoFiles"],
+                compression=p["mergeCompression"]
                 )
             mergeMsgQueue = self.mergeProcess.msgQueue
         else:
@@ -2019,7 +2026,7 @@ him know. Otherwise, I had nothing to do with it.
         #       settingsFrame
 
         if self.customTitleBar:
-            self.titleBarFrame.grid(row=0, column=0, stick=tk.NSEW)
+            self.titleBarFrame.grid(row=0, column=0, sticky=tk.NSEW)
             self.closeButton.grid(sticky=tk.E)
         else:
             self.titleBarFrame.grid_forget()
@@ -2067,12 +2074,14 @@ him know. Otherwise, I had nothing to do with it.
 
         self.mergeFrame.grid(row=4, column=0, sticky=tk.NSEW)
         self.mergeFilesCheckbutton.grid(row=1, column=0, sticky=tk.NW)
-        self.deleteMergedFilesFrame.grid(row=2, column=0, stick=tk.NW)
+        self.deleteMergedFilesFrame.grid(row=2, column=0, sticky=tk.NW)
+        self.mergeCompressionFrame.grid(row=2, column=1, sticky=tk.NW)
+        self.mergeCompression.grid()
         self.deleteMergedAudioFilesCheckbutton.grid(row=0, column=0, sticky=tk.NW)
         self.deleteMergedVideoFilesCheckbutton.grid(row=0, column=1, sticky=tk.NW)
-        self.montageMergeCheckbutton.grid(row=3, column=0, stick=tk.NW)
+        self.montageMergeCheckbutton.grid(row=3, column=0, sticky=tk.NW)
 
-        self.mergeFileWidget.grid(row=4, column=0)
+        self.mergeFileWidget.grid(row=4, column=0, columnspan=2)
 
         self.scheduleFrame.grid(row=4, column=1, columnspan=2, sticky=tk.NSEW)
         self.scheduleEnabledCheckbutton.grid(row=0, column=0, sticky=tk.NW)
