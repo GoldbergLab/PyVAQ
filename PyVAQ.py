@@ -651,7 +651,7 @@ class PyVAQ:
         self.startChildProcessesButton = ttk.Button(self.acquisitionFrame, text="Start acquisition", command=self.acquireButtonClick)
 
         self.audioFrequencyFrame =  ttk.LabelFrame(self.acquisitionFrame, text="Audio freq. (Hz)", style='SingleContainer.TLabelframe')
-        self.audioFrequencyVar =    tk.StringVar(); self.audioFrequencyVar.set("22010")
+        self.audioFrequencyVar =    tk.StringVar(); self.audioFrequencyVar.set("22050")
         self.audioFrequencyEntry =  ttk.Entry(self.audioFrequencyFrame, width=15, textvariable=self.audioFrequencyVar);
 
         self.videoFrequencyFrame =  ttk.LabelFrame(self.acquisitionFrame, text="Video freq (fps)", style='SingleContainer.TLabelframe')
