@@ -2029,9 +2029,10 @@ him know. Otherwise, I had nothing to do with it.
         self.StdoutManager = None
 
     def sendWriteTrigger(self, t=None):
+        p = self.getParams('preTriggerTime', 'recordTime')
         if t is None:
             t = time.time_ns()/1000000000
-        trig = Trigger(t-2, t, t+2)
+        trig = Trigger(t-p['preTriggerTime'], t, t + p['recordTime'] - p['preTriggerTime'])
         print("main>> Sending manual trigger!")
         for camSerial in self.camSerials:
             self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.TRIGGER, trig))
