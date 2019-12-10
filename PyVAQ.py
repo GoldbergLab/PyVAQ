@@ -706,7 +706,7 @@ class PyVAQ:
         self.mergeCompressionFrame = ttk.LabelFrame(self.mergeFrame, text="Compression:")
         self.mergeCompressionVar = tk.StringVar(); self.mergeCompressionVar.set('0')
         self.mergeCompression = ttk.Combobox(self.mergeCompressionFrame, textvariable=self.mergeCompressionVar, values=[str(k) for k in range(52)], width=12)
-        self.mergeCompressionVar.trace('w', lambda *args: self.changeAVMergerParams(mergeCompression=self.mergeCompressionVar.get()))
+        self.mergeCompressionVar.trace('w', lambda *args: self.changeAVMergerParams(compression=self.mergeCompressionVar.get()))
 
         self.scheduleFrame = ttk.LabelFrame(self.acquisitionFrame, text="Trigger enable schedule")
         self.scheduleEnabledVar = tk.BooleanVar(); self.scheduleEnabledVar.set(False)
@@ -1785,7 +1785,7 @@ him know. Otherwise, I had nothing to do with it.
     def getNumProcesses(self):
         return (len(self.audioDAQChannels)>0) + len(self.camSerials)*2 + 2
     def getNumSyncedProcesses(self):
-        (len(self.audioDAQChannels)>0) + len(self.camSerials) + 1  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
+        return (len(self.audioDAQChannels)>0) + len(self.camSerials) + 1  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
     def getAcquireSettings(self):
         exposureTime = self.getParams('exposureTime')
         return [
