@@ -11,10 +11,11 @@ from tkinter.filedialog import askdirectory, asksaveasfilename, askopenfilename
 from tkinter.messagebox import showinfo
 import queue
 from PIL import Image
-# import pprint
+import pprint
 import traceback
 from collections import deque
 import re
+import datetime
 import unicodedata
 from TimeInput import TimeVar, TimeEntry
 from ParamDialog import ParamDialog, Param
@@ -593,8 +594,6 @@ class PyVAQ:
         self.style.configure('InvalidDirectory.TEntry', fieldbackground=WIDGET_COLORS[3])
 #        self.style.map('Directory.TEntry.label', background=[(('!invalid',), 'green'),(('invalid',), 'red')])
 
-        self.chunkSize = 1000
-
         self.audioDAQChannels = []
 
         self.audioSyncSource = None
@@ -661,6 +660,7 @@ class PyVAQ:
         self.exposureTimeFrame =    ttk.LabelFrame(self.acquisitionFrame, text="Exposure time (us):", style='SingleContainer.TLabelframe')
         self.exposureTimeVar =      tk.StringVar(); self.exposureTimeVar.set("8000")
         self.exposureTimeEntry =    ttk.Entry(self.exposureTimeFrame, width=18, textvariable=self.exposureTimeVar)
+        self.exposureTimeEntry.bind('<FocusOut>', self.validateExposure)
 
         self.preTriggerTimeFrame =  ttk.LabelFrame(self.acquisitionFrame, text="Pre-trigger record time (s)", style='SingleContainer.TLabelframe')
         self.preTriggerTimeVar =    tk.StringVar(); self.preTriggerTimeVar.set("2.0")
@@ -670,6 +670,7 @@ class PyVAQ:
         self.recordTimeVar =        tk.StringVar(); self.recordTimeVar.set("4.0")
         self.recordTimeEntry =      ttk.Entry(self.recordTimeFrame, width=14, textvariable=self.recordTimeVar)
 
+        self.chunkSizeVar =         tk.StringVar(); self.chunkSizeVar.set(1000)
 
         self.updateInputsButton =   ttk.Button(self.acquisitionFrame, text="Select audio/video inputs", command=self.selectInputs)
 
@@ -705,7 +706,7 @@ class PyVAQ:
         self.mergeCompressionFrame = ttk.LabelFrame(self.mergeFrame, text="Compression:")
         self.mergeCompressionVar = tk.StringVar(); self.mergeCompressionVar.set('0')
         self.mergeCompression = ttk.Combobox(self.mergeCompressionFrame, textvariable=self.mergeCompressionVar, values=[str(k) for k in range(52)], width=12)
-        self.mergeCompressionVar.trace('w', lambda *args: self.changeAVMergerParams(mergeCompression=self.mergeCompressionVar.get()))
+        self.mergeCompressionVar.trace('w', lambda *args: self.changeAVMergerParams(compression=self.mergeCompressionVar.get()))
 
         self.scheduleFrame = ttk.LabelFrame(self.acquisitionFrame, text="Trigger enable schedule")
         self.scheduleEnabledVar = tk.BooleanVar(); self.scheduleEnabledVar.set(False)
@@ -786,10 +787,6 @@ class PyVAQ:
         self.audioAnalysisWidgets = {}
         self.analysisSummaryHistoryChunkLength = 100
         self.audioAnalysisSummaryHistory = deque(maxlen=self.analysisSummaryHistoryChunkLength)
-        self.createAudioAnalysisMonitor()
-
-        self.setupInputMonitoringWidgets(camSerials=self.camSerials, audioDAQChannels=self.audioDAQChannels)
-
         ########### Child process objects #####################
 
         # Monitoring queues for collecting audio and video data for user monitoring purposes
@@ -822,11 +819,55 @@ class PyVAQ:
 
         self.profiler =  cProfile.Profile()
 
+        # the params dict defines how to access and set all the parameters in the GUI
+        self.paramInfo = {
+            'audioFrequency':           dict(get=lambda:int(self.audioFrequencyVar.get()),          set=self.audioFrequencyVar.set),
+            'videoFrequency':           dict(get=lambda:int(self.videoFrequencyVar.get()),          set=self.videoFrequencyVar.set),
+            'chunkSize':                dict(get=lambda:int(self.chunkSizeVar.get()),                             set=self.chunkSizeVar.set),
+            'exposureTime':             dict(get=lambda:int(self.exposureTimeVar.get()),          set=self.exposureTimeVar.set),
+            'exposureTime':             dict(get=lambda:int(self.exposureTimeVar.get()),                          set=self.exposureTimeVar.set),
+            'preTriggerTime':           dict(get=lambda:float(self.preTriggerTimeVar.get()),        set=self.preTriggerTimeVar.set),
+            'recordTime':               dict(get=lambda:float(self.recordTimeVar.get()),            set=self.recordTimeVar.set),
+            'triggerHighLevel':         dict(get=lambda:float(self.triggerHighLevelVar.get()),      set=self.triggerHighLevelVar.set),
+            'triggerLowLevel':          dict(get=lambda:float(self.triggerLowLevelVar.get()),       set=self.triggerLowLevelVar.set),
+            'triggerHighTime':          dict(get=lambda:float(self.triggerHighTimeVar.get()),       set=self.triggerHighTimeVar.set),
+            'triggerLowTime':           dict(get=lambda:float(self.triggerLowTimeVar.get()),        set=self.triggerLowTimeVar.set),
+            'triggerHighFraction':      dict(get=lambda:float(self.triggerHighFractionVar.get()),   set=self.triggerHighFractionVar.set),
+            'triggerLowFraction':       dict(get=lambda:float(self.triggerLowFractionVar.get()),    set=self.triggerLowFractionVar.set),
+            'triggerHighBandpass':      dict(get=lambda:float(self.triggerHighBandpassVar.get()),   set=self.triggerHighBandpassVar.set),
+            'triggerLowBandpass':       dict(get=lambda:float(self.triggerLowBandpassVar.get()),    set=self.triggerLowBandpassVar.set),
+            'maxAudioTriggerTime':      dict(get=lambda:float(self.maxAudioTriggerTimeVar.get()),   set=self.maxAudioTriggerTimeVar.set),
+            'videoBaseFileNames':       dict(get=self.getVideoBaseFileNames,                        set=self.setVideoBaseFileNames),
+            'videoDirectories':         dict(get=self.getVideoDirectories,                          set=self.setVideoDirectories),
+            'audioBaseFileName':        dict(get=self.getAudioBaseFileName,                         set=self.setAudioBaseFileName),
+            'audioDirectory':           dict(get=self.getAudioDirectory,                            set=self.setAudioDirectory),
+            'mergeBaseFileName':        dict(get=self.getMergeBaseFileName,                         set=self.setMergeBaseFileName),
+            'mergeDirectory':           dict(get=self.getMergeDirectory,                            set=self.setMergeDirectory),
+            'mergeFiles':               dict(get=self.mergeFilesVar.get,                            set=self.mergeFilesVar.set),
+            'deleteMergedAudioFiles':   dict(get=self.deleteMergedAudioFilesVar.get,                set=self.deleteMergedAudioFilesVar.set),
+            'deleteMergedVideoFiles':   dict(get=self.deleteMergedVideoFilesVar.get,                set=self.deleteMergedVideoFilesVar.set),
+            'montageMerge':             dict(get=self.montageMergeVar.get,                          set=self.montageMergeVar.set),
+            'mergeCompression':         dict(get=self.mergeCompressionVar.get,                      set=self.mergeCompressionVar.set),
+            'scheduleEnabled':          dict(get=self.scheduleEnabledVar.get,                       set=self.scheduleEnabledVar.set),
+            'scheduleStart':            dict(get=self.scheduleStartVar.get,                         set=self.scheduleStartVar.set),
+            'scheduleStop':             dict(get=self.scheduleStopVar.get,                          set=self.scheduleStopVar.set),
+            'triggerMode':              dict(get=self.triggerModeVar.get,                           set=self.triggerModeVar.set),
+            'multiChannelStartBehavior':dict(get=self.multiChannelStartBehaviorVar.get,             set=self.multiChannelStartBehaviorVar.set),
+            'multiChannelStopBehavior': dict(get=self.multiChannelStopBehaviorVar.get,              set=self.multiChannelStopBehaviorVar.set),
+            "bufferSizeSeconds":        dict(get=self.getBufferSizeSeconds,                         set=self.setBufferSizeSeconds),
+            "bufferSizeAudioChunks":    dict(get=self.getBufferSizeAudioChunks,                     set=self.setBufferSizeAudioChunks),
+            "numStreams":               dict(get=self.getNumStreams,                                set=self.setNumStreams),
+            "numProcesses":             dict(get=self.getNumProcesses,                              set=self.setNumProcesses),
+            "numSyncedProcesses":       dict(get=self.getNumSyncedProcesses,                        set=self.setNumSyncedProcesses),
+            "acquireSettings":          dict(get=self.getAcquireSettings,                           set=self.setAcquireSettings)
+        }
+
+
+        self.createAudioAnalysisMonitor()
+
+        self.setupInputMonitoringWidgets(camSerials=self.camSerials, audioDAQChannels=self.audioDAQChannels)
+
         self.update()
-
-#        self.createChildProcesses()
-#        self.startChildProcesses()
-
         # Start automatic updating of video and audio monitors
         self.audioMonitorUpdateJob = None
         self.videoMonitorUpdateJob = None
@@ -910,6 +951,15 @@ class PyVAQ:
         for camSerial in self.videoAcquireProcesses:
             self.videoAcquireProcesses[camSerial].msgQueue.put((VideoAcquirer.SETPARAMS, {'verbose':self.videoAcquireVerbose}))
             self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.SETPARAMS, {'verbose':self.videoWriteVerbose}))
+
+    def validateExposure(self, *args):
+        exposureTime = self.getParams('exposureTime')
+        videoFrequency = self.getParams('videoFrequency')
+        maxExposureTime = 1000000 * 0.95 / videoFrequency
+        if exposureTime > maxExposureTime:
+            exposureTime = maxExposureTime
+        exposureTime = int(exposureTime)
+        self.setParams(exposureTime=exposureTime)
 
     def showHelpDialog(self, *args):
         msg = 'Sorry, nothing here yet.'
@@ -1663,103 +1713,82 @@ him know. Otherwise, I had nothing to do with it.
             print(params)
             self.setParams(params)
 
+    def setVideoBaseFileNames(self, *args):
+        raise NotImplementedError('setVideoBaseFileNames not implemented yet.')
+    def setVideoDirectories(self, *args):
+        raise NotImplementedError('setVideoDirectories not implemented yet.')
+    def setAudioBaseFileName(self, *args):
+        raise NotImplementedError('setAudioBaseFileName not implemented yet.')
+    def setAudioDirectory(self, *args):
+        raise NotImplementedError('setAudioDirectory not implemented yet.')
+    def setMergeBaseFileName(self, *args):
+        raise NotImplementedError('setMergeBaseFileName not implemented yet.')
+    def setMergeDirectory(self, *args):
+        raise NotImplementedError('setMergeDirectory not implemented yet.')
+
+    def getVideoBaseFileNames(self):
+        videoBaseFileNames = {}
+        for camSerial in self.camSerials:
+            videoBaseFileNames[camSerial] = slugify(self.cameraMonitors[camSerial].getBaseFileName() + '_' + camSerial)
+        return videoBaseFileNames
+    def getVideoDirectories(self):
+        videoDirectories = {}
+        for camSerial in self.camSerials:
+            videoDirectories[camSerial] = self.cameraMonitors[camSerial].getDirectory()
+        return videoDirectories
+    def getAudioBaseFileName(self):
+        return slugify(self.audioMonitor.getBaseFileName()+'_'+','.join(self.audioDAQChannels))
+    def getAudioDirectory(self):
+        return self.audioMonitor.getDirectory()
+    def getMergeBaseFileName(self):
+        return self.mergeFileWidget.getBaseFileName()
+    def getMergeDirectory(self):
+        return self.mergeFileWidget.getDirectory()
+
     def setParams(self, **params):
-        self.audioFrequencyVar.set(params['audioFrequency'])
-        self.videoFrequencyVar.set(params['videoFrequency'])
-        self.exposureTimeVar.set(params['exposureTime'])
-        self.preTriggerTimeVar.set(params['preTriggerTime'])
-        self.recordTimeVar.set(params['recordTime'])
-        self.baseFileNameVar.set(params['baseFileName'])
-        self.directoryVar.set(params['directory'])
-        self.mergeFilesVar.set(params['mergeFiles'])
-        self.deleteMergedAudioFilesVar.set(params['deleteMergedAudioFiles'])
-        self.deleteMergedVideoFilesVar.set(params['deleteMergedVideoFiles'])
-        self.montageMergeVar.set(params['montageMerge'])
-        self.scheduleEnabledVar.set(params['scheduleEnabled'])
-        self.scheduleStartVar.set(params['scheduleStart'])
-        self.scheduleStopVar.set(params['scheduleStop'])
-        self.triggerModeVar.set(params['triggerMode'])
-        self.triggerHighLevelVar.set(params['triggerHighLevel'])
-        self.triggerLowLevelVar.set(params['triggerLowLevel'])
-        self.triggerHighTimeVar.set(params['triggerHighTime'])
-        self.triggerLowTimeVar.set(params['triggerLowTime'])
-        self.triggerHighFractionVar.set(params['triggerHighFraction'])
-        self.triggerLowFractionVar.set(params['triggerLowFraction'])
-        self.triggerHighBandpassVar.set(params['triggerHighBandpass'])
-        self.triggerLowBandpassVar.set(params['triggerLowBandpass'])
-        self.maxAudioTriggerTimeVar.set(params['maxAudioTriggerTime'])
-        self.multiChannelStartBehaviorVar.set(params['multiChannelStartBehavior'])
-        self.multiChannelStopBehaviorVar.set(params['multiChannelStopBehavior'])
-#        params['chunkSize'] = 1000
+        for paramName in params:
+            self.paramInfo[paramName]["set"](params[paramName])
 
-    def getParams(self, *paramList):
+    def getParams(self, *paramNames):
         # Extract parameters from GUI, and calculate a few derived parameters
-        params = {}
-        getAllParams = (len(paramList) == 0)
-        if getAllParams or 'audioFrequency' in paramList: params['audioFrequency'] = int(self.audioFrequencyVar.get())
-        if getAllParams or 'videoFrequency' in paramList: params['videoFrequency'] = int(self.videoFrequencyVar.get())
-        if getAllParams or 'exposureTime' in paramList: params['exposureTime'] = float(self.exposureTimeVar.get())
-        if getAllParams or 'preTriggerTime' in paramList: params['preTriggerTime'] = float(self.preTriggerTimeVar.get())
-        if getAllParams or 'recordTime' in paramList: params['recordTime'] = float(self.recordTimeVar.get())
-        if getAllParams or 'videoBaseFileNames' in paramList:
-            videoBaseFileNames = {}
-            for camSerial in self.camSerials:
-                videoBaseFileNames[camSerial] = slugify(self.cameraMonitors[camSerial].getBaseFileName() + '_' + camSerial)
-            params['videoBaseFileNames'] = videoBaseFileNames
-        if getAllParams or 'videoDirectories' in paramList:
-            videoDirectories = {}
-            for camSerial in self.camSerials:
-                videoDirectories[camSerial] = self.cameraMonitors[camSerial].getDirectory()
-            params['videoDirectories'] = videoDirectories
-        if getAllParams or 'audioBaseFileName' in paramList:
-            params["audioBaseFileName"] = slugify(self.audioMonitor.getBaseFileName()+'_'+','.join(self.audioDAQChannels))
-        if getAllParams or 'audioDirectory' in paramList: params['audioDirectory'] = self.audioMonitor.getDirectory()
-        if getAllParams or 'mergeBaseFileName' in paramList: params['mergeBaseFileName'] = self.mergeFileWidget.getBaseFileName()
-        if getAllParams or 'mergeDirectory' in paramList: params['mergeDirectory'] = self.mergeFileWidget.getDirectory()
-        if getAllParams or 'mergeFiles' in paramList: params['mergeFiles'] = self.mergeFilesVar.get()
-        if getAllParams or 'deleteMergedAudioFiles' in paramList: params['deleteMergedAudioFiles'] = self.deleteMergedAudioFilesVar.get()
-        if getAllParams or 'deleteMergedVideoFiles' in paramList: params['deleteMergedVideoFiles'] = self.deleteMergedVideoFilesVar.get()
-        if getAllParams or 'montageMerge' in paramList: params['montageMerge'] = self.montageMergeVar.get()
-        if getAllParams or 'mergeCompression' in paramList: params['mergeCompression'] = self.mergeCompressionVar.get()
-        if getAllParams or 'scheduleEnabled' in paramList: params['scheduleEnabled'] = self.scheduleEnabledVar.get()
-        if getAllParams or 'scheduleStart' in paramList: params['scheduleStart'] = self.scheduleStartVar.get()
-        if getAllParams or 'scheduleStop' in paramList: params['scheduleStop'] = self.scheduleStopVar.get()
-        if getAllParams or 'triggerMode' in paramList: params['triggerMode'] = self.triggerModeVar.get()
-        if getAllParams or 'triggerHighLevel' in paramList: params['triggerHighLevel'] = float(self.triggerHighLevelVar.get())
-        if getAllParams or 'triggerLowLevel' in paramList: params['triggerLowLevel'] = float(self.triggerLowLevelVar.get())
-        if getAllParams or 'triggerHighTime' in paramList: params['triggerHighTime'] = float(self.triggerHighTimeVar.get())
-        if getAllParams or 'triggerLowTime' in paramList: params['triggerLowTime'] = float(self.triggerLowTimeVar.get())
-        if getAllParams or 'triggerHighFraction' in paramList: params['triggerHighFraction'] = float(self.triggerHighFractionVar.get())
-        if getAllParams or 'triggerLowFraction' in paramList: params['triggerLowFraction'] = float(self.triggerLowFractionVar.get())
-        if getAllParams or 'triggerHighBandpass' in paramList: params['triggerHighBandpass'] = float(self.triggerHighBandpassVar.get())
-        if getAllParams or 'triggerLowBandpass' in paramList: params['triggerLowBandpass'] = float(self.triggerLowBandpassVar.get())
-        if getAllParams or 'maxAudioTriggerTime' in paramList: params['maxAudioTriggerTime'] = float(self.maxAudioTriggerTimeVar.get())
-        if getAllParams or 'multiChannelStartBehavior' in paramList: params['multiChannelStartBehavior'] = self.multiChannelStartBehaviorVar.get()
-        if getAllParams or 'multiChannelStopBehavior' in paramList: params['multiChannelStopBehavior'] = self.multiChannelStopBehaviorVar.get()
-        if getAllParams or 'chunkSize' in paramList: params['chunkSize'] = self.chunkSize
+        if len(paramNames) == 1:
+            # If just one param was requested, just return the value, not a dictionary
+            return self.paramInfo[paramNames[0]]["get"]()
+        else:
+            # If multiple params are requested, return them in a paramName:value dictionary
+            if len(paramNames) == 0:
+                # Get all params
+                paramNames = self.paramInfo.keys()
+            params = {}
+            for paramName in paramNames:
+                params[paramName] = self.paramInfo[paramName]["get"]()
+            return params
 
-        if getAllParams or 'exposureTime' in paramList:
-            if params["exposureTime"] >= 1000000 * 0.95/params["videoFrequency"]:
-                oldExposureTime = params["exposureTime"]
-                params["exposureTime"] = 1000000*0.95/params["videoFrequency"]
-                print('main>> ')
-                print("main>> ******WARNING*******")
-                print('main>> ')
-                print("main>> Exposure time is too long to achieve requested frame rate!")
-                print("main>> Shortening exposure time from {a}us to {b}us".format(a=oldExposureTime, b=params["exposureTime"]))
-                print('main>> ')
-                print("main>> ********************")
-                print('main>> ')
-
-        if getAllParams or "bufferSizeSeconds" in paramList: params["bufferSizeSeconds"] = params["preTriggerTime"] * 2 + 1   # Twice the pretrigger time to make sure we don't miss stuff, plus one second for good measure
-
-        if getAllParams or "bufferSizeAudioChunks" in paramList: params["bufferSizeAudioChunks"] = params["bufferSizeSeconds"] * params['audioFrequency'] / params["chunkSize"]   # Will be rounded up to nearest integer
-
-        if getAllParams or "numStreams" in paramList: params["numStreams"] = (len(self.audioDAQChannels)>0) + len(self.camSerials)
-        if getAllParams or "numProcesses" in paramList: params["numProcesses"] = (len(self.audioDAQChannels)>0) + len(self.camSerials)*2 + 2
-        if getAllParams or "numSyncedProcesses" in paramList: params["numSyncedProcesses"] = (len(self.audioDAQChannels)>0) + len(self.camSerials) + 1  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
-
-        if getAllParams or "acquireSettings" in paramList: params["acquireSettings"] = [
+    def setBufferSizeSeconds(self, *args):
+        raise AttributeError('This attribute is a derived property, and is not directly settable')
+    def setBufferSizeAudioChunks(self, *args):
+        raise AttributeError('This attribute is a derived property, and is not directly settable')
+    def setNumStreams(self, *args):
+        raise AttributeError('This attribute is a derived property, and is not directly settable')
+    def setNumProcesses(self, *args):
+        raise AttributeError('This attribute is a derived property, and is not directly settable')
+    def setNumSyncedProcesses(self, *args):
+        raise AttributeError('This attribute is a derived property, and is not directly settable')
+    def getBufferSizeSeconds(self):
+        preTriggerTime = self.getParams('preTriggerTime')
+        return preTriggerTime * 2 + 1    # Twice the pretrigger time to make sure we don't miss stuff, plus one second for good measure
+    def getBufferSizeAudioChunks(self):
+        p = self.getParams('bufferSizeSeconds', 'audioFrequency', 'chunkSize')
+        return p['bufferSizeSeconds'] * p['audioFrequency'] / p['chunkSize']   # Will be rounded up to nearest integer
+    def getNumStreams(self):
+        return (len(self.audioDAQChannels)>0) + len(self.camSerials)
+    def getNumProcesses(self):
+        return (len(self.audioDAQChannels)>0) + len(self.camSerials)*2 + 2
+    def getNumSyncedProcesses(self):
+        return (len(self.audioDAQChannels)>0) + len(self.camSerials) + 1  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
+    def getAcquireSettings(self):
+        exposureTime = self.getParams('exposureTime')
+        return [
             ('AcquisitionMode', 'Continuous', 'enum'),
             ('TriggerMode', 'Off', 'enum'),
             ('TriggerSelector', 'FrameStart', 'enum'),
@@ -1772,9 +1801,9 @@ him know. Otherwise, I had nothing to do with it.
             ('TriggerMode', 'On', 'enum'),
             ('ExposureAuto', 'Off', 'enum'),
             ('ExposureMode', 'Timed', 'enum'),
-            ('ExposureTime', params["exposureTime"], 'float')]   # List of attribute/value pairs to be applied to the camera in the given order
-
-        return params
+            ('ExposureTime', exposureTime, 'float')]   # List of attribute/value pairs to be applied to the camera in the given order
+    def setAcquireSettings(self, *args):
+        raise NotImplementedError()
 
     def createChildProcesses(self):
         print("main>> Creating child processes")
@@ -2000,9 +2029,10 @@ him know. Otherwise, I had nothing to do with it.
         self.StdoutManager = None
 
     def sendWriteTrigger(self, t=None):
+        p = self.getParams('preTriggerTime', 'recordTime')
         if t is None:
             t = time.time_ns()/1000000000
-        trig = Trigger(t-2, t, t+2)
+        trig = Trigger(t-p['preTriggerTime'], t, t + p['recordTime'] - p['preTriggerTime'])
         print("main>> Sending manual trigger!")
         for camSerial in self.camSerials:
             self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.TRIGGER, trig))
