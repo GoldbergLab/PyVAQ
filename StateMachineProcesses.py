@@ -16,6 +16,8 @@ import nidaqmx
 from nidaqmx.stream_readers import AnalogMultiChannelReader
 from SharedImageQueue import SharedImageSender
 import traceback
+import unicodedata
+import re
 try:
     import PySpin
 except ModuleNotFoundError:
@@ -46,24 +48,21 @@ def syncPrint(*args, sep=' ', end='\n', flush=True, buffer=None):
     kwargs = dict(sep=sep, end=end, flush=flush)
     buffer.append((args, kwargs))
 
-def getStringIntersections(s1, s2, minLength=1):
-    if minLength < 1:
-        raise ValueError('Minimum string intersection length must be an integer greater than zero.')
-    s1, s2 = sorted([s1, s2], key=lambda s:len(s))
-    intersections = []
-    for L in range(minLength, len(s1)+1):
-        for k in range(0, len(s1)-L+1):
-            if s1[k:k+L] in s2:
-                intersections.append(s1[k:k+L])
-    return intersections
+def slugify(value, allow_unicode=False):
+    """
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces to hyphens.
+    Remove characters that aren't alphanumerics, underscores, or hyphens.
+    Convert to lowercase. Also strip leading and trailing whitespace.
 
-def serializableToTime(serializable):
-    return dt.time(
-        hour=serializable['hour'],
-        minute=serializable['minute'],
-        second=serializable['second'],
-        microsecond=serializable['microsecond']
-    )
+    Adapter from Django utils
+    """
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\w\s-]', '', value).strip().lower()
+    return re.sub(r'[-\s]+', '-', value)
 
 class Stopwatch:
     def __init__(self):
@@ -185,9 +184,17 @@ def ensureDirectoryExists(directory):
     if len(directory) > 0:
         os.makedirs(directory, exist_ok=True)
 
-def generateFileName(directory, baseName, extension, trigger):
-    timeString = dt.datetime.fromtimestamp(trigger.triggerTime).strftime('%Y-%m-%d-%H-%M-%S-%f')
-    fileName = baseName + '_' + timeString + extension
+def generateTimeString(trigger):
+    return dt.datetime.fromtimestamp(trigger.triggerTime).strftime('%Y-%m-%d-%H-%M-%S-%f')
+
+def generateFileName(directory='.', baseName='unnamed', tags=[], extension=''):
+    extension = '.' + slugify(extension)
+    fileName = baseName
+    for tag in tags:
+        if len(tag) > 0:
+            fileName += '_' + tag
+    fileName = slugify(fileName)
+    fileName += extension
     return os.path.join(directory, fileName)
 
 def generateButterBandpassCoeffs(lowcut, highcut, fs, order=5):
@@ -547,8 +554,8 @@ class AVMerger(StateMachineProcess):
                             for videoFileEvent in videoFileEvents:
                                 # Add/update dictionary to reflect this video file
                                 kwargs['videoFile'] = videoFileEvent['filePath']
-                                baseVideoName = self.baseFileName + '_' + videoFileEvent['streamID'] + '_merged'
-                                kwargs['outputFile'] = generateFileName(directory=self.directory, baseName=baseVideoName, extension='.avi', trigger=videoFileEvent['trigger'])
+                                fileNameTags = [videoFileEvent['streamID'], 'merged', generateTimeString(videoFileEvent['trigger'])]
+                                kwargs['outputFile'] = generateFileName(directory=self.directory, baseName=self.baseFileName, extension='.avi', tags=fileNameTags)
                                 kwargs['compression'] = self.compression
                                 # Substitute strings into command template
                                 mergeCommand = mergeCommandTemplate.format(**kwargs)
@@ -569,8 +576,8 @@ class AVMerger(StateMachineProcess):
                             kwargs = dict(
                                 [('audioFile{k}'.format(k=k), audioFileEvents[k]['filePath']) for k in range(len(audioFileEvents))] + \
                                 [('videoFile{k}'.format(k=k), videoFileEvents[k]['filePath']) for k in range(len(videoFileEvents))])
-                            baseVideoName = self.baseFileName + '_montage'
-                            kwargs['outputFile'] = generateFileName(directory=self.directory, baseName=baseVideoName, extension='.avi', trigger=videoFileEvents[0]['trigger'])
+                            fileNameTags = [videoFileEvent['streamID'], 'montage', generateTimeString(videoFileEvent['trigger'])]
+                            kwargs['outputFile'] = generateFileName(directory=self.directory, baseName=self.baseFileName, extension='.avi', tags=fileNameTags)
                             kwargs['compression'] = self.compression
                             mergeCommand = mergeCommandTemplate.format(**kwargs)
                             if self.verbose >= 1:
@@ -1888,6 +1895,7 @@ class AudioWriter(StateMachineProcess):
 
     def __init__(self,
                 audioBaseFileName='audioFile',
+                channelNames=[],
                 audioDirectory='.',
                 audioQueue=None,
                 audioFrequency=None,
@@ -1901,6 +1909,7 @@ class AudioWriter(StateMachineProcess):
         StateMachineProcess.__init__(self, **kwargs)
         self.audioDirectory = audioDirectory
         self.audioBaseFileName = audioBaseFileName
+        self.channelNames = channelNames
         self.audioQueue = audioQueue
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
@@ -2067,7 +2076,8 @@ class AudioWriter(StateMachineProcess):
                     if audioChunk is not None:
                         if audioFile is None:
                             # Start new audio file
-                            audioFileName = generateFileName(directory=self.audioDirectory, baseName=self.audioBaseFileName, extension='.wav', trigger=triggers[0])
+                            audioFileNameTags = [','.join(self.channelNames), generateTimeString(triggers[0])]
+                            audioFileName = generateFileName(directory=self.audioDirectory, baseName=self.audioBaseFileName, extension='.wav', tags=audioFileNameTags)
                             ensureDirectoryExists(self.audioDirectory)
                             audioFile = wave.open(audioFileName, 'w')
                             audioFile.audioFileName = audioFileName
@@ -2877,7 +2887,8 @@ class VideoWriter(StateMachineProcess):
                     if im is not None:
                         if videoFileInterface is None:
                             # Start new video file
-                            videoFileName = generateFileName(directory=self.videoDirectory, baseName=self.videoBaseFileName, extension='', trigger=triggers[0])
+                            videoFileNameTags = [self.camSerial, generateTimeString(triggers[0])]
+                            videoFileName = generateFileName(directory=self.videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
                             ensureDirectoryExists(self.videoDirectory)
                             if self.videoWriteMethod == "PySpin":
                                 videoFileInterface = PySpin.SpinVideo()

@@ -40,8 +40,16 @@ class FileWritingEntry(ttk.LabelFrame):
     def getDirectory(self):
         return self.directoryVar.get()
 
+    def setDirectory(self, directory):
+        self.directoryVar.set(directory)
+        self.directoryChangeMetaHandler()
+
     def getBaseFileName(self):
         return self.baseFileNameVar.get()
+
+    def setBaseFileName(self, baseFileName):
+        self.baseFileNameVar.set(baseFileName)
+        self.baseFileNameChangeMetaHandler()
 
     def directoryChangeMetaHandler(self, *args):
         self.checkForValidDirectory()

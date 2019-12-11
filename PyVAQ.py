@@ -530,6 +530,14 @@ def getCameraAttribute(nodemap, attributeName, attributeTypePtrFunction):
         value = (valueEntry.GetName(), valueEntry.GetDisplayName())
     return value
 
+def serializableToTime(serializable):
+    return datetime.time(
+        hour=serializable['hour'],
+        minute=serializable['minute'],
+        second=serializable['second'],
+        microsecond=serializable['microsecond']
+    )
+
 def timeToSerializable(time):
     return dict(
         hour=time.hour,
@@ -537,6 +545,12 @@ def timeToSerializable(time):
         second=time.second,
         microsecond=time.microsecond
     )
+
+def defaultSerializer(obj):
+    if isinstance(obj, datetime.datetime):
+        return timeToSerializable(obj)
+    else:
+        raise TypeError("Object is not serializable")
 
 def format_diff(diff):
     # Diff is a list of the form output by pympler.summary.diff()
@@ -1711,25 +1725,67 @@ him know. Otherwise, I had nothing to do with it.
             params["scheduleStop"] = serializableToTime(params["scheduleStop"])
             print("main>> Loaded settings:")
             print(params)
-            self.setParams(params)
+            self.setParams(**params)
 
-    def setVideoBaseFileNames(self, *args):
-        raise NotImplementedError('setVideoBaseFileNames not implemented yet.')
-    def setVideoDirectories(self, *args):
-        raise NotImplementedError('setVideoDirectories not implemented yet.')
-    def setAudioBaseFileName(self, *args):
-        raise NotImplementedError('setAudioBaseFileName not implemented yet.')
-    def setAudioDirectory(self, *args):
-        raise NotImplementedError('setAudioDirectory not implemented yet.')
-    def setMergeBaseFileName(self, *args):
-        raise NotImplementedError('setMergeBaseFileName not implemented yet.')
-    def setMergeDirectory(self, *args):
-        raise NotImplementedError('setMergeDirectory not implemented yet.')
+    def setVideoBaseFileNames(self, baseFileNames, *args):
+        # Expects baseFileNames to be a list of baseFileNames, which will be used
+        #   to assign base filenames to the cameras in alphanumerical order of camera serial number
+        #   Note that this is counter to the general convention that camera-related
+        #   objects will be in dictionaries with camera serials as keys, to make loading
+        #   settings more flexible in cases where the settings are being applied to
+        #   systems with different cameras connected.
+        # Note that a dictionary may also be provided, but you may get the fileNames applied
+        #   in an unpredictable order to the cameras.
+
+        if isinstance(baseFileNames, dict):
+            baseFileNames = [baseFileNames[camSerial] for camSerial in sorted(baseFileNames.keys())]
+
+        camSerials = sorted(self.cameraMonitors.keys())
+        if len(camSerials) == 0:
+            # Camera monitors don't exist yet
+            raise IndexError("Please wait until video acquisition has begun to set this setting, sorry")
+
+        for camSerial, baseFileName in zip(sorted(self.cameraMonitors.keys()), baseFileNames):
+            self.cameraMonitors[camSerial].fileWidget.setBaseFileName(baseFileName)
+        # raise NotImplementedError('setVideoBaseFileNames not implemented yet.')
+    def setVideoDirectories(self, directories, *args):
+        # See setVideoBaseFileNames for notes
+
+        if isinstance(directories, dict):
+            directories = [directories[camSerial] for camSerial in sorted(directories.keys())]
+
+        camSerials = sorted(self.cameraMonitors.keys())
+        if len(camSerials) == 0:
+            # Camera monitors don't exist yet
+            raise IndexError("Please wait until video acquisition has begun to set this setting, sorry")
+
+        for camSerial, directory in zip(sorted(self.cameraMonitors.keys()), directories):
+            self.cameraMonitors[camSerial].fileWidget.setDirectory(directory)
+
+        # raise NotImplementedError('setVideoDirectories not implemented yet.')
+    def setAudioBaseFileName(self, baseFileName, *args):
+        if self.audioMonitor is not None:
+            self.audioMonitor.fileWidget.setBaseFileName(baseFileName)
+        else:
+            raise IndexError("Please wait until audio acquisition has begun to set this setting, sorry")
+        # raise NotImplementedError('setAudioBaseFileName not implemented yet.')
+    def setAudioDirectory(self, directory, *args):
+        if self.audioMonitor is not None:
+            self.audioMonitor.fileWidget.setDirectory(directory)
+        else:
+            raise IndexError("Please wait until audio acquisition has begun to set this setting, sorry")
+        # raise NotImplementedError('setAudioDirectory not implemented yet.')
+    def setMergeBaseFileName(self, baseFileName, *args):
+        self.mergeFileWidget.setBaseFileName(baseFileName)
+        # raise NotImplementedError('setMergeBaseFileName not implemented yet.')
+    def setMergeDirectory(self, directory, *args):
+        self.mergeFileWidget.setDirectory(directory)
+        # raise NotImplementedError('setMergeDirectory not implemented yet.')
 
     def getVideoBaseFileNames(self):
         videoBaseFileNames = {}
         for camSerial in self.camSerials:
-            videoBaseFileNames[camSerial] = slugify(self.cameraMonitors[camSerial].getBaseFileName() + '_' + camSerial)
+            videoBaseFileNames[camSerial] = slugify(self.cameraMonitors[camSerial].getBaseFileName())
         return videoBaseFileNames
     def getVideoDirectories(self):
         videoDirectories = {}
@@ -1737,7 +1793,7 @@ him know. Otherwise, I had nothing to do with it.
             videoDirectories[camSerial] = self.cameraMonitors[camSerial].getDirectory()
         return videoDirectories
     def getAudioBaseFileName(self):
-        return slugify(self.audioMonitor.getBaseFileName()+'_'+','.join(self.audioDAQChannels))
+        return slugify(self.audioMonitor.getBaseFileName())
     def getAudioDirectory(self):
         return self.audioMonitor.getDirectory()
     def getMergeBaseFileName(self):
@@ -1745,9 +1801,14 @@ him know. Otherwise, I had nothing to do with it.
     def getMergeDirectory(self):
         return self.mergeFileWidget.getDirectory()
 
-    def setParams(self, **params):
+    def setParams(self, ignoreErrors=True, **params):
         for paramName in params:
-            self.paramInfo[paramName]["set"](params[paramName])
+            try:
+                self.paramInfo[paramName]["set"](params[paramName])
+            except NotImplementedError:
+                traceback.print_exc()
+            except:
+                traceback.print_exc()
 
     def getParams(self, *paramNames):
         # Extract parameters from GUI, and calculate a few derived parameters
@@ -1871,6 +1932,7 @@ him know. Otherwise, I had nothing to do with it.
             self.audioWriteProcess = AudioWriter(
                 audioDirectory=p["audioDirectory"],
                 audioBaseFileName=p["audioBaseFileName"],
+                channelNames=self.audioDAQChannels,
                 audioQueue=audioQueue,
                 mergeMessageQueue=mergeMsgQueue,
                 chunkSize=p["chunkSize"],
