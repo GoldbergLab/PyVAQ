@@ -1584,49 +1584,53 @@ him know. Otherwise, I had nothing to do with it.
             print("main>>   mergePID:", mergePID)
         print("main>> ...PIDs:")
 
-    def checkStates(self):
-        videoWriteStates = {}
-        videoAcquireStates = {}
-        audioWriteState = None
-        audioAcquireState = None
-        syncState = None
-        mergeState = None
+    def checkStates(self, verbose=True):
+        states = dict(
+            videoWriteStates = {},
+            videoAcquireStates = {},
+            audioWriteState = None,
+            audioAcquireState = None,
+            syncState = None,
+            mergeState = None
+        )
 
         print("main>> Check states...")
         for camSerial in self.videoWriteProcesses:
             # print("main>> Getting VideoWriter {camSerial} state...".format(camSerial=camSerial))
-            videoWriteStates[camSerial] = VideoWriter.stateList[self.videoWriteProcesses[camSerial].publishedStateVar.value]
+            states['videoWriteStates'][camSerial] = VideoWriter.stateList[self.videoWriteProcesses[camSerial].publishedStateVar.value]
             # print("main>> ...one getting VideoWriter {camSerial} state".format(camSerial=camSerial))
         for camSerial in self.videoAcquireProcesses:
             # print("main>> Getting VideoAcquirer {camSerial} state...".format(camSerial=camSerial))
-            videoAcquireStates[camSerial] = VideoAcquirer.stateList[self.videoAcquireProcesses[camSerial].publishedStateVar.value]
+            states['videoAcquireStates'][camSerial] = VideoAcquirer.stateList[self.videoAcquireProcesses[camSerial].publishedStateVar.value]
             # print("main>> ...one getting VideoAcquirer {camSerial} state".format(camSerial=camSerial))
         if self.audioWriteProcess is not None:
             # print("main>> Getting AudioWriter state...")
-            audioWriteState = AudioWriter.stateList[self.audioWriteProcess.publishedStateVar.value]
+            states['audioWriteState'] = AudioWriter.stateList[self.audioWriteProcess.publishedStateVar.value]
             # print("main>> ...done getting AudioWriter state")
         if self.audioAcquireProcess is not None:
             # print("main>> Getting AudioAcquirer state...")
-            audioAcquireState = AudioAcquirer.stateList[self.audioAcquireProcess.publishedStateVar.value]
+            states['audioAcquireState'] = AudioAcquirer.stateList[self.audioAcquireProcess.publishedStateVar.value]
             # print("main>> ...done getting AudioAcquirer state")
         if self.syncProcess is not None:
             # print("main>> Getting Synchronizer state...")
-            syncState = Synchronizer.stateList[self.syncProcess.publishedStateVar.value]
+            states['syncState'] = Synchronizer.stateList[self.syncProcess.publishedStateVar.value]
             # print("main>> ...done getting Synchronizer state...")
         if self.mergeProcess is not None:
             # print("main>> Getting AVMerger state...")
-            mergeState = AVMerger.stateList[self.mergeProcess.publishedStateVar.value]
+            states['mergeState'] = AVMerger.stateList[self.mergeProcess.publishedStateVar.value]
             # print("main>> ...done getting AVMerger state")
 
-        for camSerial in videoWriteStates:
-            print("main>> videoWriteStates[", camSerial, "]:", videoWriteStates[camSerial])
-        for camSerial in videoAcquireStates:
-            print("main>> videoAcquireStates[", camSerial, "]:", videoAcquireStates[camSerial])
-        print("main>> audioWriteState:", audioWriteState)
-        print("main>> audioAcquireState:", audioAcquireState)
-        print("main>> syncState:", syncState)
-        print("main>> mergeState:", mergeState)
-        print("main>> ...check states")
+        if verbose:
+            for camSerial in videoWriteStates:
+                print("main>> videoWriteStates[", camSerial, "]:", states['videoWriteStates'][camSerial])
+            for camSerial in videoAcquireStates:
+                print("main>> videoAcquireStates[", camSerial, "]:", states['videoAcquireStates'][camSerial])
+            print("main>> audioWriteState:", states['audioWriteState'])
+            print("main>> audioAcquireState:", states['audioAcquireState'])
+            print("main>> syncState:", states['syncState'])
+            print("main>> mergeState:", states['mergeState'])
+            print("main>> ...check states")
+        return states
 
     def debugAll(self):
         print(r"main>> ****************************** \/ \/ DEBUG ALL \/ \/ *******************************")
@@ -1866,6 +1870,41 @@ him know. Otherwise, I had nothing to do with it.
     def setAcquireSettings(self, *args):
         raise NotImplementedError()
 
+    def waitForChildProcessesToStop(self, attempts=10, timeout=0.5):
+        # Wait for all state machine child processes to stop, or until all attempts have been exhausted.
+        #   Returns true if all processes were found to have stopped, false if not.
+        for attempts in range(10):
+            allStopped = False
+            states = self.checkStates(verbose=False)
+            if 'videoWriteStates' in states:
+                for camSerial in states['videoWriteStates']:
+                    if not (states['videoWriteStates'][camSerial] == VideoWriter.stateList[VideoWriter.STOPPED]):
+                        break;
+            if 'videoAcquireStates' in states:
+                for camSerial in states['videoAcquireStates']:
+                    if not (states['videoAcquireStates'][camSerial] == VideoAcquirer.stateList[VideoAcquirer.STOPPED]):
+                        break;
+            if 'audioWriteState' in states:
+                if not (states['audioWriteState' == AudioWriter.stateList[VideoWriter.STOPPED]):
+                    break;
+            if 'audioAcquireState' in states:
+                if not (states['audioAcquireState' == AudioAcquirer.stateList[VideoAcquirer.STOPPED]):
+                    break;
+            if 'syncState' in states:
+                if not (states['syncState' == Synchronizer.stateList[Synchronizer.STOPPED]):
+                    break;
+            if 'mergeState' in states:
+                if not (states['mergeState' == AVMerger.stateList[AVMerger.STOPPED]):
+                    break;
+            allStopped = True
+
+            if allStopped:
+                return allStopped
+
+            time.sleep(timeout)
+
+        return False
+
     def createChildProcesses(self):
         print("main>> Creating child processes")
         p = self.getParams()
@@ -2031,6 +2070,14 @@ him know. Otherwise, I had nothing to do with it.
 
             # Start merge process
             self.updateAVMergerState()
+
+    def restartAcquisition(self):
+        self.stopChildProcesses()
+        stopped = self.waitForChildProcessesToStop()
+        if stopped:
+            self.startChildProcesses()
+        else:
+            print("main>> Attempted to restart child processes, but could not get them to stop.")
 
     def stopChildProcesses(self):
         # Tell all child processes to stop
