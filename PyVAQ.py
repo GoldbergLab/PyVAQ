@@ -1596,29 +1596,29 @@ him know. Otherwise, I had nothing to do with it.
 
         print("main>> Check states...")
         for camSerial in self.videoWriteProcesses:
-            # print("main>> Getting VideoWriter {camSerial} state...".format(camSerial=camSerial))
+            print("main>> Getting VideoWriter {camSerial} state...".format(camSerial=camSerial))
             states['videoWriteStates'][camSerial] = VideoWriter.stateList[self.videoWriteProcesses[camSerial].publishedStateVar.value]
-            # print("main>> ...one getting VideoWriter {camSerial} state".format(camSerial=camSerial))
+            print("main>> ...done getting VideoWriter {camSerial} state".format(camSerial=camSerial))
         for camSerial in self.videoAcquireProcesses:
-            # print("main>> Getting VideoAcquirer {camSerial} state...".format(camSerial=camSerial))
+            print("main>> Getting VideoAcquirer {camSerial} state...".format(camSerial=camSerial))
             states['videoAcquireStates'][camSerial] = VideoAcquirer.stateList[self.videoAcquireProcesses[camSerial].publishedStateVar.value]
-            # print("main>> ...one getting VideoAcquirer {camSerial} state".format(camSerial=camSerial))
+            print("main>> ...done getting VideoAcquirer {camSerial} state".format(camSerial=camSerial))
         if self.audioWriteProcess is not None:
-            # print("main>> Getting AudioWriter state...")
+            print("main>> Getting AudioWriter state...")
             states['audioWriteState'] = AudioWriter.stateList[self.audioWriteProcess.publishedStateVar.value]
-            # print("main>> ...done getting AudioWriter state")
+            print("main>> ...done getting AudioWriter state")
         if self.audioAcquireProcess is not None:
-            # print("main>> Getting AudioAcquirer state...")
+            print("main>> Getting AudioAcquirer state...")
             states['audioAcquireState'] = AudioAcquirer.stateList[self.audioAcquireProcess.publishedStateVar.value]
-            # print("main>> ...done getting AudioAcquirer state")
+            print("main>> ...done getting AudioAcquirer state")
         if self.syncProcess is not None:
-            # print("main>> Getting Synchronizer state...")
+            print("main>> Getting Synchronizer state...")
             states['syncState'] = Synchronizer.stateList[self.syncProcess.publishedStateVar.value]
-            # print("main>> ...done getting Synchronizer state...")
+            print("main>> ...done getting Synchronizer state...")
         if self.mergeProcess is not None:
-            # print("main>> Getting AVMerger state...")
+            print("main>> Getting AVMerger state...")
             states['mergeState'] = AVMerger.stateList[self.mergeProcess.publishedStateVar.value]
-            # print("main>> ...done getting AVMerger state")
+            print("main>> ...done getting AVMerger state")
 
         if verbose:
             for camSerial in videoWriteStates:
