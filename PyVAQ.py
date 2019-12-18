@@ -1661,9 +1661,10 @@ him know. Otherwise, I had nothing to do with it.
             state = self.videoAcquireProcesses[camSerial].publishedStateVar.value
             if state in activeVideoStates:
                 return True
-        state = self.audioAcquireProcess.publishedStateVar.value
-        if state in activeAudioStates:
-            return True
+        if self.audioAcquireProcess is not None:
+            state = self.audioAcquireProcess.publishedStateVar.value
+            if state in activeAudioStates:
+                return True
         return False
 
     def acquireButtonClick(self):
