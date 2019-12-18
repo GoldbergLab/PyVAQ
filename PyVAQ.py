@@ -1647,19 +1647,16 @@ him know. Otherwise, I had nothing to do with it.
 
     def acquisitionActive(self):
         # Check if at least one audio or video process is acquiring
-
         activeAudioStates = [
             AudioAcquirer.INITIALIZING,
             AudioAcquirer.ACQUIRING,
             AudioAcquirer.ACQUIRE_READY
         ]
-
         activeVideoStates = [
             VideoAcquirer.INITIALIZING,
             VideoAcquirer.ACQUIRING,
             VideoAcquirer.ACQUIRE_READY
         ]
-
         for camSerial in self.camSerials:
             state = self.videoAcquireProcesses[camSerial].publishedStateVar.value
             if state in activeVideoStates:
@@ -1667,7 +1664,6 @@ him know. Otherwise, I had nothing to do with it.
         state = self.audioAcquireProcess.publishedStateVar.value
         if state in activeAudioStates:
             return True
-
         return False
 
     def acquireButtonClick(self):
