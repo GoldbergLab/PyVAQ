@@ -1661,22 +1661,10 @@ him know. Otherwise, I had nothing to do with it.
         ]
 
         for camSerial in self.camSerials:
-            try:
-                state = self.videoAcquireProcesses[camSerial].publishedStateVar.get(block=False)
-            except (queue.Full, queue.Empty):
-                state = None
-            except (AttributeError, KeyError):
-                # No state vars set up yet, so no, not acquiring
-                state = None
+            state = self.videoAcquireProcesses[camSerial].publishedStateVar.value
             if state in activeVideoStates:
                 return True
-        try:
-            state = self.audioAcquireProcess.publishedStateVar.get(block=False)
-        except (queue.Full, queue.Empty):
-            state = None
-        except (AttributeError, KeyError):
-            # No state vars set up yet, so no, not acquiring
-            state = None
+        state = self.audioAcquireProcess.publishedStateVar.value
         if state in activeAudioStates:
             return True
 
