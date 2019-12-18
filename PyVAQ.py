@@ -1621,9 +1621,9 @@ him know. Otherwise, I had nothing to do with it.
             print("main>> ...done getting AVMerger state")
 
         if verbose:
-            for camSerial in videoWriteStates:
+            for camSerial in states['videoWriteStates']:
                 print("main>> videoWriteStates[", camSerial, "]:", states['videoWriteStates'][camSerial])
-            for camSerial in videoAcquireStates:
+            for camSerial in states['videoAcquireStates']:
                 print("main>> videoAcquireStates[", camSerial, "]:", states['videoAcquireStates'][camSerial])
             print("main>> audioWriteState:", states['audioWriteState'])
             print("main>> audioAcquireState:", states['audioAcquireState'])
@@ -1869,16 +1869,16 @@ him know. Otherwise, I had nothing to do with it.
                     if not (states['videoAcquireStates'][camSerial] == VideoAcquirer.stateList[VideoAcquirer.STOPPED]):
                         break;
             if 'audioWriteState' in states:
-                if not (states['audioWriteState' == AudioWriter.stateList[VideoWriter.STOPPED]):
+                if not (states['audioWriteState'] == AudioWriter.stateList[VideoWriter.STOPPED]):
                     break;
             if 'audioAcquireState' in states:
-                if not (states['audioAcquireState' == AudioAcquirer.stateList[VideoAcquirer.STOPPED]):
+                if not (states['audioAcquireState'] == AudioAcquirer.stateList[VideoAcquirer.STOPPED]):
                     break;
             if 'syncState' in states:
-                if not (states['syncState' == Synchronizer.stateList[Synchronizer.STOPPED]):
+                if not (states['syncState'] == Synchronizer.stateList[Synchronizer.STOPPED]):
                     break;
             if 'mergeState' in states:
-                if not (states['mergeState' == AVMerger.stateList[AVMerger.STOPPED]):
+                if not (states['mergeState'] == AVMerger.stateList[AVMerger.STOPPED]):
                     break;
             allStopped = True
 
