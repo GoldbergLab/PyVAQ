@@ -2844,7 +2844,7 @@ class VideoWriter(StateMachineProcess):
                         nextState = VideoWriter.STOPPING
                     elif len(triggers) > 0:
                         # We have triggers - next state will depend on them
-                        if self.verbose >= 2: self.log(self.ID + " - Trigger is active")
+                        if self.verbose >= 2: self.log(self.ID + " - " + str(len(triggers))) + " trigger(s) exist:"
                         if im is not None:
                             # At least one video frame has been received - we can check if trigger period has begun
                             triggerState = triggers[0].state(frameTime)
