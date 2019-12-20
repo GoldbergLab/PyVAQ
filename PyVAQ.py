@@ -1973,7 +1973,8 @@ him know. Otherwise, I had nothing to do with it.
                 startTime=startTime,
                 camSerial=camSerial,
                 acquireSettings=p["acquireSettings"],
-                frameRate=p["videoFrequency"],
+                frameRate = self.actualVideoFrequency,
+                requestedFrameRate=p["videoFrequency"],
                 monitorFrameRate=self.monitorMasterFrameRate,
                 verbose=self.videoAcquireVerbose,
                 bufferSizeSeconds=p["bufferSizeSeconds"],
@@ -1984,7 +1985,8 @@ him know. Otherwise, I had nothing to do with it.
                 videoDirectory=p["videoDirectories"][camSerial],
                 videoBaseFileName=p["videoBaseFileNames"][camSerial],
                 imageQueue=videoAcquireProcess.imageQueueReceiver,
-                frameRate=p["videoFrequency"],
+                frameRate=self.actualVideoFrequency,
+                requestedFrameRate=p["videoFrequency"],
                 mergeMessageQueue=mergeMsgQueue,
                 bufferSizeSeconds=p["bufferSizeSeconds"],
                 verbose=self.videoWriteVerbose,
@@ -2255,14 +2257,6 @@ him know. Otherwise, I had nothing to do with it.
         self.audioTriggerStateLabel.grid()
         self.audioAnalysisMonitorFrame.grid(row=4, column=0, columnspan=3)
         self.audioAnalysisWidgets['canvas'].get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
-
-def clearQueue(q):
-    if q is not None:
-        while True:
-            try:
-                stuff = q.get(block=True, timeout=0.1)
-            except queue.Empty:
-                break
 
 if __name__ == "__main__":
     root = tk.Tk()

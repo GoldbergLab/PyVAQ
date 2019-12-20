@@ -2343,6 +2343,7 @@ class VideoAcquirer(StateMachineProcess):
                 camSerial='',
                 acquireSettings={},
                 frameRate=None,
+                requestedFameRate=None,
                 # acquisitionBufferSize=100,
                 bufferSizeSeconds=2.2,
                 monitorFrameRate=15,
@@ -2354,10 +2355,11 @@ class VideoAcquirer(StateMachineProcess):
         self.camSerial = camSerial
         self.ID = 'VA_'+self.camSerial
         self.acquireSettings = acquireSettings
+        self.requestedFrameRate = requestedFrameRate
         self.frameRate = frameRate
         # self.imageQueue = mp.Queue()
         # self.imageQueue.cancel_join_thread()
-        self.bufferSize = int(2*bufferSizeSeconds * self.frameRate)
+        self.bufferSize = int(2*bufferSizeSeconds * self.frameRate.value)
         print("Creating shared image sender with max buffer size:", self.bufferSize)
         self.imageQueue = SharedImageSender(
             width=1280,
@@ -2532,7 +2534,7 @@ class VideoAcquirer(StateMachineProcess):
                         else:
 #                            imageConverted = imageResult.Convert(PySpin.PixelFormat_BGR8)
                             imageCount += 1
-                            frameTime = startTime + imageCount / self.frameRate
+                            frameTime = startTime + imageCount / self.frameRate.value
 
                             if self.verbose >= 3: self.log(self.ID + " Got image from camera, t="+str(frameTime))
 
@@ -2754,7 +2756,8 @@ class VideoWriter(StateMachineProcess):
                 videoDirectory='.',
                 videoBaseFileName='videoFile',
                 imageQueue=None,
-                frameRate=10,
+                requestedFrameRate=None,
+                frameRate=None,
                 mergeMessageQueue=None,            # Queue to put (filename, trigger) in for merging
                 bufferSizeSeconds=2.2,
                 camSerial='',
@@ -2768,9 +2771,10 @@ class VideoWriter(StateMachineProcess):
         self.imageQueue = imageQueue
         # if self.imageQueue is not None:
         #     self.imageQueue.cancel_join_thread()
+        self.requestedFrameRate = requestedFrameRate
         self.frameRate = frameRate
         self.mergeMessageQueue = mergeMessageQueue
-        self.bufferSize = int(1.6*bufferSizeSeconds * self.frameRate)
+        self.bufferSize = int(1.6*bufferSizeSeconds * self.frameRate.value)
         self.buffer = deque(maxlen=self.bufferSize)
         self.errorMessages = []
         self.verbose = verbose
@@ -2885,12 +2889,12 @@ class VideoWriter(StateMachineProcess):
                             elif triggerState == 0:     # Time is now in trigger range
                                 if self.verbose >= 0:
                                     delta = frameTime - triggers[0].startTime
-                                    if delta <= 1/self.frameRate:
+                                    if delta <= 1/self.frameRate.value:
                                         # Within one frame of trigger start
                                         self.log(self.ID + " - Got trigger start!")
                                     else:
                                         # More than one frame after trigger start - we missed some
-                                        self.log(self.ID + " - partially missed trigger by {t} seconds, which is {f} frames!".format(t=delta, f=delta * self.frameRate))
+                                        self.log(self.ID + " - partially missed trigger by {t} seconds, which is {f} frames!".format(t=delta, f=delta * self.frameRate.value))
                                 timeWrote = 0
                                 nextState = VideoWriter.WRITING
                             else:                       # Time is after trigger range
@@ -2923,17 +2927,17 @@ class VideoWriter(StateMachineProcess):
                             if self.videoWriteMethod == "PySpin":
                                 videoFileInterface = PySpin.SpinVideo()
                                 option = PySpin.AVIOption()
-                                option.frameRate = self.frameRate
+                                option.frameRate = self.frameRate.value
                                 if self.verbose >= 2: self.log(self.ID + " - Opening file to save video with frameRate ", option.frameRate)
                                 videoFileInterface.Open(videoFileName, option)
                                 stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
                                 videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
                             elif self.videoWriteMethod == "ffmpeg":
-                                videoFileInterface = fw.ffmpegWriter(videoFileName+'.avi', fps=self.frameRate)
+                                videoFileInterface = fw.ffmpegWriter(videoFileName+'.avi', fps=self.frameRate.value)
 
                         # Write video frame to file that was previously retrieved from the buffer
                         if self.verbose >= 3:
-                            timeWrote += 1/self.frameRate
+                            timeWrote += 1/self.frameRate.value
                             self.log(self.ID + " - Video time wrote ="+str(timeWrote))
 
                         if self.videoWriteMethod == "PySpin":
@@ -3153,7 +3157,7 @@ class VideoWriter(StateMachineProcess):
             self.buffer.append((newIm, newFrameTime))
         except queue.Empty: # None available
             if self.verbose >= 3: self.log(self.ID + " - No images available from acquirer")
-            time.sleep(0.5/self.frameRate)
+            time.sleep(0.5/self.frameRate.value)
             newIm = None
             newFrameTime = None
             im = None
