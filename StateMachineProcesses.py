@@ -234,11 +234,7 @@ class StdoutManager(mp.Process):
             else:
                 self.logFilePath = logFilePath
             path, name = os.path.split(self.logFilePath)
-            try:
-                os.makedirs(path)
-            except FileExistsError:
-                # Directory already exists - no prob.
-                pass
+            ensureDirectoryExists(path)
         else:
             self.logFilePath = None
 
@@ -3176,7 +3172,7 @@ class VideoWriter(StateMachineProcess):
             self.buffer.append((newIm, newFrameTime))
         except queue.Empty: # None available
             if self.verbose >= 3: self.log(self.ID + " - No images available from acquirer")
-            time.sleep(0.5/self.frameRate.value)
+            time.sleep(0.5/self.requestedFrameRate)
             newIm = None
             newFrameTime = None
             im = None
