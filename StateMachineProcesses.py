@@ -1758,7 +1758,7 @@ class AudioAcquirer(StateMachineProcess):
                             if self.verbose >= 1: self.log("AA - Getting start time from sync process...")
                             while startTime == -1 or startTime is None:
                                 startTime = self.startTimeSharedValue.value
-                            if self.verbose >= 1: self.log("AA - Got start time from sync process:"+str(startTime))
+                            if self.verbose >= 1: self.log("AA - Got start time from sync process: "+str(startTime))
 #                            startTime = time.time_ns() / 1000000000 - self.chunkSize / self.audioFrequency
 
                         chunkStartTime = startTime + sampleCount / self.audioFrequency.value
@@ -2532,7 +2532,7 @@ class VideoAcquirer(StateMachineProcess):
                             if self.verbose >= 1: self.log(self.ID+" - Getting start time from sync process...")
                             while startTime == -1 or startTime is None:
                                 startTime = self.startTimeSharedValue.value
-                            if self.verbose >= 1: self.log(self.ID+" - Got start time from sync process:"+str(startTime))
+                            if self.verbose >= 1: self.log(self.ID+" - Got start time from sync process: "+str(startTime))
 #                            startTime = time.time_ns() / 1000000000
 
                         # Time frames, as an extra check
@@ -2919,7 +2919,7 @@ class VideoWriter(StateMachineProcess):
                                 triggers.pop(0)
                         else:
                             # No video frames have been received yet, can't evaluate if trigger time has begun yet
-                            if self.verbose >= 2: self.log(self.ID + " - No frames yet, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
+                            if self.verbose >= 2: self.log(self.ID + " - No frames at the moment, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
                             nextState = VideoWriter.BUFFERING
 
                     elif msg in ['', VideoWriter.START]:
