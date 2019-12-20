@@ -893,12 +893,13 @@ class Synchronizer(StateMachineProcess):
                             duty_cycle=self.audioDutyCycle)     # Prepare a counter output channel for the audio sync signal
                     trigTask.timing.cfg_implicit_timing(sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS)
 
+                    # Set shared values so other processes can get actual a/v frequencies
                     if self.actualAudioFrequency is not None:
-                        # Set shared values so other processes can get actual a/v frequencies
-                        if self.actualAudioFrequency is not None:
-                            self.actualAudioFrequency.value = trigTask.co_channels['audioFrequency'].co_pulse_freq
-                        if self.actualVideoFrequency is not None:
-                            self.actualVideoFrequency.value = trigTask.co_channels['videoFrequency'].co_pulse_freq
+                        self.actualAudioFrequency.value = trigTask.co_channels['audioFrequency'].co_pulse_freq
+                        if self.verbose > 0: self.log('Requested audio frequency: ', self.audioFrequency, ' | actual audio frequency: ', self.actualAudioFrequency.value);
+                    if self.actualVideoFrequency is not None:
+                        self.actualVideoFrequency.value = trigTask.co_channels['videoFrequency'].co_pulse_freq
+                        if self.verbose > 0: self.log('Requested video frequency: ', self.videoFrequency, ' | actual video frequency: ', self.actualVideoFrequency.value);
 
                     # CHECK FOR MESSAGES
                     try:
