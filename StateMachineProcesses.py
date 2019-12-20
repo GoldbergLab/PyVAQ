@@ -215,8 +215,8 @@ class StdoutManager(mp.Process):
 
     EXIT = 'exit'
 
-    def __init__(self):
-        mp.Process.__init__(self, logFilePath='', daemon=True)
+    def __init__(self, logFilePath=''):
+        mp.Process.__init__(self, daemon=True)
         self.queue = mp.Queue()
         self.timeout = 0.1
         self.PID = mp.Value('i', -1)
@@ -224,15 +224,18 @@ class StdoutManager(mp.Process):
             self.logFilePath = 'PyVAQ_Log_'+dt.datetime.now().strftime(TIME_FORMAT)
         else:
             self.logFilePath = logFilePath
+
+    def run(self):
+        self.PID.value = os.getpid()
         if self.logFilePath is not None:
             try:
                 self.logFile = open(self.logFilePath, 'w')
             except:
                 self.logFile = None
                 print('Failed to open log file.')
+        if self.logFile is not None:
+            print('Log file begin: '+dt.datetime.now().strftime(TIME_FORMAT), file=self.logFile)
 
-    def run(self):
-        self.PID.value = os.getpid()
         while True:
             msgBundles = []
             try:
