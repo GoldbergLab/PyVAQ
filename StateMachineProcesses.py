@@ -184,8 +184,10 @@ def ensureDirectoryExists(directory):
     if len(directory) > 0:
         os.makedirs(directory, exist_ok=True)
 
+TIME_FORMAT = '%Y-%m-%d-%H-%M-%S-%f'
+
 def generateTimeString(trigger):
-    return dt.datetime.fromtimestamp(trigger.triggerTime).strftime('%Y-%m-%d-%H-%M-%S-%f')
+    return dt.datetime.fromtimestamp(trigger.triggerTime).strftime(TIME_FORMAT)
 
 def generateFileName(directory='.', baseName='unnamed', tags=[], extension=''):
     extension = '.' + slugify(extension)
@@ -214,10 +216,20 @@ class StdoutManager(mp.Process):
     EXIT = 'exit'
 
     def __init__(self):
-        mp.Process.__init__(self, daemon=True)
+        mp.Process.__init__(self, logFilePath='', daemon=True)
         self.queue = mp.Queue()
         self.timeout = 0.1
         self.PID = mp.Value('i', -1)
+        if logFilePath == '':
+            self.logFilePath = 'PyVAQ_Log_'+dt.datetime.now().strftime(TIME_FORMAT)
+        else:
+            self.logFilePath = logFilePath
+        if self.logFilePath is not None:
+            try:
+                self.logFile = open(self.logFilePath, 'w')
+            except:
+                self.logFile = None
+                print('Failed to open log file.')
 
     def run(self):
         self.PID.value = os.getpid()
@@ -234,8 +246,15 @@ class StdoutManager(mp.Process):
                     return 0
                 for args, kwargs in msgBundle:
                     print(*args, **kwargs)
+                    if self.logFile is not None:
+                        print(*args, **kwargs, file=self.logFile)
                 print()
         clearQueue(self.queue)
+        if self.logFile is not None:
+            try:
+                self.logFile.close()
+            except:
+                print('Failed to close log file')
 
 class StateMachineProcess(mp.Process):
     def __init__(self, *args, stdoutQueue=None, daemon=True, **kwargs):
