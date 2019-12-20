@@ -1192,7 +1192,7 @@ class AudioTriggerer(StateMachineProcess):
         self.lowLevelBuffer = None
 
     def updateHighBuffer(self):
-        self.triggerHighChunks = int(self.triggerHighTime * self.audioFrequency.value / self.chunkSize)
+        self.triggerHighChunks = int(self.triggerHighTime * self.audioFrequency / self.chunkSize)
         if self.highLevelBuffer is not None:
             previousHighLevelBuffer = list(self.highLevelBuffer)
         else:
@@ -1201,7 +1201,7 @@ class AudioTriggerer(StateMachineProcess):
         self.highLevelBuffer.extend(previousHighLevelBuffer)
 
     def updateLowBuffer(self):
-        self.triggerLowChunks = int(self.triggerLowTime * self.audioFrequency.value / self.chunkSize)
+        self.triggerLowChunks = int(self.triggerLowTime * self.audioFrequency / self.chunkSize)
         if self.lowLevelBuffer is not None:
             previousLowLevelBuffer = list(self.lowLevelBuffer)
         else:
@@ -1266,9 +1266,11 @@ class AudioTriggerer(StateMachineProcess):
                 elif state == AudioTriggerer.INITIALIZING:
                     # DO STUFF
                     activeTrigger = None
-                    while self.audioFrequency.value == -1:
+                    while self.audioFrequencyVar.value == -1:
                         # Wait for shared value audioFrequency to be set by the Synchronizer process
                         time.sleep(0.1)
+                    self.audioFrequency = self.audioFrequencyVar.value
+
                     self.updateFilter()
                     self.updateHighBuffer()
                     self.updateLowBuffer()
@@ -1329,7 +1331,7 @@ class AudioTriggerer(StateMachineProcess):
                     # Get audio chunk from audio acquirer (c x n)
                     try:
                         chunkStartTime, audioChunk = self.audioQueue.get(block=True, timeout=0.1)
-                        chunkEndTime = chunkStartTime + self.chunkSize / self.audioFrequency.value
+                        chunkEndTime = chunkStartTime + self.chunkSize / self.audioFrequency
 
                         currentTimeOfDay = dt.datetime.now()
                         if not self.scheduleEnabled or (self.scheduleStartTime <= currentTimeOfDay and self.scheduleStopTime <= currentTimeOfDay):
@@ -1413,7 +1415,7 @@ class AudioTriggerer(StateMachineProcess):
                                 triggerHighFrac=self.triggerHighFraction,
                                 chunkStartTime=chunkStartTime,
                                 chunkSize = self.chunkSize,
-                                audioFrequency = self.audioFrequency.value,
+                                audioFrequency = self.audioFrequency,
                                 activeTrigger = activeTrigger
                             )
                             self.analysisMonitorQueue.put(summary)
@@ -1536,7 +1538,7 @@ class AudioTriggerer(StateMachineProcess):
         self.updatePublishedState(self.DEAD)
 
     def updateFilter(self):
-        self.filter = generateButterBandpassCoeffs(self.bandpassFrequencies[0], self.bandpassFrequencies[1], self.audioFrequency.value, order=self.butterworthOrder)
+        self.filter = generateButterBandpassCoeffs(self.bandpassFrequencies[0], self.bandpassFrequencies[1], self.audioFrequency, order=self.butterworthOrder)
 
     def thresholds(self, audioChunk):
         # Return (belowLow, belowHigh) where belowLow is true if the audioChunk
@@ -1605,7 +1607,8 @@ class AudioAcquirer(StateMachineProcess):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
         self.startTimeSharedValue = startTime
-        self.audioFrequency = audioFrequency
+        self.audioFrequencyVar = audioFrequency
+        self.audioFrequency = None
         self.acquireTimeout = 10 #2*chunkSize / self.audioFrequency
         self.audioQueue = audioQueue
         if self.audioQueue is not None:
@@ -1675,9 +1678,10 @@ class AudioAcquirer(StateMachineProcess):
                 elif state == AudioAcquirer.INITIALIZING:
                     # DO STUFF
                     # Read actual audio frequency from the Synchronizer process
-                    while self.audioFrequency.value == -1:
+                    while self.audioFrequencyVar.value == -1:
                         # Wait for shared value audioFrequency to be set by the Synchronizer process
                         time.sleep(0.1)
+                    self.audioFrequency = self.audioFrequencyVar.value
 
                     data = np.zeros((len(self.inputChannels), self.chunkSize), dtype='float')   # A pre-allocated array to receive audio data
                     processedData = data.copy()
@@ -1690,7 +1694,7 @@ class AudioAcquirer(StateMachineProcess):
                             max_val=10,
                             min_val=-10)
                     readTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
-                        rate=self.audioFrequency.value,
+                        rate=self.audioFrequency,
                         source=self.syncChannel,                            # Specify a timing source!
                         active_edge=nidaqmx.constants.Edge.RISING,
                         sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
@@ -1761,10 +1765,10 @@ class AudioAcquirer(StateMachineProcess):
                             if self.verbose >= 1: self.log("AA - Got start time from sync process: "+str(startTime))
 #                            startTime = time.time_ns() / 1000000000 - self.chunkSize / self.audioFrequency
 
-                        chunkStartTime = startTime + sampleCount / self.audioFrequency.value
+                        chunkStartTime = startTime + sampleCount / self.audioFrequency
                         sampleCount += self.chunkSize
                         processedData = AudioAcquirer.rescaleAudio(data)
-                        audioChunk = AudioChunk(chunkStartTime = chunkStartTime, audioFrequency = self.audioFrequency.value, data = processedData)
+                        audioChunk = AudioChunk(chunkStartTime = chunkStartTime, audioFrequency = self.audioFrequency, data = processedData)
                         if self.audioQueue is not None:
                             self.audioQueue.put(audioChunk)              # If a data queue is provided, queue up the new data
                         else:
@@ -1950,7 +1954,8 @@ class AudioWriter(StateMachineProcess):
         self.audioQueue = audioQueue
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
-        self.audioFrequency = audioFrequency
+        self.audioFrequencyVar = audioFrequency
+        self.audioFrequency = None
         self.numChannels = numChannels
         self.requestedBufferSizeSeconds = bufferSizeSeconds
         self.chunkSize = chunkSize
@@ -2016,11 +2021,13 @@ class AudioWriter(StateMachineProcess):
                     timeWrote = 0
 
                     # Read actual audio frequency from the Synchronizer process
-                    while self.audioFrequency.value == -1:
+                    while self.audioFrequencyVar.value == -1:
                         # Wait for shared value audioFrequency to be set by the Synchronizer process
                         time.sleep(0.1)
+                    self.audioFrequency = self.audioFrequencyVar.value
+
                     # Calculate buffer size and create buffer
-                    self.bufferSize = int(2*(self.requestedBufferSizeSeconds * self.audioFrequency.value / self.chunkSize))
+                    self.bufferSize = int(2*(self.requestedBufferSizeSeconds * self.audioFrequency / self.chunkSize))
                     self.buffer = deque(maxlen=self.bufferSize)
 
                     # CHECK FOR MESSAGES
@@ -2119,7 +2126,7 @@ class AudioWriter(StateMachineProcess):
                             audioFile = wave.open(audioFileName, 'w')
                             audioFile.audioFileName = audioFileName
                             # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
-                            audioFile.setparams((self.numChannels, self.audioDepthBytes, self.audioFrequency.value, 0, 'NONE', 'not compressed'))
+                            audioFile.setparams((self.numChannels, self.audioDepthBytes, self.audioFrequency, 0, 'NONE', 'not compressed'))
                         #     padStart = True  # Because this is the first chunk, pad the start of the chunk if it starts after the trigger period start
                         # else:
                         #     padStart = False
