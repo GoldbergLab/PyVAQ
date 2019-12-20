@@ -2344,7 +2344,7 @@ class VideoAcquirer(StateMachineProcess):
                 camSerial='',
                 acquireSettings={},
                 frameRate=None,
-                requestedFameRate=None,
+                requestedFrameRate=None,
                 # acquisitionBufferSize=100,
                 bufferSizeSeconds=2.2,
                 monitorFrameRate=15,
