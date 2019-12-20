@@ -1159,7 +1159,8 @@ class AudioTriggerer(StateMachineProcess):
         self.analysisMonitorQueue = mp.Queue()  # A queue to send analysis results to GUI for monitoring
         self.audioMessageQueue = audioMessageQueue
         self.videoMessageQueues = videoMessageQueues
-        self.audioFrequency = audioFrequency
+        self.audioFrequencyVar = audioFrequency
+        self.audioFrequency = None
         self.chunkSize = chunkSize
         self.triggerHighLevel = triggerHighLevel
         self.triggerLowLevel = triggerLowLevel
