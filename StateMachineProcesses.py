@@ -228,10 +228,20 @@ class StdoutManager(mp.Process):
         self.queue = mp.Queue()
         self.timeout = 0.1
         self.PID = mp.Value('i', -1)
-        if logFilePath == '':
-            self.logFilePath = 'PyVAQ_Log_'+dt.datetime.now().strftime(TIME_FORMAT)
+        if logFilePath is not None:
+            if logFilePath == '':
+                self.logFilePath = './logs/PyVAQ_Log_'+dt.datetime.now().strftime(TIME_FORMAT)
+            else:
+                self.logFilePath = logFilePath
+            path, name = os.path.split(self.logFilePath)
+            try:
+                os.makedirs(path)
+            except FileExistsError:
+                # Directory already exists - no prob.
+                pass
         else:
-            self.logFilePath = logFilePath
+            self.logFilePath = None
+
 
     def run(self):
         self.PID.value = os.getpid()
@@ -2360,7 +2370,7 @@ class VideoAcquirer(StateMachineProcess):
         self.frameRate = frameRate
         # self.imageQueue = mp.Queue()
         # self.imageQueue.cancel_join_thread()
-        self.bufferSize = int(2*bufferSizeSeconds * self.frameRate.value)
+        self.bufferSize = int(2*bufferSizeSeconds * self.requestedFrameRate)
         print("Creating shared image sender with max buffer size:", self.bufferSize)
         self.imageQueue = SharedImageSender(
             width=1280,
@@ -2461,6 +2471,10 @@ class VideoAcquirer(StateMachineProcess):
                     im = imp = imageResult = None
                     startTime = None
                     frameTime = None
+
+                    while self.frameRate.value == -1:
+                        # Wait for shared value frameRate to be set by the Synchronizer process
+                        time.sleep(0.1)
 
                     # CHECK FOR MESSAGES
                     try:
@@ -2775,7 +2789,7 @@ class VideoWriter(StateMachineProcess):
         self.requestedFrameRate = requestedFrameRate
         self.frameRate = frameRate
         self.mergeMessageQueue = mergeMessageQueue
-        self.bufferSize = int(1.6*bufferSizeSeconds * self.frameRate.value)
+        self.bufferSize = int(1.6*bufferSizeSeconds * self.requestedFrameRate)
         self.buffer = deque(maxlen=self.bufferSize)
         self.errorMessages = []
         self.verbose = verbose
@@ -2836,6 +2850,10 @@ class VideoWriter(StateMachineProcess):
                     im = None
                     videoFileInterface = None
                     timeWrote = 0
+
+                    while self.frameRate.value == -1:
+                        # Wait for shared value frameRate to be set by the Synchronizer process
+                        time.sleep(0.1)
 
                     # CHECK FOR MESSAGES
                     try:
