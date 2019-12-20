@@ -64,6 +64,14 @@ def slugify(value, allow_unicode=False):
     value = re.sub(r'[^\w\s-]', '', value).strip().lower()
     return re.sub(r'[-\s]+', '-', value)
 
+def clearQueue(q):
+    if q is not None:
+        while True:
+            try:
+                stuff = q.get(block=True, timeout=0.1)
+            except queue.Empty:
+                break
+
 class Stopwatch:
     def __init__(self):
         self.t0 = None
