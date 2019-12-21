@@ -2984,7 +2984,7 @@ class VideoWriter(StateMachineProcess):
                             videoFileInterface.write(imp.data, shape=(imp.width, imp.height))
                             if self.verbose >= 2: self.log(self.ID + " - wrote frame!")
 
-                    im, frameTime = self.rotateImages()
+                    im, frameTime = self.rotateImages(fillBuffer=False)
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
@@ -3161,7 +3161,7 @@ class VideoWriter(StateMachineProcess):
         self.flushStdout()
         self.updatePublishedState(self.DEAD)
 
-    def rotateImages(self):
+    def rotateImages(self, fillBuffer=True):
         # Pull image from acquirer, push to buffer
         # Pull image from buffer, return it
 
@@ -3169,18 +3169,22 @@ class VideoWriter(StateMachineProcess):
             # Get new video frame and push it into the buffer
             newIm, newMetadata = self.imageQueue.get(includeMetadata=True) #block=True, timeout=0.1)
             newFrameTime = newMetadata['frameTime']
-            if self.verbose >= 3: self.log(self.ID + " - Got video frame from acquirer. Pushing into the buffer. t="+str(newMetadata['frameTime']))
 
-            if len(self.buffer) >= self.buffer.maxlen:
+            if (fillBuffer and len(self.buffer) >= self.buffer.maxlen) or (len(self.buffer) > 0):
                 # Pop the oldest image frame from the back of the buffer.
                 im, frameTime = self.buffer.popleft()
                 if self.verbose >= 3: self.log(self.ID + " - Pulling video frame from buffer (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
             else:
-                # Buffer is not full yet. Do not pop any off until it's full.
-                if self.verbose >= 3: self.log(self.ID + " - buffer not full yet")
+                # Do not pop any off until it's either full or not empty, depending on fillBuffer).
+                if self.verbose >= 3:
+                    if fillBuffer:
+                        self.log(self.ID + " - buffer not full yet, declining to pull frame from buffer")
+                    else:
+                        self.log(self.ID + " - buffer empty, no frame to pull")
                 im = None
                 frameTime = None
 
+            if self.verbose >= 3: self.log(self.ID + " - Got video frame from acquirer. Pushing into the buffer. t="+str(newMetadata['frameTime']))
             self.buffer.append((newIm, newFrameTime))
         except queue.Empty: # None available
             if self.verbose >= 3: self.log(self.ID + " - No images available from acquirer")
