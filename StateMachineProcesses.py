@@ -2984,7 +2984,7 @@ class VideoWriter(StateMachineProcess):
                             videoFileInterface.write(imp.data, shape=(imp.width, imp.height))
                             if self.verbose >= 2: self.log(self.ID + " - wrote frame!")
 
-                    im, frameTime = self.rotateImages(fillBuffer=False)
+                    im, frameTime = self.rotateImages(fillBuffer=True)
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
