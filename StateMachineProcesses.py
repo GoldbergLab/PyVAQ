@@ -2559,6 +2559,7 @@ class VideoAcquirer(StateMachineProcess):
 #                            imageConverted = imageResult.Convert(PySpin.PixelFormat_BGR8)
                             imageCount += 1
                             self.log(self.ID + ' # frames:'+str(imageCount))
+                            self.log(self.ID + ' Image ID:'+str(imageResult.GetFrameID()))
                             frameTime = startTime + imageCount / self.frameRate
 
                             if self.verbose >= 3: self.log(self.ID + " Got image from camera, t="+str(frameTime))
