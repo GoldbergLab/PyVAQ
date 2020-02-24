@@ -961,6 +961,8 @@ class Synchronizer(StateMachineProcess):
 # ********************************* SYNCHRONIZING *********************************
                 elif state == Synchronizer.SYNCHRONIZING:
                     # DO STUFF
+                    if trigTask.is_task_done():
+                        raise RuntimeError('Warning, synchronizer trigger task stopped unexpectedly.')
 
                     # CHECK FOR MESSAGES
                     try:
@@ -1768,6 +1770,7 @@ class AudioAcquirer(StateMachineProcess):
 
                         chunkStartTime = startTime + sampleCount / self.audioFrequency
                         sampleCount += self.chunkSize
+                        self.log('AA - # samples:'+str(sampleCount))
                         processedData = AudioAcquirer.rescaleAudio(data)
                         audioChunk = AudioChunk(chunkStartTime = chunkStartTime, audioFrequency = self.audioFrequency, data = processedData)
                         if self.audioQueue is not None:
@@ -2555,6 +2558,7 @@ class VideoAcquirer(StateMachineProcess):
                         else:
 #                            imageConverted = imageResult.Convert(PySpin.PixelFormat_BGR8)
                             imageCount += 1
+                            self.log(self.ID + ' # frames:'+str(imageCount))
                             frameTime = startTime + imageCount / self.frameRate
 
                             if self.verbose >= 3: self.log(self.ID + " Got image from camera, t="+str(frameTime))
@@ -2984,7 +2988,7 @@ class VideoWriter(StateMachineProcess):
                             videoFileInterface.write(imp.data, shape=(imp.width, imp.height))
                             if self.verbose >= 2: self.log(self.ID + " - wrote frame!")
 
-                    im, frameTime = self.rotateImages(fillBuffer=True)
+                    im, frameTime = self.rotateImages(fillBuffer=False)
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
