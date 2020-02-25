@@ -1770,7 +1770,7 @@ class AudioAcquirer(StateMachineProcess):
 
                         chunkStartTime = startTime + sampleCount / self.audioFrequency
                         sampleCount += self.chunkSize
-                        self.log('AA - # samples:'+str(sampleCount))
+                        if self.verbose >= 3: self.log('AA - # samples:'+str(sampleCount))
                         processedData = AudioAcquirer.rescaleAudio(data)
                         audioChunk = AudioChunk(chunkStartTime = chunkStartTime, audioFrequency = self.audioFrequency, data = processedData)
                         if self.audioQueue is not None:
@@ -2559,8 +2559,9 @@ class VideoAcquirer(StateMachineProcess):
 #                            imageConverted = imageResult.Convert(PySpin.PixelFormat_BGR8)
                             imageCount += 1
                             imageID = imageResult.GetFrameID()
-                            self.log(self.ID + ' # frames:'+str(imageCount))
-                            self.log(self.ID + ' Image ID:'+str(imageID))
+                            if self.verbose >= 3:
+                                self.log(self.ID + ' # frames:'+str(imageCount))
+                                self.log(self.ID + ' Image ID:'+str(imageID))
                             frameTime = startTime + imageCount / self.frameRate
 
                             if self.verbose >= 3: self.log(self.ID + " Got image from camera, t="+str(frameTime))
