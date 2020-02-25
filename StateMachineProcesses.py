@@ -2558,8 +2558,9 @@ class VideoAcquirer(StateMachineProcess):
                         else:
 #                            imageConverted = imageResult.Convert(PySpin.PixelFormat_BGR8)
                             imageCount += 1
+                            imageID = imageResult.GetFrameID()
                             self.log(self.ID + ' # frames:'+str(imageCount))
-                            self.log(self.ID + ' Image ID:'+str(imageResult.GetFrameID()))
+                            self.log(self.ID + ' Image ID:'+str(imageID))
                             frameTime = startTime + imageCount / self.frameRate
 
                             if self.verbose >= 3: self.log(self.ID + " Got image from camera, t="+str(frameTime))
@@ -2567,7 +2568,7 @@ class VideoAcquirer(StateMachineProcess):
                             # imp = PickleableImage(imageResult.GetWidth(), imageResult.GetHeight(), 0, 0, imageResult.GetPixelFormat(), imageResult.GetData(), frameTime)
 
                             # Put image into image queue
-                            self.imageQueue.put(imageResult, metadata={'frameTime':frameTime})
+                            self.imageQueue.put(imageResult, metadata={'frameTime':frameTime, 'imageID':imageID})
                             if self.verbose >= 3: self.log(self.ID + " Pushed image into buffer")
 
                             if self.monitorImageSender is not None:
@@ -2893,7 +2894,7 @@ class VideoWriter(StateMachineProcess):
                         self.log("Image queue size: ", self.imageQueue.qsize())
                         self.log("Images in buffer: ", len(self.buffer))
 
-                    im, frameTime = self.rotateImages()
+                    im, frameTime, imageID = self.rotateImages()
 
                     # CHECK FOR MESSAGES
                     try:
@@ -2989,7 +2990,7 @@ class VideoWriter(StateMachineProcess):
                             videoFileInterface.write(imp.data, shape=(imp.width, imp.height))
                             if self.verbose >= 2: self.log(self.ID + " - wrote frame!")
 
-                    im, frameTime = self.rotateImages(fillBuffer=False)
+                    im, frameTime, imageID = self.rotateImages(fillBuffer=False)
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
@@ -3174,11 +3175,12 @@ class VideoWriter(StateMachineProcess):
             # Get new video frame and push it into the buffer
             newIm, newMetadata = self.imageQueue.get(includeMetadata=True) #block=True, timeout=0.1)
             newFrameTime = newMetadata['frameTime']
+            newImageID = newMetadata['imageID']
 
             if (fillBuffer and len(self.buffer) >= self.buffer.maxlen) or (len(self.buffer) > 0):
                 # Pop the oldest image frame from the back of the buffer.
-                im, frameTime = self.buffer.popleft()
-                if self.verbose >= 3: self.log(self.ID + " - Pulling video frame from buffer (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
+                im, frameTime, imageID = self.buffer.popleft()
+                if self.verbose >= 3: self.log(self.ID + " - Pulling video frame (ID {ID}) from buffer (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen, ID=imageID))
             else:
                 # Do not pop any off until it's either full or not empty, depending on fillBuffer).
                 if self.verbose >= 3:
@@ -3188,18 +3190,21 @@ class VideoWriter(StateMachineProcess):
                         self.log(self.ID + " - buffer empty, no frame to pull")
                 im = None
                 frameTime = None
+                imageID = None
 
-            if self.verbose >= 3: self.log(self.ID + " - Got video frame from acquirer. Pushing into the buffer. t="+str(newMetadata['frameTime']))
-            self.buffer.append((newIm, newFrameTime))
+            if self.verbose >= 3: self.log(self.ID + " - Got video frame from acquirer. Pushing into the buffer. ID={ID}, t={t}".format(t=newMetadata['frameTime'], ID=newImageID))
+            self.buffer.append((newIm, newFrameTime, newImageID))
         except queue.Empty: # None available
             if self.verbose >= 3: self.log(self.ID + " - No images available from acquirer")
             time.sleep(0.5/self.requestedFrameRate)
             newIm = None
             newFrameTime = None
+            newImageID = None
             im = None
             frameTime = None
+            imageID = None
 
-        return im, frameTime
+        return im, frameTime, imageID
 
     def updateTriggers(self, triggers, trigger):
         if len(triggers) > 0 and trigger.id == triggers[-1].id:
