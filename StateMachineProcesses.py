@@ -3177,7 +3177,7 @@ class VideoWriter(StateMachineProcess):
             newFrameTime = newMetadata['frameTime']
             newImageID = newMetadata['imageID']
 
-            if (fillBuffer and len(self.buffer) >= self.buffer.maxlen) or (len(self.buffer) > 0):
+            if (fillBuffer and (len(self.buffer) >= self.buffer.maxlen)) or ((not fillBuffer) and (len(self.buffer) > 0)):
                 # Pop the oldest image frame from the back of the buffer.
                 im, frameTime, imageID = self.buffer.popleft()
                 if self.verbose >= 3: self.log(self.ID + " - Pulling video frame (ID {ID}) from buffer (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen, ID=imageID))
