@@ -96,7 +96,7 @@ class SharedImageSender():
 
     def put(self, image, metadata=None):
         if not self.buffersReady:
-            raise IOError("setupBuffers must be called process where putting will happen before putting any images")
+            raise IOError("setupBuffers must be called in the process where putting will happen before putting any images")
         # image is a PySpin ImagePtr that must match the characteristics passed to the SharedImageSender constructor
         #   image = cam.GetNextImage()
         imarray = image.GetNDArray()
