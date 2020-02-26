@@ -48,6 +48,7 @@ root, thisScript = os.path.split(os.path.realpath(__file__))
 logFolder = os.path.join(root, 'logs')
 logs = sorted(os.listdir(logFolder))
 lastLog = os.path.join(logFolder, logs[-1])
+print('Analyzing log:', lastLog)
 with open(lastLog, 'r') as f:
     logText = f.read();
 
