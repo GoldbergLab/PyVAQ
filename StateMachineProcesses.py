@@ -184,7 +184,7 @@ class AudioChunk():
                 preChunk = None
             if endSample < self.chunkSize:
                 postChunk = AudioChunk(
-                    chunkStartTime=self.chunkStartTime,
+                    chunkStartTime=self.chunkStartTime + (endSample / self.audioFrequency),
                     audioFrequency=self.audioFrequency,
                     data=self.data[:, endSample:])
             else:
@@ -2040,6 +2040,7 @@ class AudioWriter(StateMachineProcess):
                     triggers = []
                     audioChunk = None
                     audioFile = None
+                    audioFileStartTime = 0;
                     timeWrote = 0
 
                     # Read actual audio frequency from the Synchronizer process
@@ -2140,15 +2141,6 @@ class AudioWriter(StateMachineProcess):
                         self.log("AW - Audio queue size: ", self.audioQueue.qsize())
                         self.log("AW - Audio chunks in buffer: ", len(self.buffer))
                     if audioChunk is not None:
-                        if audioFile is None:
-                            # Start new audio file
-                            audioFileNameTags = [','.join(self.channelNames), generateTimeString(triggers[0])]
-                            audioFileName = generateFileName(directory=self.audioDirectory, baseName=self.audioBaseFileName, extension='.wav', tags=audioFileNameTags)
-                            ensureDirectoryExists(self.audioDirectory)
-                            audioFile = wave.open(audioFileName, 'w')
-                            audioFile.audioFileName = audioFileName
-                            # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
-                            audioFile.setparams((self.numChannels, self.audioDepthBytes, self.audioFrequency, 0, 'NONE', 'not compressed'))
                         #     padStart = True  # Because this is the first chunk, pad the start of the chunk if it starts after the trigger period start
                         # else:
                         #     padStart = False
@@ -2159,11 +2151,22 @@ class AudioWriter(StateMachineProcess):
                             # Put remainder of chunk back in the buffer
                             self.buffer.appendleft(postChunk)
 
+                        if audioFile is None:
+                            # Start new audio file
+                            audioFileStartTime = audioChunk.chunkStartTime
+                            audioFileNameTags = [','.join(self.channelNames), generateTimeString(triggers[0])]
+                            audioFileName = generateFileName(directory=self.audioDirectory, baseName=self.audioBaseFileName, extension='.wav', tags=audioFileNameTags)
+                            ensureDirectoryExists(self.audioDirectory)
+                            audioFile = wave.open(audioFileName, 'w')
+                            audioFile.audioFileName = audioFileName
+                            # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
+                            audioFile.setparams((self.numChannels, self.audioDepthBytes, self.audioFrequency, 0, 'NONE', 'not compressed'))
+
                         # Write chunk of audio to file that was previously retrieved from the buffer
+                        audioFile.writeframes(audioChunk.getAsBytes())
                         if self.verbose >= 3:
                             timeWrote += (audioChunk.data.shape[1] / audioChunk.audioFrequency)
                             self.log("AW - Audio time wrote: {time}".format(time=timeWrote))
-                        audioFile.writeframes(audioChunk.getAsBytes())
 
                     try:
                         # Pop the oldest buffered audio chunk from the back of the buffer.
@@ -2216,7 +2219,8 @@ class AudioWriter(StateMachineProcess):
                                             filePath=audioFile.audioFileName,
                                             streamType=AVMerger.AUDIO,
                                             trigger=triggers[0],
-                                            streamID='audio'
+                                            streamID='audio',
+                                            startTime=audioFileStartTime
                                         )
                                         if self.verbose >= 1: self.log("AW - Sending audio filename to merger")
                                         self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
@@ -2240,7 +2244,8 @@ class AudioWriter(StateMachineProcess):
                                 filePath=audioFile.audioFileName,
                                 streamType=AVMerger.AUDIO,
                                 trigger=triggers[0],
-                                streamID='audio'
+                                streamID='audio',
+                                startTime=audioFileStartTime
                             )
                             self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
                         audioFile = None
@@ -2884,6 +2889,7 @@ class VideoWriter(StateMachineProcess):
                     # DO STUFF
                     triggers = []
                     im = None
+                    videoStartTime = 0
                     videoFileInterface = None
                     timeWrote = 0
 
@@ -2977,6 +2983,7 @@ class VideoWriter(StateMachineProcess):
                     if im is not None:
                         if videoFileInterface is None:
                             # Start new video file
+                            videoStartTime = frameTime
                             videoFileNameTags = [self.camSerial, generateTimeString(triggers[0])]
                             videoFileName = generateFileName(directory=self.videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
                             ensureDirectoryExists(self.videoDirectory)
@@ -3052,14 +3059,16 @@ class VideoWriter(StateMachineProcess):
                                                 filePath=videoFileInterface.videoFileName,
                                                 streamType=AVMerger.VIDEO,
                                                 trigger=triggers[0],
-                                                streamID=self.camSerial
+                                                streamID=self.camSerial,
+                                                startTime=videoFileStartTime
                                             )
                                         else:
                                             fileEvent = dict(
                                                 filePath=videoFileName+'.avi',
                                                 streamType=AVMerger.VIDEO,
                                                 trigger=triggers[0],
-                                                streamID=self.camSerial
+                                                streamID=self.camSerial,
+                                                startTime=videoFileStartTime
                                             )
                                         if self.verbose >= 2: self.log(self.ID + " - Sending video filename to merger")
                                         self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
@@ -3086,14 +3095,16 @@ class VideoWriter(StateMachineProcess):
                                     filePath=videoFileInterface.videoFileName,
                                     streamType=AVMerger.VIDEO,
                                     trigger=triggers[0],
-                                    streamID=self.camSerial
+                                    streamID=self.camSerial,
+                                    startTime=videoFileStartTime
                                 )
                             else:
                                 fileEvent = dict(
                                     filePath=videoFileName+'.avi',
                                     streamType=AVMerger.VIDEO,
                                     trigger=triggers[0],
-                                    streamID=self.camSerial
+                                    streamID=self.camSerial,
+                                    startTime=videoFileStartTime
                                 )
                             self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
                         videoFileInterface = None
