@@ -138,9 +138,10 @@ class AudioChunk():
         chunkEndTriggerState =   trigger.state(self.chunkEndTime)
         return chunkStartTriggerState, chunkEndTriggerState
 
-    def trimToTrigger(self, trigger, padStart=False):
+    def trimToTrigger(self, trigger, padStart=False, returnOtherPieces=False):
         # Trim audio chunk so it lies entirely within the trigger period, and update stats accordingly
         # If padStart == True, pad the audio chunk with enough data so it begins at the beginning of the trigger period
+        # If returnOtherPieces == True, returns the pre-chunk before the trim and the post-chunk after the trim, or None for one or both if there is no trim before and/or after
         chunkStartTriggerState, chunkEndTriggerState = self.getTriggerState(trigger)
 
         # Trim chunk start:
@@ -173,6 +174,23 @@ class AudioChunk():
         endSample = round(endSample)
 #        print("Trim samples: {first}|{start} --> {end}|{last}".format(start=startSample, end=endSample, first=0, last=self.chunkSize))
         self.data = self.data[:, startSample:endSample]
+        if returnOtherPieces:
+            if startSample > 0:
+                preChunk = AudioChunk(
+                    chunkStartTime=self.chunkStartTime,
+                    audioFrequency=self.audioFrequency,
+                    data=self.data[:, :startSample])
+            else:
+                preChunk = None
+            if endSample < self.chunkSize:
+                postChunk = AudioChunk(
+                    chunkStartTime=self.chunkStartTime,
+                    audioFrequency=self.audioFrequency,
+                    data=self.data[:, endSample:])
+            else:
+                postChunk = None
+            return [preChunk, postChunk]
+
         if padStart is True and startSample == 0:
             padLength = round((self.chunkStartTime - trigger.startTime) * self.audioFrequency)
             pad = np.zeros((self.channelNumber, padLength), dtype='int16')
@@ -2135,7 +2153,11 @@ class AudioWriter(StateMachineProcess):
                         # else:
                         #     padStart = False
                         if self.verbose >= 3: self.log("AW - Trimming audio")
-                        audioChunk.trimToTrigger(triggers[0]) #, padStart=padStart)
+                        [preChunk, postChunk] = audioChunk.trimToTrigger(triggers[0], returnOtherPieces=True) #, padStart=padStart)
+                        # preChunk can be discarded, as the trigger is past it, but postChunk needs to be put back in the buffer
+                        if postChunk is not None:
+                            # Put remainder of chunk back in the buffer
+                            self.buffer.appendleft(postChunk)
 
                         # Write chunk of audio to file that was previously retrieved from the buffer
                         if self.verbose >= 3:
@@ -2186,7 +2208,7 @@ class AudioWriter(StateMachineProcess):
                                 nextState = AudioWriter.BUFFERING
                                 if audioFile is not None:
                                     # Done with trigger, close file and clear audioFile
-                                    audioFile.writeframes(b'')  # Recompute header info?
+                                    audioFile.writeframes(b'')  # Causes recompute of header info?
                                     audioFile.close()
                                     if self.mergeMessageQueue is not None:
                                         # Send file for AV merging:
