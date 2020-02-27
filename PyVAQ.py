@@ -43,8 +43,7 @@ VERSION='0.2.0'
 
 # Todo:
 #  - Add filename/directory entry for each stream
-#  - Find and plug memory leak
-#  - Add video frameRate indicator
+#  - Find and plug memory leak #  - Add video frameRate indicator
 #  - Make attributes settable
 #  - Make saved avis not gigantic (maybe switch to opencv for video writing?)
 #  - Add external record triggering
@@ -731,7 +730,7 @@ class PyVAQ:
         self.scheduleStopTimeEntry = TimeEntry(self.scheduleFrame, text="Stop time")
 
         self.triggerFrame = ttk.LabelFrame(self.controlFrame, text='Triggering')
-        self.triggerModes = ['Manual', 'Audio']
+        self.triggerModes = ['Manual', 'Audio', 'Continuous']
         self.triggerModeChooserFrame = ttk.Frame(self.triggerFrame)
         self.triggerModeVar = tk.StringVar(); self.triggerModeVar.set(self.triggerModes[0])
         self.triggerModeVar.trace('w', self.updateTriggerMode)
@@ -796,6 +795,14 @@ class PyVAQ:
         self.audioTriggerStateFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Trigger state", style='SingleContainer.TLabelframe')
         self.audioTriggerStateLabel = ttk.Label(self.audioTriggerStateFrame)
 
+        # Continuous trigger controls
+        self.continuousTriggerModeStart = ttk.Button(self.triggerModeControlGroupFrames['Continuous'], text="Begin continuous write", command=self.continuousTriggerStartButtonClick)
+        self.continuousTriggerModeStop = ttk.Button(self.triggerModeControlGroupFrames['Continuous'], text="End continuous write", command=self.continuousTriggerStopButtonClick)
+
+        self.continuousTriggerPeriodFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Continuous'], text="Video chunk length (sec)", style='SingleContainer.TLabelframe')
+        self.continuousTriggerPeriodVar = tk.StringVar(); self.continuousTriggerPeriodVar.set("20")
+        self.continuousTriggerPeriodEntry = ttk.Entry(self.continuousTriggerPeriodFrame, textvariable=self.continuousTriggerPeriodVar); self.continuousTriggerPeriodEntry.bind('<FocusOut>', self.updateContinuousTriggerSettings)
+
         # Audio analysis monitoring widgets
         self.audioAnalysisMonitorFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Audio analysis")
         self.audioAnalysisWidgets = {}
@@ -812,6 +819,7 @@ class PyVAQ:
         self.audioWriteProcess = None
         self.audioAcquireProcess = None
         self.audioTriggerProcess = None
+        self.continuousTriggerProcess = None
         self.syncProcess = None
         self.mergeProcess = None
         self.StdoutManager = None
@@ -830,52 +838,53 @@ class PyVAQ:
         self.syncVerbose = 1
         self.mergeVerbose = 1
         self.audioTriggerVerbose = 1
+        self.continuousTriggerVerbose = 1
 
         self.profiler =  cProfile.Profile()
 
         # the params dict defines how to access and set all the parameters in the GUI
         self.paramInfo = {
-            'audioFrequency':           dict(get=lambda:int(self.audioFrequencyVar.get()),          set=self.audioFrequencyVar.set),
-            'videoFrequency':           dict(get=lambda:int(self.videoFrequencyVar.get()),          set=self.videoFrequencyVar.set),
-            'chunkSize':                dict(get=lambda:int(self.chunkSizeVar.get()),                             set=self.chunkSizeVar.set),
-            'exposureTime':             dict(get=lambda:int(self.exposureTimeVar.get()),          set=self.exposureTimeVar.set),
-            'exposureTime':             dict(get=lambda:int(self.exposureTimeVar.get()),                          set=self.exposureTimeVar.set),
-            'preTriggerTime':           dict(get=lambda:float(self.preTriggerTimeVar.get()),        set=self.preTriggerTimeVar.set),
-            'recordTime':               dict(get=lambda:float(self.recordTimeVar.get()),            set=self.recordTimeVar.set),
-            'triggerHighLevel':         dict(get=lambda:float(self.triggerHighLevelVar.get()),      set=self.triggerHighLevelVar.set),
-            'triggerLowLevel':          dict(get=lambda:float(self.triggerLowLevelVar.get()),       set=self.triggerLowLevelVar.set),
-            'triggerHighTime':          dict(get=lambda:float(self.triggerHighTimeVar.get()),       set=self.triggerHighTimeVar.set),
-            'triggerLowTime':           dict(get=lambda:float(self.triggerLowTimeVar.get()),        set=self.triggerLowTimeVar.set),
-            'triggerHighFraction':      dict(get=lambda:float(self.triggerHighFractionVar.get()),   set=self.triggerHighFractionVar.set),
-            'triggerLowFraction':       dict(get=lambda:float(self.triggerLowFractionVar.get()),    set=self.triggerLowFractionVar.set),
-            'triggerHighBandpass':      dict(get=lambda:float(self.triggerHighBandpassVar.get()),   set=self.triggerHighBandpassVar.set),
-            'triggerLowBandpass':       dict(get=lambda:float(self.triggerLowBandpassVar.get()),    set=self.triggerLowBandpassVar.set),
-            'maxAudioTriggerTime':      dict(get=lambda:float(self.maxAudioTriggerTimeVar.get()),   set=self.maxAudioTriggerTimeVar.set),
-            'videoBaseFileNames':       dict(get=self.getVideoBaseFileNames,                        set=self.setVideoBaseFileNames),
-            'videoDirectories':         dict(get=self.getVideoDirectories,                          set=self.setVideoDirectories),
-            'audioBaseFileName':        dict(get=self.getAudioBaseFileName,                         set=self.setAudioBaseFileName),
-            'audioDirectory':           dict(get=self.getAudioDirectory,                            set=self.setAudioDirectory),
-            'mergeBaseFileName':        dict(get=self.getMergeBaseFileName,                         set=self.setMergeBaseFileName),
-            'mergeDirectory':           dict(get=self.getMergeDirectory,                            set=self.setMergeDirectory),
-            'mergeFiles':               dict(get=self.mergeFilesVar.get,                            set=self.mergeFilesVar.set),
-            'deleteMergedAudioFiles':   dict(get=self.deleteMergedAudioFilesVar.get,                set=self.deleteMergedAudioFilesVar.set),
-            'deleteMergedVideoFiles':   dict(get=self.deleteMergedVideoFilesVar.get,                set=self.deleteMergedVideoFilesVar.set),
-            'montageMerge':             dict(get=self.montageMergeVar.get,                          set=self.montageMergeVar.set),
-            'mergeCompression':         dict(get=self.mergeCompressionVar.get,                      set=self.mergeCompressionVar.set),
-            'scheduleEnabled':          dict(get=self.scheduleEnabledVar.get,                       set=self.scheduleEnabledVar.set),
-            'scheduleStart':            dict(get=self.scheduleStartVar.get,                         set=self.scheduleStartVar.set),
-            'scheduleStop':             dict(get=self.scheduleStopVar.get,                          set=self.scheduleStopVar.set),
-            'triggerMode':              dict(get=self.triggerModeVar.get,                           set=self.triggerModeVar.set),
-            'multiChannelStartBehavior':dict(get=self.multiChannelStartBehaviorVar.get,             set=self.multiChannelStartBehaviorVar.set),
-            'multiChannelStopBehavior': dict(get=self.multiChannelStopBehaviorVar.get,              set=self.multiChannelStopBehaviorVar.set),
-            "bufferSizeSeconds":        dict(get=self.getBufferSizeSeconds,                         set=self.setBufferSizeSeconds),
-            "bufferSizeAudioChunks":    dict(get=self.getBufferSizeAudioChunks,                     set=self.setBufferSizeAudioChunks),
-            "numStreams":               dict(get=self.getNumStreams,                                set=self.setNumStreams),
-            "numProcesses":             dict(get=self.getNumProcesses,                              set=self.setNumProcesses),
-            "numSyncedProcesses":       dict(get=self.getNumSyncedProcesses,                        set=self.setNumSyncedProcesses),
-            "acquireSettings":          dict(get=self.getAcquireSettings,                           set=self.setAcquireSettings)
+            'audioFrequency':           dict(get=lambda:int(self.audioFrequencyVar.get()),              set=self.audioFrequencyVar.set),
+            'videoFrequency':           dict(get=lambda:int(self.videoFrequencyVar.get()),              set=self.videoFrequencyVar.set),
+            'chunkSize':                dict(get=lambda:int(self.chunkSizeVar.get()),                   set=self.chunkSizeVar.set),
+            'exposureTime':             dict(get=lambda:int(self.exposureTimeVar.get()),                set=self.exposureTimeVar.set),
+            'exposureTime':             dict(get=lambda:int(self.exposureTimeVar.get()),                set=self.exposureTimeVar.set),
+            'preTriggerTime':           dict(get=lambda:float(self.preTriggerTimeVar.get()),            set=self.preTriggerTimeVar.set),
+            'recordTime':               dict(get=lambda:float(self.recordTimeVar.get()),                set=self.recordTimeVar.set),
+            'triggerHighLevel':         dict(get=lambda:float(self.triggerHighLevelVar.get()),          set=self.triggerHighLevelVar.set),
+            'triggerLowLevel':          dict(get=lambda:float(self.triggerLowLevelVar.get()),           set=self.triggerLowLevelVar.set),
+            'triggerHighTime':          dict(get=lambda:float(self.triggerHighTimeVar.get()),           set=self.triggerHighTimeVar.set),
+            'triggerLowTime':           dict(get=lambda:float(self.triggerLowTimeVar.get()),            set=self.triggerLowTimeVar.set),
+            'triggerHighFraction':      dict(get=lambda:float(self.triggerHighFractionVar.get()),       set=self.triggerHighFractionVar.set),
+            'triggerLowFraction':       dict(get=lambda:float(self.triggerLowFractionVar.get()),        set=self.triggerLowFractionVar.set),
+            'triggerHighBandpass':      dict(get=lambda:float(self.triggerHighBandpassVar.get()),       set=self.triggerHighBandpassVar.set),
+            'triggerLowBandpass':       dict(get=lambda:float(self.triggerLowBandpassVar.get()),        set=self.triggerLowBandpassVar.set),
+            'maxAudioTriggerTime':      dict(get=lambda:float(self.maxAudioTriggerTimeVar.get()),       set=self.maxAudioTriggerTimeVar.set),
+            'videoBaseFileNames':       dict(get=self.getVideoBaseFileNames,                            set=self.setVideoBaseFileNames),
+            'videoDirectories':         dict(get=self.getVideoDirectories,                              set=self.setVideoDirectories),
+            'audioBaseFileName':        dict(get=self.getAudioBaseFileName,                             set=self.setAudioBaseFileName),
+            'audioDirectory':           dict(get=self.getAudioDirectory,                                set=self.setAudioDirectory),
+            'mergeBaseFileName':        dict(get=self.getMergeBaseFileName,                             set=self.setMergeBaseFileName),
+            'mergeDirectory':           dict(get=self.getMergeDirectory,                                set=self.setMergeDirectory),
+            'mergeFiles':               dict(get=self.mergeFilesVar.get,                                set=self.mergeFilesVar.set),
+            'deleteMergedAudioFiles':   dict(get=self.deleteMergedAudioFilesVar.get,                    set=self.deleteMergedAudioFilesVar.set),
+            'deleteMergedVideoFiles':   dict(get=self.deleteMergedVideoFilesVar.get,                    set=self.deleteMergedVideoFilesVar.set),
+            'montageMerge':             dict(get=self.montageMergeVar.get,                              set=self.montageMergeVar.set),
+            'mergeCompression':         dict(get=self.mergeCompressionVar.get,                          set=self.mergeCompressionVar.set),
+            'scheduleEnabled':          dict(get=self.scheduleEnabledVar.get,                           set=self.scheduleEnabledVar.set),
+            'scheduleStart':            dict(get=self.scheduleStartVar.get,                             set=self.scheduleStartVar.set),
+            'scheduleStop':             dict(get=self.scheduleStopVar.get,                              set=self.scheduleStopVar.set),
+            'triggerMode':              dict(get=self.triggerModeVar.get,                               set=self.triggerModeVar.set),
+            'multiChannelStartBehavior':dict(get=self.multiChannelStartBehaviorVar.get,                 set=self.multiChannelStartBehaviorVar.set),
+            'multiChannelStopBehavior': dict(get=self.multiChannelStopBehaviorVar.get,                  set=self.multiChannelStopBehaviorVar.set),
+            "bufferSizeSeconds":        dict(get=self.getBufferSizeSeconds,                             set=self.setBufferSizeSeconds),
+            "bufferSizeAudioChunks":    dict(get=self.getBufferSizeAudioChunks,                         set=self.setBufferSizeAudioChunks),
+            "numStreams":               dict(get=self.getNumStreams,                                    set=self.setNumStreams),
+            "numProcesses":             dict(get=self.getNumProcesses,                                  set=self.setNumProcesses),
+            "numSyncedProcesses":       dict(get=self.getNumSyncedProcesses,                            set=self.setNumSyncedProcesses),
+            "acquireSettings":          dict(get=self.getAcquireSettings,                               set=self.setAcquireSettings),
+            "continuousTriggerPeriod":  dict(get=lambda:float(self.continuousTriggerPeriodVar.get()),   set=self.continuousTriggerPeriodVar.set),
         }
-
 
         self.createAudioAnalysisMonitor()
 
@@ -922,6 +931,7 @@ class PyVAQ:
             'Synchronizer verbosity',
             'AVMerger verbosity',
             'AudioTriggerer verbosity',
+            'ContinuousTriggerer verbosity',
             'VideoAcquirer verbosity',
             'VideoWriter verbosity'
         ]
@@ -931,6 +941,7 @@ class PyVAQ:
             str(int(self.syncVerbose)),
             str(int(self.mergeVerbose)),
             str(int(self.audioTriggerVerbose)),
+            str(int(self.continuousTriggerVerbose)),
             str(int(self.videoAcquireVerbose)),
             str(int(self.videoWriteVerbose))
         ]
@@ -947,6 +958,7 @@ class PyVAQ:
             self.syncVerbose = int(choices['Synchronizer verbosity'])
             self.mergeVerbose = int(choices['AVMerger verbosity'])
             self.audioTriggerVerbose = int(choices['AudioTriggerer verbosity'])
+            self.continuousTriggerVerbose = int(choices['ContinuousTriggerer verbosity'])
             self.videoAcquireVerbose = int(choices['VideoAcquirer verbosity'])
             self.videoWriteVerbose = int(choices['VideoWriter verbosity'])
         self.updateChildProcessVerbosity()
@@ -962,6 +974,8 @@ class PyVAQ:
             self.mergeProcess.msgQueue.put((AVMerger.SETPARAMS, {'verbose':self.mergeVerbose}))
         if self.audioTriggerProcess is not None:
             self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, {'verbose':self.audioTriggerVerbose}))
+        if self.continuousTriggerProcess is not None:
+            self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.SETPARAMS, {'verbose':self.continuousTriggerVerbose}))
         for camSerial in self.videoAcquireProcesses:
             self.videoAcquireProcesses[camSerial].msgQueue.put((VideoAcquirer.SETPARAMS, {'verbose':self.videoAcquireVerbose}))
             self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.SETPARAMS, {'verbose':self.videoWriteVerbose}))
@@ -1148,18 +1162,15 @@ him know. Otherwise, I had nothing to do with it.
                 'multiChannelStopBehavior'
             ]
             params = self.getParams(*paramList)
-            # params = dict(
-            #     triggerHighLevel=float(self.triggerHighLevelVar.get()),
-            #     triggerLowLevel=float(self.triggerLowLevelVar.get()),
-            #     triggerHighTime=float(self.triggerHighTimeVar.get()),
-            #     triggerLowTime=float(self.triggerLowTimeVar.get()),
-            #     triggerHighFraction=float(self.triggerHighFractionVar.get()),
-            #     triggerLowFraction=float(self.triggerLowFractionVar.get()),
-            #     maxAudioTriggerTime=float(self.maxAudioTriggerTimeVar.get()),
-            #     multiChannelStartBehavior=self.multiChannelStartBehaviorVar.get(),
-            #     multiChannelStopBehavior=self.multiChannelStopBehaviorVar.get()
-            # )
             self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, params))
+
+    def updateContinuousTriggerSettings(self, *args):
+        if self.continuousTriggerProcess is not None:
+            paramList = [
+                'continuousTriggerPeriod'
+            ]
+            params = self.getParams(*paramList)
+            self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.SETPARAMS, params))
 
     def updateAVMergerState(self, *args):
         merging = self.mergeFilesVar.get()
@@ -1684,6 +1695,16 @@ him know. Otherwise, I had nothing to do with it.
     def writeButtonClick(self):
         self.sendWriteTrigger()
 
+    def continuousTriggerStartButtonClick(self):
+        if self.continuousTriggerProcess is not None:
+            print("main>> Sending start signal to continuous trigger process")
+            self.continuousTriggerProcess.msgQueue.send((ContinuousTriggerer.START, None))
+
+    def continuousTriggerStopButtonClick(self):
+        if self.continuousTriggerProcess is not None:
+            print("main>> Sending stop signal to continuous trigger process")
+            self.continuousTriggerProcess.msgQueue.send((ContinuousTriggerer.STOP, None))
+
     def saveSettings(self, *args, path=None):
         params = self.getParams()
         # datetime.time objects are not serializable, so we have to extract the time
@@ -2017,6 +2038,14 @@ him know. Otherwise, I had nothing to do with it.
                 stdoutQueue=self.StdoutManager.queue
                 )
 
+        self.continuousTriggerProcess = ContinuousTriggerer(
+            recordPeriod=1,
+            verbose=self.continuousTriggerVerbose,
+            audioMessageQueue=self.audioWriteProcess.msgQueue,
+            videoMessageQueues=dict([(camSerial, self.videoWriteProcesses[camSerial].msgQueue) for camSerial in self.videoWriteProcesses]),
+            stdoutQueue=self.StdoutManager.queue
+        )
+
         if len(self.audioDAQChannels) > 0:
             self.audioTriggerProcess.start()
             if self.getParams('triggerMode') == "Audio":
@@ -2029,6 +2058,7 @@ him know. Otherwise, I had nothing to do with it.
             self.videoAcquireProcesses[camSerial].start()
         if self.syncProcess is not None: self.syncProcess.start()
         if self.mergeProcess is not None: self.mergeProcess.start()
+        if self.continuousTriggerProcess is not None: self.continuousTriggerProcess.start()
 
     def startChildProcesses(self):
         # Tell all child processes to start
@@ -2043,6 +2073,9 @@ him know. Otherwise, I had nothing to do with it.
 
             # Start AudioAcquirer
             self.audioAcquireProcess.msgQueue.put((AudioAcquirer.START, None))
+
+        # Start continuous trigger process
+        self.continuousTriggerProcess.msgQueue.put((AudioTriggerer.START, None))
 
         # For each camera
         for camSerial in self.camSerials:
@@ -2071,6 +2104,8 @@ him know. Otherwise, I had nothing to do with it.
 
         if self.audioTriggerProcess is not None:
             self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOP, None))
+        if self.continuousTriggerProcess is not None:
+            self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.STOP, None))
         for camSerial in self.camSerials:
             self.videoAcquireProcesses[camSerial].msgQueue.put((VideoAcquirer.STOP, None))
         if self.audioAcquireProcess is not None:
@@ -2084,7 +2119,9 @@ him know. Otherwise, I had nothing to do with it.
 
     def exitChildProcesses(self):
         if self.audioTriggerProcess is not None:
-            self.audioTriggerProcess.msgQueue.put((AudioTriggerer.EXIT, None))
+            self.audioTriggerProcess.msgQueue.put((ContinuousTriggerer.EXIT, None))
+        if self.continuousTriggerProcess is not None:
+            self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.EXIT, None))
         for camSerial in self.camSerials:
             self.videoAcquireProcesses[camSerial].msgQueue.put((VideoAcquirer.EXIT, None))
         if self.audioAcquireProcess is not None:
@@ -2116,6 +2153,7 @@ him know. Otherwise, I had nothing to do with it.
             print('main>> Error printing profiler stats')
 
         self.audioTriggerProcess = None
+        self.continuousTriggerProcess = None
         self.audioAcquireProcess = None
         self.audioWriteProcess = None
         self.videoAcquireProcesses = {}
@@ -2255,6 +2293,12 @@ him know. Otherwise, I had nothing to do with it.
 
         self.audioTriggerStateFrame.grid(row=2, column=3)
         self.audioTriggerStateLabel.grid()
+
+        self.continuousTriggerModeStart.grid(row=0, column=0)
+        self.continuousTriggerModeStop.grid(row=0, column=1)
+        self.continuousTriggerPeriodFrame.grid(row=1, column=0, columnspan=2)
+        self.continuousTriggerPeriodEntry.grid(row=0, column=0)
+
         self.audioAnalysisMonitorFrame.grid(row=4, column=0, columnspan=3)
         self.audioAnalysisWidgets['canvas'].get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
 

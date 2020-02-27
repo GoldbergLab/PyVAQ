@@ -2340,15 +2340,21 @@ class AudioWriter(StateMachineProcess):
         self.flushStdout()
         self.updatePublishedState(self.DEAD)
 
-    def updateTriggers(self, triggers, trigger):
-        if len(triggers) > 0 and trigger.id == triggers[-1].id:
+    def updateTriggers(self, triggers, newTrigger):
+        try:
+            triggerIndex = [trigger.id for trigger in triggers].index(newTrigger.id)
             # This is an updated trigger, not a new trigger
-            if self.verbose >= 2: self.log("AW - Updating trigger")
-            triggers[-1] = trigger
-        else:
+            if self.verbose >= 2: self.log(self.ID + " - Updating trigger")
+            if triggerIndex > 0 and newTrigger.startTime > newTrigger.endTime:
+                # End time has been set before start time, and this is not the active trigger, so delete this trigger.
+                del triggers[triggerIndex]
+                if self.verbose >= 2: self.log(self.ID + " - Deleting invalidated trigger")
+            else:
+                triggers[triggerIndex] = newTrigger
+        except ValueError:
             # This is a new trigger
-            if self.verbose >= 2: self.log("AW - Adding new trigger")
-            triggers.append(trigger)
+            if self.verbose >= 2: self.log(self.ID + " - Adding new trigger")
+            triggers.append(newTrigger)
 
 class VideoAcquirer(StateMachineProcess):
     # States:
@@ -3240,12 +3246,301 @@ class VideoWriter(StateMachineProcess):
 
         return im, frameTime, imageID
 
-    def updateTriggers(self, triggers, trigger):
-        if len(triggers) > 0 and trigger.id == triggers[-1].id:
+    def updateTriggers(self, triggers, newTrigger):
+        try:
+            triggerIndex = [trigger.id for trigger in triggers].index(newTrigger.id)
             # This is an updated trigger, not a new trigger
             if self.verbose >= 2: self.log(self.ID + " - Updating trigger")
-            triggers[-1] = trigger
-        else:
+            if triggerIndex > 0 and newTrigger.startTime > newTrigger.endTime:
+                # End time has been set before start time, and this is not the active trigger, so delete this trigger.
+                del triggers[triggerIndex]
+                if self.verbose >= 2: self.log(self.ID + " - Deleting invalidated trigger")
+            else:
+                triggers[triggerIndex] = newTrigger
+        except ValueError:
             # This is a new trigger
             if self.verbose >= 2: self.log(self.ID + " - Adding new trigger")
-            triggers.append(trigger)
+            triggers.append(newTrigger)
+
+class ContinuousTriggerer(StateMachineProcess):
+    # States:
+    STOPPED = 0
+    INITIALIZING = 1
+    TRIGGERING = 3
+    STOPPING = 4
+    ERROR = 5
+    EXITING = 6
+    DEAD = 100
+
+    stateList = {
+        -1:'UNKNOWN',
+        STOPPED :'STOPPED',
+        INITIALIZING :'INITIALIZING',
+        TRIGGERING :'TRIGGERING',
+        STOPPING :'STOPPING',
+        ERROR :'ERROR',
+        EXITING :'EXITING',
+        DEAD :'DEAD'
+    }
+
+    #messages:
+    START = 'msg_start'
+    STOP = 'msg_stop'
+    EXIT = 'msg_exit'
+    SETPARAMS = 'msg_setParams'
+
+    settableParams = [
+        'recordPeriod',
+        'scheduleEnabled',
+        'scheduleStartTime',
+        'scheduleStopTime'
+        ]
+
+    def __init__(self,
+                recordPeriod=1,                   # Length each trigger
+                scheduleEnabled=False,
+                scheduleStartTime=None,
+                scheduleStopTime=None,
+                verbose=False,
+                audioMessageQueue=None,             # Queue to send triggers to audio writers
+                videoMessageQueues={},              # Queues to send triggers to video writers
+                **kwargs):
+        StateMachineProcess.__init__(self, **kwargs)
+        self.ID = 'CT'
+
+        self.audioMessageQueue = audioMessageQueue
+        self.videoMessageQueues = videoMessageQueues
+        self.recordPeriod = recordPeriod
+
+        self.scheduleEnabled = scheduleEnabled
+        self.scheduleStartTime = scheduleStartTime
+        self.scheduleStopTime = scheduleStopTime
+
+        self.errorMessages = []
+        self.verbose = verbose
+
+    def setParams(self, **params):
+        for key in params:
+            if key in ContinuousTriggerer.settableParams:
+                setattr(self, key, params[key])
+                if key == 'recordPeriod':
+                    if params[key] > 0:
+                        self.recordPeriod = params[key]
+                    else:
+                        raise AttributeError('Record period must be greater than zero')
+                if self.verbose >= 1: self.log("AT - Param set: {key}={val}".format(key=key, val=params[key]))
+            else:
+                if self.verbose >= 0: self.log("AT - Param not settable: {key}={val}".format(key=key, val=params[key]))
+
+    def run(self):
+        self.PID.value = os.getpid()
+        if self.verbose >= 1: self.log("AT - PID={pid}".format(pid=os.getpid()))
+        state = ContinuousTriggerer.STOPPED
+        nextState = ContinuousTriggerer.STOPPED
+        lastState = ContinuousTriggerer.STOPPED
+        msg = ''; arg = None
+
+        while True:
+            # Publish updated state
+            if state != lastState:
+                self.updatePublishedState(state)
+
+            try:
+# ********************************* STOPPPED *********************************
+                if state == ContinuousTriggerer.STOPPED:
+                    # DO STUFF
+
+                    # CHECK FOR MESSAGES
+                    try:
+                        msg, arg = self.msgQueue.get(block=True)
+                        if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                    except queue.Empty: msg = ''; arg = None
+
+                    # CHOOSE NEXT STATE
+                    if msg == ContinuousTriggerer.EXIT or self.exitFlag:
+                        self.exitFlag = True
+                        nextState = ContinuousTriggerer.EXITING
+                    elif msg == '':
+                        nextState = ContinuousTriggerer.STOPPED
+                    elif msg == ContinuousTriggerer.STOP:
+                        nextState = ContinuousTriggerer.STOPPED
+                    elif msg == ContinuousTriggerer.START:
+                        nextState = ContinuousTriggerer.INITIALIZING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+# ********************************* INITIALIZING *****************************
+                elif state == ContinuousTriggerer.INITIALIZING:
+                    # DO STUFF
+                    triggerBufferSize = int(max([3,1/self.recordPeriod]))        # Number of triggers to send ahead of time, in case of latency, up to 1s
+                    activeTriggers = deque(maxlen=triggerBufferSize)
+                    startTime = None
+                    lastTriggerTime = None
+
+                    if self.verbose >= 1: self.log(self.ID+" - Getting start time from sync process...")
+                    while startTime == -1 or startTime is None:
+                        # Wait until Synchronizer process has a start time
+                        startTime = self.startTimeSharedValue.value
+                    if self.verbose >= 1: self.log(self.ID+" - Got start time from sync process: "+str(startTime))
+
+                    # CHECK FOR MESSAGES
+                    try:
+                        msg, arg = self.msgQueue.get(block=False)
+                        if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                    except queue.Empty: msg = ''; arg = None
+
+                    # CHOOSE NEXT STATE
+                    if msg == ContinuousTriggerer.EXIT or self.exitFlag:
+                        self.exitFlag = True
+                        nextState = ContinuousTriggerer.STOPPING
+                    elif msg == ContinuousTriggerer.STOP:
+                        nextState = ContinuousTriggerer.STOPPING
+                    elif msg in ['', ContinuousTriggerer.START]:
+                        nextState = ContinuousTriggerer.TRIGGERING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+# ********************************* TRIGGERING *********************************
+                elif state == ContinuousTriggerer.TRIGGERING:
+                    # DO STUFF
+
+                    currentTimeOfDay = dt.datetime.now()
+                    if not self.scheduleEnabled or (self.scheduleStartTime <= currentTimeOfDay and self.scheduleStopTime <= currentTimeOfDay):
+                        # If the scheduling feature is disabled, or it's enabled and we're between start/stop times, then:
+                        currentTime = time.time_ns()/1000000000
+                        # Purge triggers that are entirely in the past
+                        while len(activeTriggers) > 0 and currentTime > activeTriggers[0].endTime:
+                            activeTriggers.popleft()
+                        # Create new triggers if any are needed
+                        while len(activeTriggers) < activeTriggers.maxlen:
+                            if lastTriggerTime is None:
+                                # The first trigger is referenced to the sync start time
+                                lastTriggerTime = startTime - self.recordPeriod
+                            newTriggerTime = lastTriggerTime + self.recordPeriod
+                            newTrigger = Trigger(
+                                startTime = newTriggerTime,
+                                triggerTime = newTriggerTime,
+                                endTime = newTriggerTime + self.recordPeriod)
+                            lastTriggerTime = newTriggerTime
+                            self.sendTrigger(newTrigger)
+                            activeTriggers.append(newTrigger)
+                            if self.verbose >= 1: self.log(self.ID + " Sent new trigger!")
+
+                    # CHECK FOR MESSAGES
+                    try:
+                        msg, arg = self.msgQueue.get(block=False)
+                        if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                    except queue.Empty: msg = ''; arg = None
+
+                    # CHOOSE NEXT STATE
+#                    if self.verbose >= 3: self.log("AT - |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
+                    if msg == ContinuousTriggerer.EXIT or self.exitFlag:
+                        self.exitFlag = True
+                        nextState = ContinuousTriggerer.STOPPING
+                    elif msg == ContinuousTriggerer.STOP:
+                        nextState = ContinuousTriggerer.STOPPING
+                    elif msg in ['', ContinuousTriggerer.START]:
+                        nextState = state
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+# ********************************* STOPPING *********************************
+                elif state == ContinuousTriggerer.STOPPING:
+                    # DO STUFF
+                    self.cancelTriggers(activeTriggers)
+
+                    # CHECK FOR MESSAGES
+                    try:
+                        msg, arg = self.msgQueue.get(block=False)
+                        if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                    except queue.Empty: msg = ''; arg = None
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        nextState = ContinuousTriggerer.STOPPED
+                    elif msg == '':
+                        nextState = ContinuousTriggerer.STOPPED
+                    elif msg == ContinuousTriggerer.STOP:
+                        nextState = ContinuousTriggerer.STOPPED
+                    elif msg == ContinuousTriggerer.EXIT:
+                        self.exitFlag = True
+                        nextState = ContinuousTriggerer.STOPPED
+                    elif msg == ContinuousTriggerer.START:
+                        nextState = ContinuousTriggerer.INITIALIZING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+# ********************************* ERROR *********************************
+                elif state == ContinuousTriggerer.ERROR:
+                    # DO STUFF
+                    if self.verbose >= 0:
+                        self.log("AT - ERROR STATE. Error messages:\n\n")
+                        self.log("\n\n".join(self.errorMessages))
+                    self.errorMessages = []
+
+                    # CHECK FOR MESSAGES
+                    try:
+                        msg, arg = self.msgQueue.get(block=False)
+                        if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                    except queue.Empty: msg = ''; arg = None
+
+                    # CHOOSE NEXT STATE
+                    if lastState == ContinuousTriggerer.ERROR:
+                        # Error ==> Error, let's just exit
+                        nextState = ContinuousTriggerer.EXITING
+                    elif msg == '':
+                        if lastState == ContinuousTriggerer.STOPPING:
+                            # We got an error in stopping state? Better just stop.
+                            nextState = ContinuousTriggerer.STOPPED
+                        elif lastState ==ContinuousTriggerer.STOPPED:
+                            # We got an error in the stopped state? Better just exit.
+                            nextState = ContinuousTriggerer.EXITING
+                        else:
+                            nextState = ContinuousTriggerer.STOPPING
+                    elif msg == ContinuousTriggerer.STOP:
+                        nextState = ContinuousTriggerer.STOPPED
+                    elif msg == ContinuousTriggerer.EXIT:
+                        self.exitFlag = True
+                        if lastState == ContinuousTriggerer.STOPPING:
+                            nextState = ContinuousTriggerer.EXITING
+                        else:
+                            nextState = ContinuousTriggerer.STOPPING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+# ********************************* EXIT *********************************
+                elif state == ContinuousTriggerer.EXITING:
+                    break
+                else:
+                    raise KeyError("Unknown state: "+self.stateList[state])
+            except KeyboardInterrupt:
+                # Handle user using keyboard interrupt
+                if self.verbose >= 0: self.log("AT - Keyboard interrupt received - exiting")
+                self.exitFlag = True
+                nextState = ContinuousTriggerer.STOPPING
+            except:
+                # HANDLE UNKNOWN ERROR
+                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
+                nextState = ContinuousTriggerer.ERROR
+
+            if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
+                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log('*********************************** /\ AT ' + self.stateList[state] + ' /\ ********************************************')
+
+            self.flushStdout()
+
+            # Prepare to advance to next state
+            lastState = state
+            state = nextState
+
+        clearQueue(self.msgQueue)
+        clearQueue(self.analysisMonitorQueue)
+        if self.verbose >= 1: self.log("Audio write process STOPPED")
+
+        self.flushStdout()
+        self.updatePublishedState(self.DEAD)
+
+    def cancelTriggers(self, triggers):
+        for trigger in triggers:
+            trigger.endtime = trigger.starttime-1
+            self.sendTrigger(trigger)
+
+    def sendTrigger(self, trigger):
+        self.audioMessageQueue.put((AudioWriter.TRIGGER, trigger))
+        for camSerial in self.videoMessageQueues:
+            self.videoMessageQueues[camSerial].put((VideoWriter.TRIGGER, trigger))
