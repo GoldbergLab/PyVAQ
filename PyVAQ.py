@@ -1169,7 +1169,7 @@ him know. Otherwise, I had nothing to do with it.
             paramList = [
                 'continuousTriggerPeriod'
             ]
-            params = self.getParams(*paramList)
+            params = self.getParams(*paramList, mapping=True)
             self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.SETPARAMS, params))
 
     def updateAVMergerState(self, *args):
@@ -1820,9 +1820,9 @@ him know. Otherwise, I had nothing to do with it.
             except:
                 traceback.print_exc()
 
-    def getParams(self, *paramNames):
+    def getParams(self, *paramNames, mapping=False):
         # Extract parameters from GUI, and calculate a few derived parameters
-        if len(paramNames) == 1:
+        if len(paramNames) == 1 and (not mapping):
             # If just one param was requested, just return the value, not a dictionary
             return self.paramInfo[paramNames[0]]["get"]()
         else:
