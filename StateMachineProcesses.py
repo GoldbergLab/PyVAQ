@@ -1243,11 +1243,11 @@ class AudioTriggerer(StateMachineProcess):
                     self.updateFilter()
                 if self.verbose >= 1: self.log(self.ID + " Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: self.log("AT - Param not settable: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 0: self.log(self.ID + " Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log("AT - PID={pid}".format(pid=os.getpid()))
+        if self.verbose >= 1: self.log(self.ID + " PID={pid}".format(pid=os.getpid()))
         state = AudioTriggerer.STOPPED
         nextState = AudioTriggerer.STOPPED
         lastState = AudioTriggerer.STOPPED
@@ -1454,7 +1454,7 @@ class AudioTriggerer(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-#                    if self.verbose >= 3: self.log("AT - |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
+#                    if self.verbose >= 3: self.log(self.ID + " |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
                     if msg == AudioTriggerer.EXIT or self.exitFlag:
                         self.exitFlag = True
                         nextState = AudioTriggerer.STOPPING
@@ -1494,7 +1494,7 @@ class AudioTriggerer(StateMachineProcess):
                 elif state == AudioTriggerer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        self.log("AT - ERROR STATE. Error messages:\n\n")
+                        self.log(self.ID + " ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
@@ -1534,7 +1534,7 @@ class AudioTriggerer(StateMachineProcess):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: self.log("AT - Keyboard interrupt received - exiting")
+                if self.verbose >= 0: self.log(self.ID + " Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = AudioTriggerer.STOPPING
             except:
@@ -3298,6 +3298,7 @@ class ContinuousTriggerer(StateMachineProcess):
         ]
 
     def __init__(self,
+                startTime=None,
                 recordPeriod=1,                   # Length each trigger
                 scheduleEnabled=False,
                 scheduleStartTime=None,
@@ -3308,6 +3309,8 @@ class ContinuousTriggerer(StateMachineProcess):
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.ID = 'CT'
+
+        self.startTimeSharedValue = startTime
 
         self.audioMessageQueue = audioMessageQueue
         self.videoMessageQueues = videoMessageQueues

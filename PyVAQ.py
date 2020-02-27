@@ -2039,6 +2039,7 @@ him know. Otherwise, I had nothing to do with it.
                 )
 
         self.continuousTriggerProcess = ContinuousTriggerer(
+            startTime=startTime,
             recordPeriod=1,
             verbose=self.continuousTriggerVerbose,
             audioMessageQueue=self.audioWriteProcess.msgQueue,
