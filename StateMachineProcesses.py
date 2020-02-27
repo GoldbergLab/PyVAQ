@@ -3411,14 +3411,15 @@ class ContinuousTriggerer(StateMachineProcess):
                         # If the scheduling feature is disabled, or it's enabled and we're between start/stop times, then:
                         currentTime = time.time_ns()/1000000000
                         # Purge triggers that are entirely in the past
-                        while len(activeTriggers) > 0 and currentTime > activeTriggers[0].endTime:
+                        while len(activeTriggers) > 0 and activeTriggers[0].state(currentTime) > 0:
                             activeTriggers.popleft()
                         # Create new triggers if any are needed
                         while len(activeTriggers) < activeTriggers.maxlen:
                             if lastTriggerTime is None:
-                                # The first trigger is referenced to the sync start time
-                                lastTriggerTime = startTime - self.recordPeriod
-                            newTriggerTime = lastTriggerTime + self.recordPeriod
+                                # The first trigger will start the largest number of recordPeriods after startTime that is before or at the current time
+                                newTriggerTime = startTime + self.recordPeriod * int((currentTime - startTime) / self.recordPeriod)
+                            else:
+                                newTriggerTime = lastTriggerTime + self.recordPeriod
                             newTrigger = Trigger(
                                 startTime = newTriggerTime,
                                 triggerTime = newTriggerTime,
@@ -3541,7 +3542,7 @@ class ContinuousTriggerer(StateMachineProcess):
 
     def cancelTriggers(self, triggers):
         for trigger in triggers:
-            trigger.endtime = trigger.starttime-1
+            trigger.endtime = trigger.startTime-1
             self.sendTrigger(trigger)
 
     def sendTrigger(self, trigger):
