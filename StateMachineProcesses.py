@@ -1174,6 +1174,7 @@ class AudioTriggerer(StateMachineProcess):
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.audioQueue = audioQueue
+        self.ID = "AT"
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
         self.analysisMonitorQueue = mp.Queue()  # A queue to send analysis results to GUI for monitoring
@@ -1240,7 +1241,7 @@ class AudioTriggerer(StateMachineProcess):
                     self.updateLowBuffer()
                 if key == 'bandpassFrequencies' or key == 'butterworthOrder':
                     self.updateFilter()
-                if self.verbose >= 1: self.log("AT - Param set: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 1: self.log(self.ID + " Param set: {key}={val}".format(key=key, val=params[key]))
             else:
                 if self.verbose >= 0: self.log("AT - Param not settable: {key}={val}".format(key=key, val=params[key]))
 
@@ -3290,7 +3291,7 @@ class ContinuousTriggerer(StateMachineProcess):
     SETPARAMS = 'msg_setParams'
 
     settableParams = [
-        'recordPeriod',
+        'continuousTriggerPeriod',
         'scheduleEnabled',
         'scheduleStartTime',
         'scheduleStopTime'
@@ -3323,18 +3324,18 @@ class ContinuousTriggerer(StateMachineProcess):
         for key in params:
             if key in ContinuousTriggerer.settableParams:
                 setattr(self, key, params[key])
-                if key == 'recordPeriod':
+                if key == 'continuousTriggerPeriod':
                     if params[key] > 0:
                         self.recordPeriod = params[key]
                     else:
                         raise AttributeError('Record period must be greater than zero')
-                if self.verbose >= 1: self.log("AT - Param set: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 1: self.log(self.ID + " Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: self.log("AT - Param not settable: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 0: self.log(self.ID + " Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log("AT - PID={pid}".format(pid=os.getpid()))
+        if self.verbose >= 1: self.log(self.ID + " PID={pid}".format(pid=os.getpid()))
         state = ContinuousTriggerer.STOPPED
         nextState = ContinuousTriggerer.STOPPED
         lastState = ContinuousTriggerer.STOPPED
@@ -3431,7 +3432,7 @@ class ContinuousTriggerer(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-#                    if self.verbose >= 3: self.log("AT - |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
+#                    if self.verbose >= 3: self.log(self.ID + " |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
                     if msg == ContinuousTriggerer.EXIT or self.exitFlag:
                         self.exitFlag = True
                         nextState = ContinuousTriggerer.STOPPING
@@ -3470,7 +3471,7 @@ class ContinuousTriggerer(StateMachineProcess):
                 elif state == ContinuousTriggerer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        self.log("AT - ERROR STATE. Error messages:\n\n")
+                        self.log(self.ID + " ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
@@ -3510,7 +3511,7 @@ class ContinuousTriggerer(StateMachineProcess):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: self.log("AT - Keyboard interrupt received - exiting")
+                if self.verbose >= 0: self.log(self.ID + " Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = ContinuousTriggerer.STOPPING
             except:
@@ -3520,7 +3521,7 @@ class ContinuousTriggerer(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log('*********************************** /\ AT ' + self.stateList[state] + ' /\ ********************************************')
+                self.log('*********************************** /\ CT ' + self.stateList[state] + ' /\ ********************************************')
 
             self.flushStdout()
 
