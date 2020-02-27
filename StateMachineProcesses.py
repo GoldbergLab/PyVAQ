@@ -2896,7 +2896,7 @@ class VideoWriter(StateMachineProcess):
                     # DO STUFF
                     triggers = []
                     im = None
-                    videoStartTime = 0
+                    videoFileStartTime = 0
                     videoFileInterface = None
                     timeWrote = 0
 
@@ -2990,7 +2990,7 @@ class VideoWriter(StateMachineProcess):
                     if im is not None:
                         if videoFileInterface is None:
                             # Start new video file
-                            videoStartTime = frameTime
+                            videoFileStartTime = frameTime
                             videoFileNameTags = [self.camSerial, generateTimeString(triggers[0])]
                             videoFileName = generateFileName(directory=self.videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
                             ensureDirectoryExists(self.videoDirectory)
