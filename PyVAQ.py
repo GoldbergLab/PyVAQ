@@ -1698,12 +1698,12 @@ him know. Otherwise, I had nothing to do with it.
     def continuousTriggerStartButtonClick(self):
         if self.continuousTriggerProcess is not None:
             print("main>> Sending start signal to continuous trigger process")
-            self.continuousTriggerProcess.msgQueue.send((ContinuousTriggerer.START, None))
+            self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.START, None))
 
     def continuousTriggerStopButtonClick(self):
         if self.continuousTriggerProcess is not None:
             print("main>> Sending stop signal to continuous trigger process")
-            self.continuousTriggerProcess.msgQueue.send((ContinuousTriggerer.STOP, None))
+            self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.STOP, None))
 
     def saveSettings(self, *args, path=None):
         params = self.getParams()
