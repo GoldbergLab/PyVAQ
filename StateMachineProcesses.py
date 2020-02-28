@@ -294,6 +294,7 @@ class StdoutManager(mp.Process):
 class StateMachineProcess(mp.Process):
     def __init__(self, *args, stdoutQueue=None, daemon=True, **kwargs):
         mp.Process.__init__(self, *args, daemon=daemon, **kwargs)
+        self.ID = "X"
         self.msgQueue = mp.Queue()
         self.stdoutQueue = stdoutQueue               # Queue for pushing output message groups to for printing
         self.publishedStateVar = mp.Value('i', -1)
@@ -313,7 +314,7 @@ class StateMachineProcess(mp.Process):
                 L.release()
 
     def log(self, msg, *args, **kwargs):
-        syncPrint('|| '+msg, *args, buffer=self.stdoutBuffer, **kwargs)
+        syncPrint('|| {ID} - {msg}'.format(ID=self.ID, msg=msg), *args, buffer=self.stdoutBuffer, **kwargs)
 
     def flushStdout(self):
         if len(self.stdoutBuffer) > 0:
@@ -382,6 +383,7 @@ class AVMerger(StateMachineProcess):
         **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
+        self.ID = "M"
         self.verbose = verbose
         self.ignoreFlag = True
         self.errorMessages = []
@@ -399,13 +401,13 @@ class AVMerger(StateMachineProcess):
         for key in params:
             if key in AVMerger.settableParams:
                 setattr(self, key, params[key])
-                if self.verbose >= 1: self.log("M - Param set: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: self.log("M - Param not settable: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log("M - PID={pid}".format(pid=os.getpid()))
+        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
         state = AVMerger.STOPPED
         nextState = AVMerger.STOPPED
         lastState = AVMerger.STOPPED
@@ -501,7 +503,7 @@ class AVMerger(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if msg == AVMerger.MERGE and arg is not None:
-                        if self.verbose >= 1: self.log("M - Ignoring {streamType} file event for merging at {time}: {file}".format(file=arg['filePath'], streamType=arg['streamType'], time=arg['trigger'].triggerTime))
+                        if self.verbose >= 1: self.log("Ignoring {streamType} file event for merging at {time}: {file}".format(file=arg['filePath'], streamType=arg['streamType'], time=arg['trigger'].triggerTime))
                         nextState = AVMerger.IGNORING
                     elif msg == AVMerger.CHILL:
                         self.ignoreFlag = True
@@ -569,7 +571,7 @@ class AVMerger(StateMachineProcess):
                     # CHOOSE NEXT STATE
                     if msg == AVMerger.MERGE and arg is not None:
                         receivedFileEventList.append(arg)
-                        if self.verbose >= 1: self.log("M - Received {streamType} file event for merging at {time}: {file}".format(file=arg['filePath'], streamType=arg['streamType'], time=arg['trigger'].triggerTime))
+                        if self.verbose >= 1: self.log("Received {streamType} file event for merging at {time}: {file}".format(file=arg['filePath'], streamType=arg['streamType'], time=arg['trigger'].triggerTime))
                         nextState = AVMerger.WAITING
                     elif msg == AVMerger.CHILL or self.ignoreFlag:
                         self.ignoreFlag = True
@@ -614,13 +616,13 @@ class AVMerger(StateMachineProcess):
                                 # Substitute strings into command template
                                 mergeCommand = mergeCommandTemplate.format(**kwargs)
                                 if self.verbose >= 1:
-                                    self.log("M - Merging with kwargs: "+str(kwargs))
-                                    self.log("M - Merging with command:")
-                                    self.log("M - {command}".format(command=mergeCommand))
+                                    self.log("Merging with kwargs: "+str(kwargs))
+                                    self.log("Merging with command:")
+                                    self.log("{command}".format(command=mergeCommand))
                                 # Execute constructed merge command
                                 status = os.system(mergeCommand)
                                 mergeSuccess = mergeSuccess and (status == 0)
-                                if self.verbose >= 1: self.log("M - Merge exit status: {status}".format(status=status))
+                                if self.verbose >= 1: self.log("Merge exit status: {status}".format(status=status))
                         else:   # Montage the video streams into one file
                             # Construct the video part of the ffmpeg command template
                             videoFileInputText = ' '.join(['-i "{{videoFile{k}}}"'.format(k=k) for k in range(len(videoFileEvents))])
@@ -635,24 +637,24 @@ class AVMerger(StateMachineProcess):
                             kwargs['compression'] = self.compression
                             mergeCommand = mergeCommandTemplate.format(**kwargs)
                             if self.verbose >= 1:
-                                self.log("M - Merging with kwargs: "+str(kwargs))
-                                self.log("M - Merging with command:")
-                                self.log("M - {command}".format(command=mergeCommand))
+                                self.log("Merging with kwargs: "+str(kwargs))
+                                self.log("Merging with command:")
+                                self.log("{command}".format(command=mergeCommand))
                             # Execute constructed merge command
                             status = os.system(mergeCommand)
                             mergeSuccess = mergeSuccess and (status == 0)
-                            if self.verbose >= 1: self.log("M - Merge exit status: {status}".format(status=status))
+                            if self.verbose >= 1: self.log("Merge exit status: {status}".format(status=status))
                         if mergeSuccess:
                             if self.deleteMergedAudioFiles:
                                 for fileEvent in audioFileEvents:
-                                    if self.verbose >= 1: self.log('M - deleting source audio file: {file}'.format(file=fileEvent['filePath']))
+                                    if self.verbose >= 1: self.log('deleting source audio file: {file}'.format(file=fileEvent['filePath']))
                                     os.remove(fileEvent['filePath'])
                             if self.deleteMergedVideoFiles:
                                 for fileEvent in videoFileEvents:
-                                    if self.verbose >= 1: self.log('M - deleting source video file: {file}'.format(file=fileEvent['filePath']))
+                                    if self.verbose >= 1: self.log('deleting source video file: {file}'.format(file=fileEvent['filePath']))
                                     os.remove(fileEvent['filePath'])
                         else:
-                            if self.verbose >= 0: self.log('M - Merge failure - keeping all source files in place!')
+                            if self.verbose >= 0: self.log('Merge failure - keeping all source files in place!')
 
                     # Clear merged files
                     groupedFileEventList = []
@@ -710,7 +712,7 @@ class AVMerger(StateMachineProcess):
                 elif state == AVMerger.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        self.log("M - ERROR STATE. Error messages:\n\n")
+                        self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
@@ -750,7 +752,7 @@ class AVMerger(StateMachineProcess):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: self.log("S - Keyboard interrupt received - exiting")
+                if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = AVMerger.STOPPING
             except:
@@ -829,6 +831,7 @@ class Synchronizer(StateMachineProcess):
         **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
+        self.ID = "S"
         self.actualAudioFrequency = actualAudioFrequency
         self.actualVideoFrequency = actualVideoFrequency
         self.startTime = startTime
@@ -846,13 +849,13 @@ class Synchronizer(StateMachineProcess):
         for key in params:
             if key in Synchronizer.settableParams:
                 setattr(self, key, params[key])
-                if self.verbose >= 1: self.log("S - Param set: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: self.log("S - Param not settable: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log("S - PID={pid}".format(pid=os.getpid()))
+        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
         state = Synchronizer.STOPPED
         nextState = Synchronizer.STOPPED
         lastState = Synchronizer.STOPPED
@@ -956,7 +959,7 @@ class Synchronizer(StateMachineProcess):
                         postTime = time.time_ns()
                         self.startTime.value = (preTime + postTime) / 2000000000
                     except BrokenBarrierError:
-                        if self.verbose >= 0: self.log("S - Simultaneous start failure")
+                        if self.verbose >= 0: self.log("Simultaneous start failure")
                         nextState = Synchronizer.STOPPING
 
                     # CHECK FOR MESSAGES
@@ -1034,7 +1037,7 @@ class Synchronizer(StateMachineProcess):
                 elif state == Synchronizer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        self.log("S - ERROR STATE. Error messages:\n\n")
+                        self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
@@ -1074,7 +1077,7 @@ class Synchronizer(StateMachineProcess):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: self.log("S - Keyboard interrupt received - exiting")
+                if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = Synchronizer.STOPPING
             except:
@@ -1241,13 +1244,13 @@ class AudioTriggerer(StateMachineProcess):
                     self.updateLowBuffer()
                 if key == 'bandpassFrequencies' or key == 'butterworthOrder':
                     self.updateFilter()
-                if self.verbose >= 1: self.log(self.ID + " Param set: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: self.log(self.ID + " Param not settable: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log(self.ID + " PID={pid}".format(pid=os.getpid()))
+        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
         state = AudioTriggerer.STOPPED
         nextState = AudioTriggerer.STOPPED
         lastState = AudioTriggerer.STOPPED
@@ -1454,7 +1457,7 @@ class AudioTriggerer(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-#                    if self.verbose >= 3: self.log(self.ID + " |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
+#                    if self.verbose >= 3: self.log("|{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
                     if msg == AudioTriggerer.EXIT or self.exitFlag:
                         self.exitFlag = True
                         nextState = AudioTriggerer.STOPPING
@@ -1494,7 +1497,7 @@ class AudioTriggerer(StateMachineProcess):
                 elif state == AudioTriggerer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        self.log(self.ID + " ERROR STATE. Error messages:\n\n")
+                        self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
@@ -1534,7 +1537,7 @@ class AudioTriggerer(StateMachineProcess):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: self.log(self.ID + " Keyboard interrupt received - exiting")
+                if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = AudioTriggerer.STOPPING
             except:
@@ -1628,6 +1631,7 @@ class AudioAcquirer(StateMachineProcess):
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
+        self.ID = "AA"
         self.startTimeSharedValue = startTime
         self.audioFrequencyVar = audioFrequency
         self.audioFrequency = None
@@ -1651,16 +1655,16 @@ class AudioAcquirer(StateMachineProcess):
         for key in params:
             if key in AudioAcquirer.settableParams:
                 setattr(self, key, params[key])
-                if self.verbose >= 1: self.log("AA - Param set: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: self.log("AA - Param not settable: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def rescaleAudio(data, maxV=10, minV=-10, maxD=32767, minD=-32767):
         return (data * ((maxD-minD)/(maxV-minV))).astype('int16')
 
     def run(self):
         self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log("AA - PID={pid}".format(pid=os.getpid()))
+        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
         state = AudioAcquirer.STOPPED
         nextState = AudioAcquirer.STOPPED
         lastState = AudioAcquirer.STOPPED
@@ -1746,13 +1750,13 @@ class AudioAcquirer(StateMachineProcess):
                     # DO STUFF
                     try:
                         if self.ready is not None:
-#                            if self.verbose >= 1: self.log('AA ready: {parties} {n_waiting}'.format(parties=self.ready.parties, n_waiting=self.ready.n_waiting))
+#                            if self.verbose >= 1: self.log('ready: {parties} {n_waiting}'.format(parties=self.ready.parties, n_waiting=self.ready.n_waiting))
                             self.ready.wait()
                     except BrokenBarrierError:
-                        if self.verbose >= 0: self.log("AA - Simultaneous start failure")
+                        if self.verbose >= 0: self.log("Simultaneous start failure")
                         nextState = AudioAcquirer.STOPPING
 
-#                    if self.verbose >= 1: self.log('AA passed barrier')
+#                    if self.verbose >= 1: self.log('passed barrier')
 
                     # CHECK FOR MESSAGES
                     try:
@@ -1781,21 +1785,21 @@ class AudioAcquirer(StateMachineProcess):
 
                         # Get timestamp of first audio chunk acquisition
                         if startTime is None:
-                            if self.verbose >= 1: self.log("AA - Getting start time from sync process...")
+                            if self.verbose >= 1: self.log("Getting start time from sync process...")
                             while startTime == -1 or startTime is None:
                                 startTime = self.startTimeSharedValue.value
-                            if self.verbose >= 1: self.log("AA - Got start time from sync process: "+str(startTime))
+                            if self.verbose >= 1: self.log("Got start time from sync process: "+str(startTime))
 #                            startTime = time.time_ns() / 1000000000 - self.chunkSize / self.audioFrequency
 
                         chunkStartTime = startTime + sampleCount / self.audioFrequency
                         sampleCount += self.chunkSize
-                        if self.verbose >= 3: self.log('AA - # samples:'+str(sampleCount))
+                        if self.verbose >= 3: self.log('# samples:'+str(sampleCount))
                         processedData = AudioAcquirer.rescaleAudio(data)
                         audioChunk = AudioChunk(chunkStartTime = chunkStartTime, audioFrequency = self.audioFrequency, data = processedData)
                         if self.audioQueue is not None:
                             self.audioQueue.put(audioChunk)              # If a data queue is provided, queue up the new data
                         else:
-                            if self.verbose >= 2: self.log(processedData)
+                            if self.verbose >= 2: self.log('' + processedData)
 
                         monitorDataCopy = np.copy(data)
                         if self.monitorQueue is not None:
@@ -1804,7 +1808,7 @@ class AudioAcquirer(StateMachineProcess):
                             self.analysisQueue.put((chunkStartTime, monitorDataCopy))
                     except nidaqmx.errors.DaqError:
 #                        traceback.print_exc()
-                        if self.verbose >= 0: self.log("AA - Audio Chunk acquisition timed out.")
+                        if self.verbose >= 0: self.log("Audio Chunk acquisition timed out.")
 
                     # CHECK FOR MESSAGES
                     try:
@@ -1854,7 +1858,7 @@ class AudioAcquirer(StateMachineProcess):
                 elif state == AudioAcquirer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        self.log("AA - ERROR STATE. Error messages:\n\n")
+                        self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
@@ -1889,13 +1893,13 @@ class AudioAcquirer(StateMachineProcess):
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* EXIT *********************************
                 elif state == AudioAcquirer.EXITING:
-                    if self.verbose >= 1: self.log('AA - Exiting!')
+                    if self.verbose >= 1: self.log('Exiting!')
                     break
                 else:
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 1: self.log("AA - Keyboard interrupt received - exiting")
+                if self.verbose >= 1: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = AudioAcquirer.STOPPING
             except:
@@ -1971,6 +1975,7 @@ class AudioWriter(StateMachineProcess):
                 mergeMessageQueue=None, # Queue to put (filename, trigger) in for merging
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
+        self.ID = "AW"
         self.audioDirectory = audioDirectory
         self.audioBaseFileName = audioBaseFileName
         self.channelNames = channelNames
@@ -1993,13 +1998,13 @@ class AudioWriter(StateMachineProcess):
         for key in params:
             if key in AudioWriter.settableParams:
                 setattr(self, key, params[key])
-                if self.verbose >= 1: self.log("AW - Param set: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: self.log("AW - Param not settable: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log("AW - PID={pid}".format(pid=os.getpid()))
+        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
         state = AudioWriter.STOPPED
         nextState = AudioWriter.STOPPED
         lastState = AudioWriter.STOPPED
@@ -2077,13 +2082,13 @@ class AudioWriter(StateMachineProcess):
                     # DO STUFF
                     if len(self.buffer) >= self.buffer.maxlen:
                         # If buffer is full, pull oldest audio chunk from buffer
-                        if self.verbose >= 3: self.log("AW - Pulling audio chunk from buffer (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
+                        if self.verbose >= 3: self.log("Pulling audio chunk from buffer (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
                         audioChunk = self.buffer.popleft()
 
                     try:
                         # Get new audio chunk and push it into the buffer
                         newAudioChunk = self.audioQueue.get(block=True, timeout=0.1)
-                        if self.verbose >= 3: self.log("AW - Got audio chunk from acquirer. Pushing into the buffer.")
+                        if self.verbose >= 3: self.log("Got audio chunk from acquirer. Pushing into the buffer.")
                         self.buffer.append(newAudioChunk)
                     except queue.Empty: # None available
                         newAudioChunk = None
@@ -2103,35 +2108,35 @@ class AudioWriter(StateMachineProcess):
                         nextState = AudioWriter.STOPPING
                     elif len(triggers) > 0:
                         # We have triggers - next state will depend on them
-                        if self.verbose >= 2: self.log("AW - Trigger is active")
+                        if self.verbose >= 2: self.log("Trigger is active")
                         if audioChunk is not None:
                             # At least one audio chunk has been received - we can check if trigger period has begun
                             chunkStartTriggerState, chunkEndTriggerState = audioChunk.getTriggerState(triggers[0])
                             delta = audioChunk.chunkStartTime - triggers[0].startTime
-                            if self.verbose >= 3: self.log("AW - |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
+                            if self.verbose >= 3: self.log("|{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
                             if chunkStartTriggerState < 0 and chunkEndTriggerState < 0:
                                 # Entire chunk is before trigger range. Continue buffering until we get to trigger start time.
-                                if self.verbose >= 2: self.log("AW - Active trigger, but haven't gotten to start time yet, continue buffering.")
+                                if self.verbose >= 2: self.log("Active trigger, but haven't gotten to start time yet, continue buffering.")
                                 nextState = AudioWriter.BUFFERING
                             elif chunkEndTriggerState == 0 and chunkStartTriggerState < 0:
-                                if self.verbose >= 1: self.log("AW - Got trigger start!")
+                                if self.verbose >= 1: self.log("Got trigger start!")
                                 timeWrote = 0
                                 nextState = AudioWriter.WRITING
                             elif chunkStartTriggerState == 0 or (chunkStartTriggerState < 0 and chunkStartTriggerState > 0):
                                 # Time is now in trigger range
                                 if self.verbose >= 0:
-                                    self.log(self.ID + " - partially missed audio trigger by {t} seconds, which is {s} samples and {c} chunks!".format(t=delta, s=delta * self.audioFrequency, c=delta * self.audioFrequency / self.chunkSize))
+                                    self.log("partially missed audio trigger by {t} seconds, which is {s} samples and {c} chunks!".format(t=delta, s=delta * self.audioFrequency, c=delta * self.audioFrequency / self.chunkSize))
                                 timeWrote = 0
                                 nextState = AudioWriter.WRITING
                             else:
                                 # Time is after trigger range...
-                                if self.verbose >= 0: self.log("AW - Warning, completely missed audio trigger start!")
+                                if self.verbose >= 0: self.log("Warning, completely missed audio trigger start!")
                                 timeWrote = 0
                                 nextState = AudioWriter.BUFFERING
                                 triggers.pop(0)   # Pop off trigger that we missed
                         else:
                             # No audio chunks have been received yet, can't evaluate if trigger time has begun yet
-                            if self.verbose >= 1: self.log("AW - No audio chunks yet, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
+                            if self.verbose >= 1: self.log("No audio chunks yet, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
                             nextState = AudioWriter.BUFFERING
                     elif msg in ['', AudioWriter.START]:
                         nextState = AudioWriter.BUFFERING
@@ -2141,13 +2146,13 @@ class AudioWriter(StateMachineProcess):
                 elif state == AudioWriter.WRITING:
                     # DO STUFF
                     if self.verbose >= 3:
-                        self.log("AW - Audio queue size: ", self.audioQueue.qsize())
-                        self.log("AW - Audio chunks in buffer: ", len(self.buffer))
+                        self.log("Audio queue size: ", self.audioQueue.qsize())
+                        self.log("Audio chunks in buffer: ", len(self.buffer))
                     if audioChunk is not None:
                         #     padStart = True  # Because this is the first chunk, pad the start of the chunk if it starts after the trigger period start
                         # else:
                         #     padStart = False
-                        if self.verbose >= 3: self.log("AW - Trimming audio")
+                        if self.verbose >= 3: self.log("Trimming audio")
                         [preChunk, postChunk] = audioChunk.trimToTrigger(triggers[0], returnOtherPieces=True) #, padStart=padStart)
                         # preChunk can be discarded, as the trigger is past it, but postChunk needs to be put back in the buffer
                         if postChunk is not None:
@@ -2169,24 +2174,24 @@ class AudioWriter(StateMachineProcess):
                         audioFile.writeframes(audioChunk.getAsBytes())
                         if self.verbose >= 3:
                             timeWrote += (audioChunk.data.shape[1] / audioChunk.audioFrequency)
-                            self.log("AW - Audio time wrote: {time}".format(time=timeWrote))
+                            self.log("Audio time wrote: {time}".format(time=timeWrote))
 
                     try:
                         # Pop the oldest buffered audio chunk from the back of the buffer.
                         audioChunk = self.buffer.popleft()
-                        if self.verbose >= 3: self.log("AW - Pulled audio from buffer")
+                        if self.verbose >= 3: self.log("Pulled audio from buffer")
                     except IndexError:
-                        if self.verbose >= 0: self.log("AW - No data in buffer")
+                        if self.verbose >= 0: self.log("No data in buffer")
                         audioChunk = None  # Buffer was empty
 
                     # Pull new audio chunk from AudioAcquirer and add to the front of the buffer.
                     try:
                         newAudioChunk = self.audioQueue.get(True, 0.05)
-                        if self.verbose >= 3: self.log("AW - Got audio chunk from acquirer. Pushing into buffer.")
+                        if self.verbose >= 3: self.log("Got audio chunk from acquirer. Pushing into buffer.")
                         self.buffer.append(newAudioChunk)
                     except queue.Empty:
                         # No data in audio queue yet - pass.
-                        if self.verbose >= 3: self.log("AW - No audio available from acquirer")
+                        if self.verbose >= 3: self.log("No audio available from acquirer")
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
@@ -2196,7 +2201,7 @@ class AudioWriter(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if self.verbose >= 3: self.log("AW - |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
+                    if self.verbose >= 3: self.log("|{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
                     if self.exitFlag:
                         nextState = AudioWriter.STOPPING
                     elif msg == AudioWriter.STOP:
@@ -2210,7 +2215,7 @@ class AudioWriter(StateMachineProcess):
                             chunkStartTriggerState, chunkEndTriggerState = audioChunk.getTriggerState(triggers[0])
                             if chunkStartTriggerState * chunkEndTriggerState > 0:
                                 # Trigger period does not overlap the chunk at all - return to buffering
-                                if self.verbose >= 2: self.log("AW - Audio chunk does not overlap trigger. Switching to buffering.")
+                                if self.verbose >= 2: self.log("Audio chunk does not overlap trigger. Switching to buffering.")
                                 nextState = AudioWriter.BUFFERING
                                 if audioFile is not None:
                                     # Done with trigger, close file and clear audioFile
@@ -2225,7 +2230,7 @@ class AudioWriter(StateMachineProcess):
                                             streamID='audio',
                                             startTime=audioFileStartTime
                                         )
-                                        if self.verbose >= 1: self.log("AW - Sending audio filename to merger")
+                                        if self.verbose >= 1: self.log("Sending audio filename to merger")
                                         self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
                                     audioFile = None
                                 # Remove current trigger
@@ -2279,7 +2284,7 @@ class AudioWriter(StateMachineProcess):
                     # DO STUFF
 
                     if self.verbose >= 0:
-                        self.log("AW - ERROR STATE. Error messages:\n\n")
+                        self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
@@ -2319,7 +2324,7 @@ class AudioWriter(StateMachineProcess):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: self.log("AW - Keyboard interrupt received - exiting")
+                if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = AudioWriter.STOPPING
             except:
@@ -2347,16 +2352,16 @@ class AudioWriter(StateMachineProcess):
         try:
             triggerIndex = [trigger.id for trigger in triggers].index(newTrigger.id)
             # This is an updated trigger, not a new trigger
-            if self.verbose >= 2: self.log(self.ID + " - Updating trigger")
+            if self.verbose >= 2: self.log("Updating trigger")
             if triggerIndex > 0 and newTrigger.startTime > newTrigger.endTime:
                 # End time has been set before start time, and this is not the active trigger, so delete this trigger.
                 del triggers[triggerIndex]
-                if self.verbose >= 2: self.log(self.ID + " - Deleting invalidated trigger")
+                if self.verbose >= 2: self.log("Deleting invalidated trigger")
             else:
                 triggers[triggerIndex] = newTrigger
         except ValueError:
             # This is a new trigger
-            if self.verbose >= 2: self.log(self.ID + " - Adding new trigger")
+            if self.verbose >= 2: self.log("Adding new trigger")
             triggers.append(newTrigger)
 
 class VideoAcquirer(StateMachineProcess):
@@ -2450,14 +2455,14 @@ class VideoAcquirer(StateMachineProcess):
         for key in params:
             if key in VideoAcquirer.settableParams:
                 setattr(self, key, params[key])
-                if self.verbose >= 1: self.log("VA - Param set: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: self.log("VA - Param not settable: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
 #        if self.verbose >= 1: profiler = cProfile.Profile()
-        if self.verbose >= 1: self.log(self.ID + " PID={pid}".format(pid=os.getpid()))
+        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
 
         self.monitorImageSender.setupBuffers()
         self.imageQueue.setupBuffers()
@@ -2548,7 +2553,7 @@ class VideoAcquirer(StateMachineProcess):
 #                            if self.verbose >= 1: self.log('{ID} ready: {parties} {n_waiting}'.format(ID=self.ID, parties=self.ready.parties, n_waiting=self.ready.n_waiting))
                             self.ready.wait()
                     except BrokenBarrierError:
-                        if self.verbose >= 0: self.log(self.ID + " Simultaneous start failure")
+                        if self.verbose >= 0: self.log("Simultaneous start failure")
                         nextState = VideoAcquirer.STOPPING
 
 #                    if self.verbose >= 1: self.log('{ID} passed barrier'.format(ID=self.ID))
@@ -2578,35 +2583,35 @@ class VideoAcquirer(StateMachineProcess):
                         imageResult = cam.GetNextImage()
                         # Get timestamp of first image acquisition
                         if startTime is None:
-                            if self.verbose >= 1: self.log(self.ID+" - Getting start time from sync process...")
+                            if self.verbose >= 1: self.log("Getting start time from sync process...")
                             while startTime == -1 or startTime is None:
                                 startTime = self.startTimeSharedValue.value
-                            if self.verbose >= 1: self.log(self.ID+" - Got start time from sync process: "+str(startTime))
+                            if self.verbose >= 1: self.log("Got start time from sync process: "+str(startTime))
 #                            startTime = time.time_ns() / 1000000000
 
                         # Time frames, as an extra check
                         self.frameStopwatch.click()
-                        if self.verbose >= 3: self.log(self.ID + " Video freq: ", self.frameStopwatch.frequency())
+                        if self.verbose >= 3: self.log("Video freq: ", self.frameStopwatch.frequency())
 
                         #  Ensure image completion
                         if imageResult.IsIncomplete():
-                            if self.verbose >= 0: self.log('VA - Image incomplete with image status %d...' % imageResult.GetImageStatus())
+                            if self.verbose >= 0: self.log('Image incomplete with image status %d...' % imageResult.GetImageStatus())
                         else:
 #                            imageConverted = imageResult.Convert(PySpin.PixelFormat_BGR8)
                             imageCount += 1
                             imageID = imageResult.GetFrameID()
                             if self.verbose >= 3:
-                                self.log(self.ID + ' # frames:'+str(imageCount))
-                                self.log(self.ID + ' Image ID:'+str(imageID))
+                                self.log('# frames:'+str(imageCount))
+                                self.log('Image ID:'+str(imageID))
                             frameTime = startTime + imageCount / self.frameRate
 
-                            if self.verbose >= 3: self.log(self.ID + " Got image from camera, t="+str(frameTime))
+                            if self.verbose >= 3: self.log("Got image from camera, t="+str(frameTime))
 
                             # imp = PickleableImage(imageResult.GetWidth(), imageResult.GetHeight(), 0, 0, imageResult.GetPixelFormat(), imageResult.GetData(), frameTime)
 
                             # Put image into image queue
                             self.imageQueue.put(imageResult, metadata={'frameTime':frameTime, 'imageID':imageID})
-                            if self.verbose >= 3: self.log(self.ID + " Pushed image into buffer")
+                            if self.verbose >= 3: self.log("Pushed image into buffer")
 
                             if self.monitorImageSender is not None:
                                 # Put the occasional image in the monitor queue for the UI
@@ -2615,7 +2620,7 @@ class VideoAcquirer(StateMachineProcess):
                                 if (thisTime - lastTime) >= monitorFramePeriod:
                                     try:
                                         self.monitorImageSender.put(imageResult)
-                                        if self.verbose >= 3: self.log(self.ID + " Sent frame for monitoring")
+                                        if self.verbose >= 3: self.log("Sent frame for monitoring")
                                         lastTime = thisTime
                                     except queue.Full:
                                         if self.verbose >= 3: self.log("Can't put frame in for monitoring - no room")
@@ -2623,8 +2628,8 @@ class VideoAcquirer(StateMachineProcess):
 
                         imageResult.Release()
                     except PySpin.SpinnakerException:
-                        self.log(traceback.format_exc())
-                        if self.verbose >= 0: self.log(self.ID + " Video frame acquisition timed out.")
+                        self.log('' + traceback.format_exc())
+                        if self.verbose >= 0: self.log("Video frame acquisition timed out.")
 
                     # CHECK FOR MESSAGES
                     try:
@@ -2680,7 +2685,7 @@ class VideoAcquirer(StateMachineProcess):
                 elif state == VideoAcquirer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        self.log(self.ID + " ERROR STATE. Error messages:\n\n")
+                        self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
@@ -2720,7 +2725,7 @@ class VideoAcquirer(StateMachineProcess):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: self.log(self.ID + " Keyboard interrupt received - exiting")
+                if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = VideoAcquirer.STOPPING
             except:
@@ -2849,14 +2854,14 @@ class VideoWriter(StateMachineProcess):
         for key in params:
             if key in VideoWriter.settableParams:
                 setattr(self, key, params[key])
-                if self.verbose >= 1: self.log(self.ID + " - Param set: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: self.log(self.ID + " - Param not settable: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
 #        if self.verbose >= 1: profiler = cProfile.Profile()
-        if self.verbose >= 1: self.log(self.ID + " - PID={pid}".format(pid=os.getpid()))
+        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
 
         state = VideoWriter.STOPPED
         nextState = VideoWriter.STOPPED
@@ -2949,33 +2954,33 @@ class VideoWriter(StateMachineProcess):
                         nextState = VideoWriter.STOPPING
                     elif len(triggers) > 0:
                         # We have triggers - next state will depend on them
-                        if self.verbose >= 2: self.log(self.ID + " - " + str(len(triggers)) + " trigger(s) exist:")
+                        if self.verbose >= 2: self.log("" + str(len(triggers)) + " trigger(s) exist:")
                         if im is not None:
                             # At least one video frame has been received - we can check if trigger period has begun
                             triggerState = triggers[0].state(frameTime)
-                            if self.verbose >= 2: self.log(self.ID + " - Trigger state: {state}".format(state=triggerState))
+                            if self.verbose >= 2: self.log("Trigger state: {state}".format(state=triggerState))
                             if triggerState < 0:        # Time is before trigger range
-                                if self.verbose >= 2: self.log(self.ID + " - Active trigger, but haven't gotten to start time yet, continue buffering.")
+                                if self.verbose >= 2: self.log("Active trigger, but haven't gotten to start time yet, continue buffering.")
                                 nextState = VideoWriter.BUFFERING
                             elif triggerState == 0:     # Time is now in trigger range
                                 if self.verbose >= 0:
                                     delta = frameTime - triggers[0].startTime
                                     if delta <= 1/self.frameRate:
                                         # Within one frame of trigger start
-                                        self.log(self.ID + " - Got trigger start!")
+                                        self.log("Got trigger start!")
                                     else:
                                         # More than one frame after trigger start - we missed some
-                                        self.log(self.ID + " - partially missed video trigger by {t} seconds, which is {f} frames!".format(t=delta, f=delta * self.frameRate))
+                                        self.log("partially missed video trigger by {t} seconds, which is {f} frames!".format(t=delta, f=delta * self.frameRate))
                                 timeWrote = 0
                                 nextState = VideoWriter.WRITING
                             else:                       # Time is after trigger range
-                                if self.verbose >= 0: self.log(self.ID + " - Missed trigger start by {triggerState} seconds!".format(triggerState=triggerState))
+                                if self.verbose >= 0: self.log("Missed trigger start by {triggerState} seconds!".format(triggerState=triggerState))
                                 timeWrote = 0
                                 nextState = VideoWriter.BUFFERING
                                 triggers.pop(0)
                         else:
                             # No video frames have been received yet, can't evaluate if trigger time has begun yet
-                            if self.verbose >= 2: self.log(self.ID + " - No frames at the moment, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
+                            if self.verbose >= 2: self.log("No frames at the moment, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen))
                             nextState = VideoWriter.BUFFERING
 
                     elif msg in ['', VideoWriter.START]:
@@ -2987,8 +2992,8 @@ class VideoWriter(StateMachineProcess):
                     # if self.verbose >= 1: profiler.enable()
                     # DO STUFF
                     if self.verbose >= 3:
-                        self.log(self.ID + " - Image queue size: ", self.imageQueue.qsize())
-                        self.log(self.ID + " - Images in buffer: ", len(self.buffer))
+                        self.log("Image queue size: ", self.imageQueue.qsize())
+                        self.log("Images in buffer: ", len(self.buffer))
                     if im is not None:
                         if videoFileInterface is None:
                             # Start new video file
@@ -3000,7 +3005,7 @@ class VideoWriter(StateMachineProcess):
                                 videoFileInterface = PySpin.SpinVideo()
                                 option = PySpin.AVIOption()
                                 option.frameRate = self.frameRate
-                                if self.verbose >= 2: self.log(self.ID + " - Opening file to save video with frameRate ", option.frameRate)
+                                if self.verbose >= 2: self.log("Opening file to save video with frameRate ", option.frameRate)
                                 videoFileInterface.Open(videoFileName, option)
                                 stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
                                 videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
@@ -3010,14 +3015,14 @@ class VideoWriter(StateMachineProcess):
                         # Write video frame to file that was previously retrieved from the buffer
                         if self.verbose >= 3:
                             timeWrote += 1/self.frameRate
-                            self.log(self.ID + " - Video time wrote ="+str(timeWrote))
+                            self.log("Video time wrote ="+str(timeWrote))
 
                         if self.videoWriteMethod == "PySpin":
                             # Reconstitute PySpin image from PickleableImage
                             # im = PySpin.Image.Create(imp.width, imp.height, imp.offsetX, imp.offsetY, imp.pixelFormat, imp.data)
                             # Convert image to desired format
                             videoFileInterface.Append(im.Convert(PySpin.PixelFormat_RGB8, PySpin.HQ_LINEAR))
-                            if self.verbose >= 2: self.log(self.ID + " - wrote frame!")
+                            if self.verbose >= 2: self.log("wrote frame!")
                             # try:
                             #     im.Release()
                             # except PySpin.SpinnakerException:
@@ -3027,7 +3032,7 @@ class VideoWriter(StateMachineProcess):
                             del im
                         elif self.videoWriteMethod == "ffmpeg":
                             videoFileInterface.write(imp.data, shape=(imp.width, imp.height))
-                            if self.verbose >= 2: self.log(self.ID + " - wrote frame!")
+                            if self.verbose >= 2: self.log("wrote frame!")
 
                     im, frameTime, imageID = self.rotateImages(fillBuffer=False)
 
@@ -3052,7 +3057,7 @@ class VideoWriter(StateMachineProcess):
                             triggerState = triggers[0].state(frameTime)
                             if triggerState != 0:
                                 # Frame is not in trigger period - return to buffering
-                                if self.verbose >= 2: self.log(self.ID + " - Frame does not overlap trigger. Switching to buffering.")
+                                if self.verbose >= 2: self.log("Frame does not overlap trigger. Switching to buffering.")
                                 nextState = VideoWriter.BUFFERING
                                 # Remove current trigger
                                 if videoFileInterface is not None:
@@ -3079,7 +3084,7 @@ class VideoWriter(StateMachineProcess):
                                                 streamID=self.camSerial,
                                                 startTime=videoFileStartTime
                                             )
-                                        if self.verbose >= 2: self.log(self.ID + " - Sending video filename to merger")
+                                        if self.verbose >= 2: self.log("Sending video filename to merger")
                                         self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
                                     videoFileInterface = None
                                 triggers.pop(0)
@@ -3143,7 +3148,7 @@ class VideoWriter(StateMachineProcess):
                 elif state == VideoWriter.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        self.log(self.ID + " - ERROR STATE. Error messages:\n\n")
+                        self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
@@ -3183,7 +3188,7 @@ class VideoWriter(StateMachineProcess):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: self.log(self.ID + " - Keyboard interrupt received - exiting")
+                if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = VideoWriter.STOPPING
             except:
@@ -3223,22 +3228,22 @@ class VideoWriter(StateMachineProcess):
             if (fillBuffer and (len(self.buffer) >= self.buffer.maxlen)) or ((not fillBuffer) and (len(self.buffer) > 0)):
                 # Pop the oldest image frame from the back of the buffer.
                 im, frameTime, imageID = self.buffer.popleft()
-                if self.verbose >= 3: self.log(self.ID + " - Pulling video frame (ID {ID}) from buffer (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen, ID=imageID))
+                if self.verbose >= 3: self.log("Pulling video frame (ID {ID}) from buffer (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.buffer.maxlen, ID=imageID))
             else:
                 # Do not pop any off until it's either full or not empty, depending on fillBuffer).
                 if self.verbose >= 3:
                     if fillBuffer:
-                        self.log(self.ID + " - buffer not full yet, declining to pull frame from buffer")
+                        self.log("buffer not full yet, declining to pull frame from buffer")
                     else:
-                        self.log(self.ID + " - buffer empty, no frame to pull")
+                        self.log("buffer empty, no frame to pull")
                 im = None
                 frameTime = None
                 imageID = None
 
-            if self.verbose >= 3: self.log(self.ID + " - Got video frame from acquirer. Pushing into the buffer. ID={ID}, t={t}".format(t=newMetadata['frameTime'], ID=newImageID))
+            if self.verbose >= 3: self.log("Got video frame from acquirer. Pushing into the buffer. ID={ID}, t={t}".format(t=newMetadata['frameTime'], ID=newImageID))
             self.buffer.append((newIm, newFrameTime, newImageID))
         except queue.Empty: # None available
-            if self.verbose >= 3: self.log(self.ID + " - No images available from acquirer")
+            if self.verbose >= 3: self.log("No images available from acquirer")
             time.sleep(0.5/self.requestedFrameRate)
             newIm = None
             newFrameTime = None
@@ -3253,16 +3258,16 @@ class VideoWriter(StateMachineProcess):
         try:
             triggerIndex = [trigger.id for trigger in triggers].index(newTrigger.id)
             # This is an updated trigger, not a new trigger
-            if self.verbose >= 2: self.log(self.ID + " - Updating trigger")
+            if self.verbose >= 2: self.log("Updating trigger")
             if triggerIndex > 0 and newTrigger.startTime > newTrigger.endTime:
                 # End time has been set before start time, and this is not the active trigger, so delete this trigger.
                 del triggers[triggerIndex]
-                if self.verbose >= 2: self.log(self.ID + " - Deleting invalidated trigger")
+                if self.verbose >= 2: self.log("Deleting invalidated trigger")
             else:
                 triggers[triggerIndex] = newTrigger
         except ValueError:
             # This is a new trigger
-            if self.verbose >= 2: self.log(self.ID + " - Adding new trigger")
+            if self.verbose >= 2: self.log("Adding new trigger")
             triggers.append(newTrigger)
 
 class ContinuousTriggerer(StateMachineProcess):
@@ -3334,13 +3339,13 @@ class ContinuousTriggerer(StateMachineProcess):
                         self.recordPeriod = params[key]
                     else:
                         raise AttributeError('Record period must be greater than zero')
-                if self.verbose >= 1: self.log(self.ID + " Param set: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
             else:
-                if self.verbose >= 0: self.log(self.ID + " Param not settable: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
         self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log(self.ID + " PID={pid}".format(pid=os.getpid()))
+        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
         state = ContinuousTriggerer.STOPPED
         nextState = ContinuousTriggerer.STOPPED
         lastState = ContinuousTriggerer.STOPPED
@@ -3382,11 +3387,11 @@ class ContinuousTriggerer(StateMachineProcess):
                     startTime = None
                     lastTriggerTime = None
 
-                    if self.verbose >= 1: self.log(self.ID+" - Getting start time from sync process...")
+                    if self.verbose >= 1: self.log("Getting start time from sync process...")
                     while startTime == -1 or startTime is None:
                         # Wait until Synchronizer process has a start time
                         startTime = self.startTimeSharedValue.value
-                    if self.verbose >= 1: self.log(self.ID+" - Got start time from sync process: "+str(startTime))
+                    if self.verbose >= 1: self.log("Got start time from sync process: "+str(startTime))
 
                     # CHECK FOR MESSAGES
                     try:
@@ -3429,7 +3434,7 @@ class ContinuousTriggerer(StateMachineProcess):
                             lastTriggerTime = newTriggerTime
                             self.sendTrigger(newTrigger)
                             activeTriggers.append(newTrigger)
-                            if self.verbose >= 1: self.log(self.ID + " Sent new trigger!")
+                            if self.verbose >= 1: self.log("Sent new trigger!")
 
                     # CHECK FOR MESSAGES
                     try:
@@ -3438,7 +3443,7 @@ class ContinuousTriggerer(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-#                    if self.verbose >= 3: self.log(self.ID + " |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
+#                    if self.verbose >= 3: self.log("|{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
                     if msg == ContinuousTriggerer.EXIT or self.exitFlag:
                         self.exitFlag = True
                         nextState = ContinuousTriggerer.STOPPING
@@ -3477,7 +3482,7 @@ class ContinuousTriggerer(StateMachineProcess):
                 elif state == ContinuousTriggerer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
-                        self.log(self.ID + " ERROR STATE. Error messages:\n\n")
+                        self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
                     self.errorMessages = []
 
@@ -3517,7 +3522,7 @@ class ContinuousTriggerer(StateMachineProcess):
                     raise KeyError("Unknown state: "+self.stateList[state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
-                if self.verbose >= 0: self.log(self.ID + " Keyboard interrupt received - exiting")
+                if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
                 nextState = ContinuousTriggerer.STOPPING
             except:
