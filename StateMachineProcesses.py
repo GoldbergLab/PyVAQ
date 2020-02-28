@@ -2107,6 +2107,7 @@ class AudioWriter(StateMachineProcess):
                         if audioChunk is not None:
                             # At least one audio chunk has been received - we can check if trigger period has begun
                             chunkStartTriggerState, chunkEndTriggerState = audioChunk.getTriggerState(triggers[0])
+                            delta = audioChunk.chunkStartTime - triggers[0].startTime
                             if self.verbose >= 3: self.log("AW - |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
                             if chunkStartTriggerState < 0 and chunkEndTriggerState < 0:
                                 # Entire chunk is before trigger range. Continue buffering until we get to trigger start time.
@@ -2118,7 +2119,8 @@ class AudioWriter(StateMachineProcess):
                                 nextState = AudioWriter.WRITING
                             elif chunkStartTriggerState == 0 or (chunkStartTriggerState < 0 and chunkStartTriggerState > 0):
                                 # Time is now in trigger range
-                                if self.verbose >= 0: self.log("AW - Warning, partially missed audio trigger start!")
+                                if self.verbose >= 0:
+                                    self.log(self.ID + " - partially missed audio trigger by {t} seconds, which is {s} samples and {c} chunks!".format(t=delta, s=delta * self.audioFrequency, c=delta * self.audioFrequency / self.chunkSize))
                                 timeWrote = 0
                                 nextState = AudioWriter.WRITING
                             else:
@@ -2963,7 +2965,7 @@ class VideoWriter(StateMachineProcess):
                                         self.log(self.ID + " - Got trigger start!")
                                     else:
                                         # More than one frame after trigger start - we missed some
-                                        self.log(self.ID + " - partially missed trigger by {t} seconds, which is {f} frames!".format(t=delta, f=delta * self.frameRate))
+                                        self.log(self.ID + " - partially missed video trigger by {t} seconds, which is {f} frames!".format(t=delta, f=delta * self.frameRate))
                                 timeWrote = 0
                                 nextState = VideoWriter.WRITING
                             else:                       # Time is after trigger range
