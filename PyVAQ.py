@@ -1889,7 +1889,7 @@ him know. Otherwise, I had nothing to do with it.
     def waitForChildProcessesToStop(self, attempts=10, timeout=0.5):
         # Wait for all state machine child processes to stop, or until all attempts have been exhausted.
         #   Returns true if all processes were found to have stopped, false if not.
-        for attempts in range(10):
+        for attempts in range(attempts):
             allStopped = False
             states = self.checkStates(verbose=False)
             if 'videoWriteStates' in states:
