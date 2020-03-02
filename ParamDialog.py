@@ -95,8 +95,9 @@ class ParamDialog(tk.Toplevel):
     VERTICAL='v'
     BOX='b'
 
-    def __init__(self, parent, params=[], title=None, arrangement=HORIZONTAL):
+    def __init__(self, parent, params=[], title=None, arrangement=HORIZONTAL, maxHeight=None):
         # params should be a list of Param objects
+        # maxHeight is the maximum number of choice widgets that can be stacked before wrapping horizontally. Leave as "None" to disable wrapping.
         tk.Toplevel.__init__(self, parent)
         self.transient(parent)
         if title:
@@ -104,6 +105,7 @@ class ParamDialog(tk.Toplevel):
 
         self.parent = parent
         self.arrangement = arrangement
+        self.maxHeight = maxHeight
         self.params = params
         self.results = None
 
@@ -128,14 +130,18 @@ class ParamDialog(tk.Toplevel):
     def createParameterWidgets(self):
         # Create widgets for inputting parameters
         if self.arrangement == ParamDialog.BOX:
-            nW, nH = getOptimalBoxGrid(len(self.params))
+            nW, nH = getOptimalBoxGrid(len(self.params, maxHeight=self.maxHeight))
         for k, param in enumerate(self.params):
             param.createWidgets(self.paramFrame)
             if self.arrangement == ParamDialog.HORIZONTAL:
                 row=0; col=k;
                 self.paramFrame.columnconfigure(col, weight=1)
             elif self.arrangement == ParamDialog.VERTICAL:
-                row=k; col=0;
+                if self.maxHeight is None:
+                    row=k; col=0;
+                else:
+                    row=k % self.maxHeight
+                    col=k // self.maxHeight
                 self.paramFrame.rowconfigure(row, weight=1)
             elif self.arrangement == ParamDialog.BOX:
                 row = k // nW
@@ -184,9 +190,11 @@ class ParamDialog(tk.Toplevel):
     # def apply(self):
     #     pass # override
 
-def getOptimalBoxGrid(N):
+def getOptimalBoxGrid(N, maxHeight=None):
     if N == 0:
         return (0,0)
     h = round(math.sqrt(N))
+    if maxHeight is not None:
+        h = min(maxHeight, h)
     w = math.ceil(N/h)
     return (w, h)

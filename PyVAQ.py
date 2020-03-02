@@ -1075,7 +1075,7 @@ him know. Otherwise, I had nothing to do with it.
 
         choices = None
         if len(params) > 0:
-            pd = ParamDialog(self.master, params=params, title="Choose audio/video inputs to use")
+            pd = ParamDialog(self.master, params=params, title="Choose audio/video inputs to use", maxHeight=12)
             choices = pd.results
             if choices is not None:
                 self.stopMonitors()
