@@ -14,6 +14,7 @@ import itertools
 import ffmpegWriter as fw
 import nidaqmx
 from nidaqmx.stream_readers import AnalogMultiChannelReader
+from nidaqmx.constants import Edge
 from SharedImageQueue import SharedImageSender
 import traceback
 import unicodedata
@@ -823,6 +824,7 @@ class Synchronizer(StateMachineProcess):
         videoDutyCycle=0.5,
         audioSyncChannel=None,           # The counter channel on which to generate the audio sync signal Dev3/ctr1
         audioDutyCycle=0.5,
+        startTriggerChannel=None,             # A digital channel on which to wait for a start trigger signal. If this is none, sync process starts ASAP.
         startTime=None,                         # Shared value that is set when sync starts, used as start time by all processes (relevant for manual triggers)
         verbose=False,
         ready=None,                             # Synchronization barrier to ensure everyone's ready before beginning
@@ -838,6 +840,7 @@ class Synchronizer(StateMachineProcess):
         self.audioSyncChannel = audioSyncChannel
         self.videoDutyCycle = videoDutyCycle
         self.audioDutyCycle = audioDutyCycle
+        self.startTriggerChannel = startTriggerChannel
         self.ready = ready
         self.errorMessages = []
         self.verbose = verbose
@@ -899,6 +902,13 @@ class Synchronizer(StateMachineProcess):
                     else:
                         trigTask = nidaqmx.Task()                       # Create task
 
+                    if self.startTriggerChannel is not None:
+                        # Configure task to wait for a digital pulse on the specified channel.
+                        trigTask.arm_start_trigger(
+                            dig_edge_src=self.startTriggerChannel,
+                            trig_type=Edge.DIGITAL_EDGE,
+                            dig_edge_edge=Edge.RISING
+                        )
                     if self.videoSyncChannel is not None:
                         trigTask.co_channels.add_co_pulse_chan_freq(
                             counter=self.videoSyncChannel,
