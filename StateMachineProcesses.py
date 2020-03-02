@@ -907,7 +907,7 @@ class Synchronizer(StateMachineProcess):
 
                     if self.startTriggerChannel is not None:
                         # Configure task to wait for a digital pulse on the specified channel.
-                        trigTask.arm_start_trigger(
+                        trigTask.triggers.arm_start_trigger(
                             dig_edge_src=self.startTriggerChannel,
                             trig_type=Edge.DIGITAL_EDGE,
                             dig_edge_edge=Edge.RISING
