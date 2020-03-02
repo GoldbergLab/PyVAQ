@@ -613,6 +613,7 @@ class PyVAQ:
         self.audioSyncTerminal = None
         self.videoSyncSource = None
         self.videoSyncTerminal = None
+        self.acquisitionStartTriggerSource = None
 
         ########### GUI WIDGETS #####################
 
@@ -1062,6 +1063,7 @@ him know. Otherwise, I had nothing to do with it.
             params.append(Param(name='Audio Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI4", description="This must match your selection for Audio Sync Channel. Check DAQ pinout for matching PFI channel."))
             params.append(Param(name='Video Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI5", description="This must match your selection for Video Sync Channel. Check DAQ pinout for matching PFI channel."))
         params.append(Param(name='Start acquisition immediately', widgetType=Param.MONOCHOICE, options=['Yes', 'No'], default='Yes'))
+        params.append(Param(name='Acquisition start trigger channel', widgetType=Param.TEXT, options=None, default='None'))
 
         choices = None
         if len(params) > 0:
@@ -1096,6 +1098,14 @@ him know. Otherwise, I had nothing to do with it.
                     self.videoSyncSource = choices['Video Sync PFI Interface']
                 else:
                     self.videoSyncSource = None
+                if 'Acquisition start trigger channel' in choices and len(choices['Acquisition start trigger channel']) > 0:
+                    if choices['Acquisition start trigger channel'] == 'None':
+                        self.acquisitionStartTriggerSource = None
+                    else:
+                        self.acquisitionStartTriggerSource = choices['Acquisition start trigger channel']
+                else:
+                    self.acquisitionStartTriggerSource = None
+
 
                 print('main>> Got audioDAQChannels:', audioDAQChannels)
                 print('main>> Got camSerials:', camSerials)
@@ -1879,7 +1889,7 @@ him know. Otherwise, I had nothing to do with it.
     def waitForChildProcessesToStop(self, attempts=10, timeout=0.5):
         # Wait for all state machine child processes to stop, or until all attempts have been exhausted.
         #   Returns true if all processes were found to have stopped, false if not.
-        for attempts in range(10):
+        for attempts in range(attempts):
             allStopped = False
             states = self.checkStates(verbose=False)
             if 'videoWriteStates' in states:
@@ -1953,6 +1963,7 @@ him know. Otherwise, I had nothing to do with it.
                 actualVideoFrequency=self.actualVideoFrequency,
                 actualAudioFrequency=self.actualAudioFrequency,
                 startTime=startTime,
+                startTriggerChannel=self.acquisitionStartTriggerSource,
                 audioSyncChannel=self.audioSyncTerminal,
                 videoSyncChannel=self.videoSyncTerminal,
                 requestedAudioFrequency=p["audioFrequency"],
