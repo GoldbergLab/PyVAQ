@@ -907,11 +907,9 @@ class Synchronizer(StateMachineProcess):
 
                     if self.startTriggerChannel is not None:
                         # Configure task to wait for a digital pulse on the specified channel.
-                        trigTask.triggers.arm_start_trigger(
-                            dig_edge_src=self.startTriggerChannel,
-                            trig_type=TriggerType.DIGITAL_EDGE,
-                            dig_edge_edge=Edge.RISING
-                        )
+                        trigTask.triggers.arm_start_trigger.dig_edge_src=self.startTriggerChannel
+                        trigTask.triggers.arm_start_trigger.trig_type=TriggerType.DIGITAL_EDGE
+                        trigTask.triggers.arm_start_trigger.dig_edge_edge=Edge.RISING
                     if self.videoSyncChannel is not None:
                         trigTask.co_channels.add_co_pulse_chan_freq(
                             counter=self.videoSyncChannel,
