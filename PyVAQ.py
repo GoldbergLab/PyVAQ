@@ -492,11 +492,11 @@ def discoverDAQAudioChannels():
         channels[d.name] = [c.name for c in d.ai_physical_chans]
     return channels
 
-def discoverDAQDigitalChannels():
+def discoverDAQTerminals():
     s = nisys.System.local()
     channels = {}
     for d in s.devices:
-        channels[d.name] = [c.name for c in d.di_lines]
+        channels[d.name] = [c.name for c in d.terminals]
     return channels
 
 def discoverDAQClockChannels():
