@@ -905,11 +905,6 @@ class Synchronizer(StateMachineProcess):
                     else:
                         trigTask = nidaqmx.Task()                       # Create task
 
-                    if self.startTriggerChannel is not None:
-                        # Configure task to wait for a digital pulse on the specified channel.
-                        trigTask.triggers.arm_start_trigger.dig_edge_src=self.startTriggerChannel
-                        trigTask.triggers.arm_start_trigger.trig_type=TriggerType.DIGITAL_EDGE
-                        trigTask.triggers.arm_start_trigger.dig_edge_edge=Edge.RISING
                     if self.videoSyncChannel is not None:
                         trigTask.co_channels.add_co_pulse_chan_freq(
                             counter=self.videoSyncChannel,
@@ -926,6 +921,11 @@ class Synchronizer(StateMachineProcess):
                             initial_delay=0.0,
                             freq=self.audioFrequency,
                             duty_cycle=self.audioDutyCycle)     # Prepare a counter output channel for the audio sync signal
+                    if (self.startTriggerChannel is not None) and ((self.videoSyncChannel is not None) or (self.audioSyncChannel is not None)):
+                        # Configure task to wait for a digital pulse on the specified channel.
+                        trigTask.triggers.arm_start_trigger.dig_edge_src=self.startTriggerChannel
+                        trigTask.triggers.arm_start_trigger.trig_type=TriggerType.DIGITAL_EDGE
+                        trigTask.triggers.arm_start_trigger.dig_edge_edge=Edge.RISING
                     trigTask.timing.cfg_implicit_timing(sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS)
 
                     # Set shared values so other processes can get actual a/v frequencies
