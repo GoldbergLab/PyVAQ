@@ -14,7 +14,7 @@ import itertools
 import ffmpegWriter as fw
 import nidaqmx
 from nidaqmx.stream_readers import AnalogMultiChannelReader
-from nidaqmx.constants import Edge
+from nidaqmx.constants import Edge, TriggerType
 from SharedImageQueue import SharedImageSender
 import traceback
 import unicodedata
@@ -909,7 +909,7 @@ class Synchronizer(StateMachineProcess):
                         # Configure task to wait for a digital pulse on the specified channel.
                         trigTask.triggers.arm_start_trigger(
                             dig_edge_src=self.startTriggerChannel,
-                            trig_type=Edge.DIGITAL_EDGE,
+                            trig_type=TriggerType.DIGITAL_EDGE,
                             dig_edge_edge=Edge.RISING
                         )
                     if self.videoSyncChannel is not None:
