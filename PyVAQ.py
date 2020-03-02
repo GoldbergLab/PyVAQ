@@ -496,7 +496,7 @@ def discoverDAQTerminals():
     s = nisys.System.local()
     channels = {}
     for d in s.devices:
-        channels[d.name] = [c.name for c in d.terminals]
+        channels[d.name] = d.terminals
     return channels
 
 def discoverDAQClockChannels():
