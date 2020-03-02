@@ -492,6 +492,13 @@ def discoverDAQAudioChannels():
         channels[d.name] = [c.name for c in d.ai_physical_chans]
     return channels
 
+def discoverDAQDigitalChannels():
+    s = nisys.System.local()
+    channels = {}
+    for d in s.devices:
+        channels[d.name] = [c.name for c in d.di_lines]
+    return channels
+
 def discoverDAQClockChannels():
     s = nisys.System.local()
     channels = {}
@@ -1050,6 +1057,7 @@ him know. Otherwise, I had nothing to do with it.
 
         availableAudioChannels = flattenList(discoverDAQAudioChannels().values())
         availableClockChannels = flattenList(discoverDAQClockChannels().values()) + ['None']
+        availableDigitalChannels = flattenList(discoverDAQDigitalChannels().values()) + ['None']
         availableCamSerials = discoverCameras()
 
         params = []
@@ -1063,7 +1071,7 @@ him know. Otherwise, I had nothing to do with it.
             params.append(Param(name='Audio Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI4", description="This must match your selection for Audio Sync Channel. Check DAQ pinout for matching PFI channel."))
             params.append(Param(name='Video Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI5", description="This must match your selection for Video Sync Channel. Check DAQ pinout for matching PFI channel."))
         params.append(Param(name='Start acquisition immediately', widgetType=Param.MONOCHOICE, options=['Yes', 'No'], default='Yes'))
-        params.append(Param(name='Acquisition start trigger channel', widgetType=Param.TEXT, options=None, default='None'))
+        params.append(Param(name='Acquisition start trigger channel', widgetType=Param.MONOCHOICE, options=availableDigitalChannels, default="None", description="Choose a channel that will trigger the acquisition start with a rising edge. Leave as None if you wish the acquisition to start without waiting for a digital trigger."))
 
         choices = None
         if len(params) > 0:
