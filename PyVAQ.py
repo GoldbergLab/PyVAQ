@@ -1057,7 +1057,7 @@ him know. Otherwise, I had nothing to do with it.
 
         availableAudioChannels = flattenList(discoverDAQAudioChannels().values())
         availableClockChannels = flattenList(discoverDAQClockChannels().values()) + ['None']
-        availableDigitalChannels = flattenList(discoverDAQDigitalChannels().values()) + ['None']
+        availableDigitalChannels = flattenList(discoverDAQTerminals().values()) + ['None']
         availableCamSerials = discoverCameras()
 
         params = []
