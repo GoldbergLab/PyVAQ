@@ -26,28 +26,33 @@ class Param():
         self.parser = parser
         self.var = None
         self.widgets = []
-        self.frame = None
+        self.mainFrame = None
+        self.widgetFrame = None
         self.label = None
 
-    def createWidgets(self, parent):
-        self.frame = ttk.LabelFrame(parent, text=self.name)
-        startRow = 0
+    def createWidgets(self, parent, maxHeight=None):
+        self.mainFrame = ttk.LabelFrame(parent, text=self.name)
+        self.widgetFrame = ttk.Frame(self.mainFrame)
         if self.description is not None and len(self.description) > 0:
-            labelWidth = max([len(self.name), 10]) * 6
-            self.label = ttk.Label(self.frame, text=self.description, wraplength=labelWidth)
-            self.label.grid(row=0, sticky=tk.NW)
-            startRow = 1
+            labelWidth = max([len(self.name), 10]) * 10
+            self.label = ttk.Label(self.mainFrame, text=self.description, wraplength=labelWidth)
         if self.widgetType == Param.TEXT:
             self.var = tk.StringVar()
-            entry = ttk.Entry(self.frame, textvariable=self.var)
-            entry.grid(row=startRow, sticky=tk.NW)
+            entry = ttk.Entry(self.widgetFrame, textvariable=self.var)
+            entry.grid(row=0, column=0, sticky=tk.NW)
             self.widgets.append(entry)
             self.var.set(self.default)
         elif self.widgetType == Param.MONOCHOICE:
             self.var = tk.StringVar()
             for k, option in enumerate(self.options):
-                rbutton = ttk.Radiobutton(self.frame, text=option, variable=self.var, value=option)
-                rbutton.grid(row=startRow+k, column=0, sticky=tk.NW)
+                rbutton = ttk.Radiobutton(self.widgetFrame, text=option, variable=self.var, value=option)
+                if maxHeight is None:
+                    row = k
+                    column = 0
+                else:
+                    row = (k % maxHeight)
+                    column = k // maxHeight
+                rbutton.grid(row=row, column=column, sticky=tk.NW)
                 self.widgets.append(rbutton)
                 self.var.set(self.default)
         elif self.widgetType == Param.MULTICHOICE:
@@ -55,13 +60,19 @@ class Param():
             for k, option in enumerate(self.options):
                 var = tk.StringVar()
                 self.var.append(var)
-                cbutton = ttk.Checkbutton(self.frame, text=option, variable=var, onvalue=option, offvalue='')
-                cbutton.grid(row=startRow+k+1, column=0, sticky=tk.NW)
+                cbutton = ttk.Checkbutton(self.widgetFrame, text=option, variable=var, onvalue=option, offvalue='')
+                if maxHeight is None:
+                    row = k
+                    column = 0
+                else:
+                    row = ((k+1) % maxHeight)
+                    column = (k+1) // maxHeight
+                cbutton.grid(row=row, column=column, sticky=tk.NW)
                 self.widgets.append(cbutton)
 
             self.selectAllVar = tk.IntVar()
-            self.selectAllButton = ttk.Checkbutton(self.frame, text="Select all", variable=self.selectAllVar, onvalue=1, offvalue=0)
-            self.selectAllButton.grid(row=startRow, column=0, sticky=tk.NW)
+            self.selectAllButton = ttk.Checkbutton(self.widgetFrame, text="Select all", variable=self.selectAllVar, onvalue=1, offvalue=0)
+            self.selectAllButton.grid(row=0, column=0, sticky=tk.NW)
             self.selectAllVar.set(0)
             def selectAllOrNoneCallbackFactory(savar, cbuttons, vars):
                 def callback(*args):
@@ -74,15 +85,19 @@ class Param():
                 return callback
             saCallback = selectAllOrNoneCallbackFactory(self.selectAllVar, self.widgets, self.var)
             self.selectAllVar.trace('w', saCallback)
+        if self.label is not None:
+            self.label.grid(row=0, column=0, sticky=tk.NW)
+        self.widgetFrame.grid(row=1, column=0, sticky=tk.NW)
+
 
     def grid(self, *args, **kwargs):
-        if self.frame is not None:
-            self.frame.grid(*args, **kwargs)
+        if self.mainFrame is not None:
+            self.mainFrame.grid(*args, **kwargs)
         else:
             raise AttributeError('You must call createWidgets on this Param object before calling grid')
 
     def get(self):
-        if self.frame is not None:
+        if self.mainFrame is not None:
             if self.widgetType in [Param.TEXT, Param.MONOCHOICE]:
                 return self.parser(self.var.get())
             elif self.widgetType in [Param.MULTICHOICE]:
@@ -97,7 +112,7 @@ class ParamDialog(tk.Toplevel):
 
     def __init__(self, parent, params=[], title=None, arrangement=HORIZONTAL, maxHeight=None):
         # params should be a list of Param objects
-        # maxHeight is the maximum number of choice widgets that can be stacked before wrapping horizontally. Leave as "None" to disable wrapping.
+        # maxHeight is the maximum number of parameter options that can be stacked before wrapping horizontally. Leave as "None" to disable wrapping.
         tk.Toplevel.__init__(self, parent)
         self.transient(parent)
         if title:
@@ -130,18 +145,14 @@ class ParamDialog(tk.Toplevel):
     def createParameterWidgets(self):
         # Create widgets for inputting parameters
         if self.arrangement == ParamDialog.BOX:
-            nW, nH = getOptimalBoxGrid(len(self.params, maxHeight=self.maxHeight))
+            nW, nH = getOptimalBoxGrid(len(self.params))
         for k, param in enumerate(self.params):
-            param.createWidgets(self.paramFrame)
+            param.createWidgets(self.paramFrame, maxHeight=self.maxHeight)
             if self.arrangement == ParamDialog.HORIZONTAL:
                 row=0; col=k;
                 self.paramFrame.columnconfigure(col, weight=1)
             elif self.arrangement == ParamDialog.VERTICAL:
-                if self.maxHeight is None:
-                    row=k; col=0;
-                else:
-                    row=k % self.maxHeight
-                    col=k // self.maxHeight
+                row=k; col=0;
                 self.paramFrame.rowconfigure(row, weight=1)
             elif self.arrangement == ParamDialog.BOX:
                 row = k // nW
