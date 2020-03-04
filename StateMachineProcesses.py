@@ -1719,7 +1719,7 @@ class AudioAcquirer(StateMachineProcess):
 
                     data = np.zeros((len(self.inputChannels), self.chunkSize), dtype='float')   # A pre-allocated array to receive audio data
                     processedData = data.copy()
-                    readTask = nidaqmx.Task(new_task_name="audioTask!")                            # Create task
+                    readTask = nidaqmx.Task(new_task_name="audioTask")                            # Create task
                     reader = AnalogMultiChannelReader(readTask.in_stream)  # Set up an analog stream reader
                     for inputChannel in self.inputChannels:
                         readTask.ai_channels.add_ai_voltage_chan(               # Set up analog input channel
