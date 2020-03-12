@@ -1267,7 +1267,11 @@ him know. Otherwise, I had nothing to do with it.
         if newMode == "Audio":
             if self.audioTriggerProcess is not None:
                 self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STARTANALYZE, None))
+                self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(triggerWriters=True)))
             self.autoUpdateAudioAnalysisMonitors()
+        elif newMode == "Continuous":
+            if self.audioTriggerProcess is not None:
+                self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(triggerWriters=False)))
         else:
             if self.audioTriggerProcess is not None:
                 self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOPANALYZE, None))
@@ -2035,6 +2039,15 @@ him know. Otherwise, I had nothing to do with it.
             self.videoAcquireProcesses[camSerial] = videoAcquireProcess
             self.videoWriteProcesses[camSerial] = videoWriteProcess
 
+        self.continuousTriggerProcess = ContinuousTriggerer(
+            startTime=startTime,
+            recordPeriod=1,
+            verbose=self.continuousTriggerVerbose,
+            audioMessageQueue=self.audioWriteProcess.msgQueue,
+            videoMessageQueues=dict([(camSerial, self.videoWriteProcesses[camSerial].msgQueue) for camSerial in self.videoWriteProcesses]),
+            stdoutQueue=self.StdoutManager.queue
+        )
+
         if self.audioAcquireProcess is not None:
             self.audioTriggerProcess = AudioTriggerer(
                 audioQueue=self.audioAcquireProcess.analysisQueue,
@@ -2051,20 +2064,12 @@ him know. Otherwise, I had nothing to do with it.
                 multiChannelStartBehavior=p["multiChannelStartBehavior"],
                 multiChannelStopBehavior=p["multiChannelStopBehavior"],
                 bandpassFrequencies=(p['triggerLowBandpass'], p['triggerHighBandpass']),
+                continuousTriggerMsgQueue=self.continuousTriggerProcess.msgQueue,
                 verbose=self.audioTriggerVerbose,
                 audioMessageQueue=self.audioWriteProcess.msgQueue,
                 videoMessageQueues=dict([(camSerial, self.videoWriteProcesses[camSerial].msgQueue) for camSerial in self.videoWriteProcesses]),
                 stdoutQueue=self.StdoutManager.queue
                 )
-
-        self.continuousTriggerProcess = ContinuousTriggerer(
-            startTime=startTime,
-            recordPeriod=1,
-            verbose=self.continuousTriggerVerbose,
-            audioMessageQueue=self.audioWriteProcess.msgQueue,
-            videoMessageQueues=dict([(camSerial, self.videoWriteProcesses[camSerial].msgQueue) for camSerial in self.videoWriteProcesses]),
-            stdoutQueue=self.StdoutManager.queue
-        )
 
         if len(self.audioDAQChannels) > 0:
             self.audioTriggerProcess.start()

@@ -96,7 +96,7 @@ class Stopwatch:
 class Trigger():
     newid = itertools.count().__next__   # Source of this clever little idea: https://stackoverflow.com/a/1045724/1460057
     # A class to represent a trigger object
-    def __init__(self, startTime, triggerTime, endTime):
+    def __init__(self, startTime, triggerTime, endTime, tags=set()):
         # times in seconds
         if not (endTime >= triggerTime >= startTime):
             raise ValueError("Trigger times must satisfy startTime <= triggerTime <= endTime")
@@ -104,6 +104,16 @@ class Trigger():
         self.startTime = startTime
         self.triggerTime = triggerTime
         self.endTime = endTime
+        self.tags = tags
+
+    def tagFilename(self, filename, separator='_'):
+        if len(self.tags) == 0:
+            return filename
+        root, ext = os.path.splitext(filename)
+        path, name = os.path.split(root)
+        name = name + separator + separator.join(self.tags)
+        taggedPath = os.path.join(path, name+ext)
+        return taggedPath
 
     def state(self, time):
         # Given a frame/sample count and frame/sample rate:
@@ -118,6 +128,26 @@ class Trigger():
         if time > self.endTime:
             return time - self.endTime
         return 0
+
+    def overlap(self, otherTrigger):
+        # Given another trigger, return the overlap information for the other
+        #   trigger and this trigger.
+        #   [-, -] = other trigger is entirely before this trigger
+        #   [-, 0] = other trigger overlaps the beginning of this trigger
+        #   [-, +] = other trigger fully envelops this trigger
+        #   [0, -] = this or the other trigger are invalid (or both)
+        #   [0, 0] = these triggers have identical start and end times
+        #   [0, +] = other trigger overlaps the end of this trigger
+        #   [+, -] = this or the other trigger are invalid (or both)
+        #   [+, 0] = this or the other trigger are invalid (or both)
+        #   [+, +] = other trigger is entirely after this trigger
+        return [self.state(otherTrigger.startTime), self.state(otherTrigger.endTime)]
+
+    def overlaps(self, otherTrigger):
+        # Returns a boolean indicating whether or not this trigger overlaps
+        #   otherTrigger. Returns False if either trigger is invalid
+        overlap = self.overlap(otherTrigger)
+        return (overlap[0] * overlap[1]) <= 0 and overlap[0] <= overlap[1]
 
 class AudioChunk():
     # A class to wrap a chunk of audio data.
@@ -611,7 +641,7 @@ class AVMerger(StateMachineProcess):
                             for videoFileEvent in videoFileEvents:
                                 # Add/update dictionary to reflect this video file
                                 kwargs['videoFile'] = videoFileEvent['filePath']
-                                fileNameTags = [videoFileEvent['streamID'], 'merged', generateTimeString(videoFileEvent['trigger'])]
+                                fileNameTags = [videoFileEvent['streamID'], 'merged', generateTimeString(videoFileEvent['trigger'])] + videoFileEvent['trigger'].tags
                                 kwargs['outputFile'] = generateFileName(directory=self.directory, baseName=self.baseFileName, extension='.avi', tags=fileNameTags)
                                 kwargs['compression'] = self.compression
                                 # Substitute strings into command template
@@ -633,7 +663,7 @@ class AVMerger(StateMachineProcess):
                             kwargs = dict(
                                 [('audioFile{k}'.format(k=k), audioFileEvents[k]['filePath']) for k in range(len(audioFileEvents))] + \
                                 [('videoFile{k}'.format(k=k), videoFileEvents[k]['filePath']) for k in range(len(videoFileEvents))])
-                            fileNameTags = [videoFileEvent['streamID'], 'montage', generateTimeString(videoFileEvent['trigger'])]
+                            fileNameTags = [videoFileEvent['streamID'], 'montage', generateTimeString(videoFileEvent['trigger'])] + videoFileEvent['trigger'].tags
                             kwargs['outputFile'] = generateFileName(directory=self.directory, baseName=self.baseFileName, extension='.avi', tags=fileNameTags)
                             kwargs['compression'] = self.compression
                             mergeCommand = mergeCommandTemplate.format(**kwargs)
@@ -1157,7 +1187,8 @@ class AudioTriggerer(StateMachineProcess):
         'verbose',
         'scheduleEnabled',
         'scheduleStartTime',
-        'scheduleStopTime'
+        'scheduleStopTime',
+        'triggerWriters'
         ]
 
     def __init__(self,
@@ -1182,6 +1213,8 @@ class AudioTriggerer(StateMachineProcess):
                 verbose=False,
                 audioMessageQueue=None,             # Queue to send triggers to audio writers
                 videoMessageQueues={},              # Queues to send triggers to video writers
+                triggerWriters=True,                # Send triggers to writer processes?
+                continuousTriggerMsgQueue=None,
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.audioQueue = audioQueue
@@ -1191,6 +1224,8 @@ class AudioTriggerer(StateMachineProcess):
         self.analysisMonitorQueue = mp.Queue()  # A queue to send analysis results to GUI for monitoring
         self.audioMessageQueue = audioMessageQueue
         self.videoMessageQueues = videoMessageQueues
+        self.triggerWriters = triggerWriters
+        self.continuousTriggerMsgQueue = continuousTriggerMsgQueue
         self.audioFrequencyVar = audioFrequency
         self.audioFrequency = None
         self.chunkSize = chunkSize
@@ -1418,7 +1453,8 @@ class AudioTriggerer(StateMachineProcess):
                                 activeTrigger = Trigger(
                                     startTime = chunkStartTime - self.preTriggerTime,
                                     triggerTime = chunkStartTime,
-                                    endTime = chunkStartTime - self.preTriggerTime + self.maxAudioTriggerTime)
+                                    endTime = chunkStartTime - self.preTriggerTime + self.maxAudioTriggerTime,
+                                    tags = set(['A']))
                                 self.sendTrigger(activeTrigger)
                                 if self.verbose >= 1: self.log("Send new trigger!")
                             elif activeTrigger is not None and lowTrigger:
@@ -1588,6 +1624,8 @@ class AudioTriggerer(StateMachineProcess):
         self.audioMessageQueue.put((AudioWriter.TRIGGER, trigger))
         for camSerial in self.videoMessageQueues:
             self.videoMessageQueues[camSerial].put((VideoWriter.TRIGGER, trigger))
+        if self.continuousTriggerMsgQueue is not None:
+            self.continuousTriggerMsgQueue.put((ContinuousTriggerer.TAGTRIGGER, ))
 
 class AudioAcquirer(StateMachineProcess):
     # Class for acquiring an audio signal (or any analog signal) at a rate that
@@ -2170,7 +2208,7 @@ class AudioWriter(StateMachineProcess):
                         if audioFile is None:
                             # Start new audio file
                             audioFileStartTime = audioChunk.chunkStartTime
-                            audioFileNameTags = [','.join(self.channelNames), generateTimeString(triggers[0])]
+                            audioFileNameTags = [','.join(self.channelNames), generateTimeString(triggers[0])] + triggers[0].tags
                             audioFileName = generateFileName(directory=self.audioDirectory, baseName=self.audioBaseFileName, extension='.wav', tags=audioFileNameTags)
                             ensureDirectoryExists(self.audioDirectory)
                             audioFile = wave.open(audioFileName, 'w')
@@ -3006,7 +3044,7 @@ class VideoWriter(StateMachineProcess):
                         if videoFileInterface is None:
                             # Start new video file
                             videoFileStartTime = frameTime
-                            videoFileNameTags = [self.camSerial, generateTimeString(triggers[0])]
+                            videoFileNameTags = [self.camSerial, generateTimeString(triggers[0])] + triggers[0].tags
                             videoFileName = generateFileName(directory=self.videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
                             ensureDirectoryExists(self.videoDirectory)
                             if self.videoWriteMethod == "PySpin":
@@ -3304,6 +3342,7 @@ class ContinuousTriggerer(StateMachineProcess):
     STOP = 'msg_stop'
     EXIT = 'msg_exit'
     SETPARAMS = 'msg_setParams'
+    TAGTRIGGER = 'tag_trigger'      # Send a trigger that indicates the videos that overlap with that trigger should be tagged with trigger's tags
 
     settableParams = [
         'continuousTriggerPeriod',
@@ -3357,6 +3396,7 @@ class ContinuousTriggerer(StateMachineProcess):
         state = ContinuousTriggerer.STOPPED
         nextState = ContinuousTriggerer.STOPPED
         lastState = ContinuousTriggerer.STOPPED
+        tagTriggers = []   # A list of triggers received from other processes that will be used to tag overlapping audio/video files
         msg = ''; arg = None
 
         while True:
@@ -3373,6 +3413,7 @@ class ContinuousTriggerer(StateMachineProcess):
                     try:
                         msg, arg = self.msgQueue.get(block=True)
                         if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        elif msg == ContinuousTriggerer.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we haven't started yet
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -3405,6 +3446,7 @@ class ContinuousTriggerer(StateMachineProcess):
                     try:
                         msg, arg = self.msgQueue.get(block=False)
                         if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        elif msg == ContinuousTriggerer.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we haven't started yet
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -3439,15 +3481,21 @@ class ContinuousTriggerer(StateMachineProcess):
                                 startTime = newTriggerTime,
                                 triggerTime = newTriggerTime,
                                 endTime = newTriggerTime + self.recordPeriod)
+
                             lastTriggerTime = newTriggerTime
                             self.sendTrigger(newTrigger)
                             activeTriggers.append(newTrigger)
                             if self.verbose >= 1: self.log("Sent new trigger!")
 
+                            self.updateTriggerTags(activeTriggers, tagTriggers)
+
+                            self.purgeOldTagTriggers(tagTriggers, currentTime)
+
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
                         if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        elif msg == ContinuousTriggerer.TAGTRIGGER: self.updateTagTriggers(tagTriggers, arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -3470,6 +3518,7 @@ class ContinuousTriggerer(StateMachineProcess):
                     try:
                         msg, arg = self.msgQueue.get(block=False)
                         if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        elif msg == ContinuousTriggerer.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we are stopping
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -3498,6 +3547,7 @@ class ContinuousTriggerer(StateMachineProcess):
                     try:
                         msg, arg = self.msgQueue.get(block=False)
                         if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        elif msg == ContinuousTriggerer.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we are in an error state
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -3564,3 +3614,40 @@ class ContinuousTriggerer(StateMachineProcess):
         self.audioMessageQueue.put((AudioWriter.TRIGGER, trigger))
         for camSerial in self.videoMessageQueues:
             self.videoMessageQueues[camSerial].put((VideoWriter.TRIGGER, trigger))
+
+    def purgeOldTagTriggers(self, tagTriggers, currentTime):
+        # Purge tagTriggers that are entirely in the past
+        oldTagTriggers = [tagTrigger for tagTrigger in tagTriggers if tagTrigger.state(currentTime) > 0]
+        for oldTagTrigger in oldTagTriggers:
+            tagTriggers.remove(oldTagTrigger)
+
+    def updateTagTriggers(self, tagTriggers, newTagTrigger):
+        # Update the list of tag triggers with the newly arrived tag trigger
+        try:
+            triggerIndex = [tagTrigger.id for tagTrigger in tagTriggers].index(newTagTrigger.id)
+            # This is an updated trigger, not a new trigger
+            if self.verbose >= 2: self.log("Updating tag trigger")
+            if triggerIndex > 0 and newTagTrigger.startTime > newTagTrigger.endTime:
+                # End time has been set before start time, and this is not the active trigger, so delete this trigger.
+                del tagTriggers[triggerIndex]
+                if self.verbose >= 2: self.log("Deleting invalidated tag trigger")
+            else:
+                tagTriggers[triggerIndex] = newTagTrigger
+        except ValueError:
+            # This is a new trigger
+            if self.verbose >= 2: self.log("Adding new tag trigger")
+            tagTriggers.append(newTagTrigger)
+
+    def updateTriggerTags(self, activeTriggers, tagTriggers):
+        # Update tags for currently active triggers
+        for activeTrigger in activeTriggers:
+            tags = set()
+            for tagTrigger in tagTriggers:
+                if activeTrigger.overlaps(tagTrigger):
+                    tags |= tagTrigger.tags
+            if len(tags) > 0 and tags != activeTrigger.tags:
+                # Tags for this trigger have changed
+                if self.verbose >= 1: self.log("Applying tags to trigger: " + ','.join(tags))
+                activeTrigger.tags = tags
+                # Resend updated trigger because its tags have changed
+                self.sendTrigger(activeTrigger)
