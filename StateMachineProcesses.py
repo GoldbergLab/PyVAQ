@@ -641,7 +641,7 @@ class AVMerger(StateMachineProcess):
                             for videoFileEvent in videoFileEvents:
                                 # Add/update dictionary to reflect this video file
                                 kwargs['videoFile'] = videoFileEvent['filePath']
-                                fileNameTags = [videoFileEvent['streamID'], 'merged', generateTimeString(videoFileEvent['trigger'])] + videoFileEvent['trigger'].tags
+                                fileNameTags = [videoFileEvent['streamID'], 'merged', generateTimeString(videoFileEvent['trigger'])] + list(videoFileEvent['trigger'].tags)
                                 kwargs['outputFile'] = generateFileName(directory=self.directory, baseName=self.baseFileName, extension='.avi', tags=fileNameTags)
                                 kwargs['compression'] = self.compression
                                 # Substitute strings into command template
@@ -663,7 +663,7 @@ class AVMerger(StateMachineProcess):
                             kwargs = dict(
                                 [('audioFile{k}'.format(k=k), audioFileEvents[k]['filePath']) for k in range(len(audioFileEvents))] + \
                                 [('videoFile{k}'.format(k=k), videoFileEvents[k]['filePath']) for k in range(len(videoFileEvents))])
-                            fileNameTags = [videoFileEvent['streamID'], 'montage', generateTimeString(videoFileEvent['trigger'])] + videoFileEvent['trigger'].tags
+                            fileNameTags = [videoFileEvent['streamID'], 'montage', generateTimeString(videoFileEvent['trigger'])] + list(videoFileEvent['trigger'].tags)
                             kwargs['outputFile'] = generateFileName(directory=self.directory, baseName=self.baseFileName, extension='.avi', tags=fileNameTags)
                             kwargs['compression'] = self.compression
                             mergeCommand = mergeCommandTemplate.format(**kwargs)
@@ -2208,7 +2208,7 @@ class AudioWriter(StateMachineProcess):
                         if audioFile is None:
                             # Start new audio file
                             audioFileStartTime = audioChunk.chunkStartTime
-                            audioFileNameTags = [','.join(self.channelNames), generateTimeString(triggers[0])] + triggers[0].tags
+                            audioFileNameTags = [','.join(self.channelNames), generateTimeString(triggers[0])] + list(triggers[0].tags)
                             audioFileName = generateFileName(directory=self.audioDirectory, baseName=self.audioBaseFileName, extension='.wav', tags=audioFileNameTags)
                             ensureDirectoryExists(self.audioDirectory)
                             audioFile = wave.open(audioFileName, 'w')
@@ -3044,7 +3044,7 @@ class VideoWriter(StateMachineProcess):
                         if videoFileInterface is None:
                             # Start new video file
                             videoFileStartTime = frameTime
-                            videoFileNameTags = [self.camSerial, generateTimeString(triggers[0])] + triggers[0].tags
+                            videoFileNameTags = [self.camSerial, generateTimeString(triggers[0])] + list(triggers[0].tags)
                             videoFileName = generateFileName(directory=self.videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
                             ensureDirectoryExists(self.videoDirectory)
                             if self.videoWriteMethod == "PySpin":
