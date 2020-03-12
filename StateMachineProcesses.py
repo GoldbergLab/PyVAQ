@@ -3060,6 +3060,7 @@ class VideoWriter(StateMachineProcess):
 
                         # Write video frame to file that was previously retrieved from the buffer
                         if self.verbose >= 3:
+                            self.log("Wrote image ID " + str(imageID))
                             timeWrote += 1/self.frameRate
                             self.log("Video time wrote ="+str(timeWrote))
 
