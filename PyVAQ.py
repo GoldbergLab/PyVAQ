@@ -699,7 +699,7 @@ class PyVAQ:
 
         self.mergeFileWidget = FileWritingEntry(
             self.mergeFrame,
-            defaultDirectory=r'C:\Users\Brian Kardon\Documents\Cornell Lab Tech non-syncing\PyVAQ test videos\merge',
+            defaultDirectory=r'D:\Merge',
             defaultBaseFileName='mergeWrite',
             purposeText='merging audio/video',
             text="Merged A/V Writing"

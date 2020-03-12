@@ -32,7 +32,7 @@ class AudioMonitor(ttk.LabelFrame):
 
         self.fileWidget = FileWritingEntry(
             self,
-            defaultDirectory=r'C:\Users\Brian Kardon\Documents\Cornell Lab Tech non-syncing\PyVAQ test videos\audio',
+            defaultDirectory=r'E:\Audio',
             defaultBaseFileName='audioWrite',
             purposeText='audio writing',
             text="Audio Writing"
@@ -161,7 +161,7 @@ class CameraMonitor(ttk.LabelFrame):
 
         self.fileWidget = FileWritingEntry(
             self,
-            defaultDirectory=r'C:\Users\Brian Kardon\Documents\Cornell Lab Tech non-syncing\PyVAQ test videos\video',
+            defaultDirectory=r'F:\Video1',
             defaultBaseFileName='videoWrite',
             purposeText='video writing',
             text="Video Writing - {camSerial}".format(camSerial=self.camSerial)
