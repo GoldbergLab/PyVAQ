@@ -5,7 +5,7 @@ import numpy as np
 import copy
 
 def parseLog(logText):
-    rawLogEntries = re.split(r'\|\|\ \*+\ \/\\ ([a-zA-Z0-9\ \_]*) \/\\ \**', logText, flags=re.MULTILINE)
+    rawLogEntries = re.split(r'\|\|\ ([a-zA-Z0-9]*\ \-\ )?\*+\ \/\\ ([a-zA-Z0-9\ \_]*) \/\\ \**', logText, flags=re.MULTILINE)
     logEntries = {}
     for k in range(len(rawLogEntries)//2):
         index = k
