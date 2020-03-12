@@ -4,3 +4,5 @@
 /Cruft/
 # Ignore log files:
 /logs/
+# Ignore specific files:
+/TODO.txt
