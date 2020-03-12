@@ -29,11 +29,11 @@ def summarizeLog(logEntries, filteredLogEntries):
         if key in logEntries:
             count = str(len(logEntries[key]))
         else:
-            count = ''
+            count = '.'
         if key in filteredLogEntries:
             filtCount = str(len(filteredLogEntries[key]))
         else:
-            filtCount = ''
+            filtCount = '.'
         lines.append([key, count, filtCount])
         maxKeyLength = max(maxKeyLength, len(key))
         maxCountLength = max(maxCountLength, len(count), len(filtCount))
@@ -98,13 +98,13 @@ filteredLogEntries = copy.deepcopy(logEntries)
 ordered = False
 
 summarizeLog(logEntries, filteredLogEntries)
-
+print()
 
 while True:
+    printEntries = True
     filtInput = input("Enter a filtering command ('h' for help): ")+' '
     filtType, filt = filtInput.split(' ', maxsplit=1)
-    newFilteredLogEntries = filteredLogEntries
-    filteredCount = 0
+    newFilteredLogEntries = copy.deepcopy(filteredLogEntries)
     if filtType == 'i':
         # INDEX FILTERING
         newFilteredLogEntries = {}
@@ -118,7 +118,6 @@ while True:
                     if key not in newFilteredLogEntries:
                         newFilteredLogEntries[key] = [];
                     newFilteredLogEntries[key].append(entry)
-                    filteredCount += 1
     elif filtType == 'r':
         # REGEX FILTERING
         newFilteredLogEntries = {}
@@ -135,10 +134,11 @@ while True:
                     if key not in newFilteredLogEntries:
                         newFilteredLogEntries[key] = [];
                     newFilteredLogEntries[key].append(entry)
-                    filteredCount += 1
     elif filtType == 'c':
+        printEntries = False
         filterList = []
         filteredLogEntries = copy.deepcopy(logEntries)
+        newFilteredLogEntries = copy.deepcopy(filteredLogEntries)
         print('Clearing all filters')
     elif filtType == 'o':
         ordered = not ordered
@@ -147,37 +147,55 @@ while True:
         else:
             print('Index ordering is now off')
     elif filtType == 'h':
+        printEntries = False
         # Help with filtering:
         helptext = '''
-        Filter syntax:
-            Regex filtering:
-                r REGEX
-                    REGEX = a regular expression to filter by
-                r not REGEX
-                    Displays all entries that do NOT match the regex
-            Index filtering:
-                i MID RAD
-                    Displays all entries numnbers from MID - RAD to MID + RAD'''
+Filter syntax:
+    Regex filtering:
+        r REGEX
+            REGEX = a regular expression to filter by
+        r not REGEX
+            Displays all entries that do NOT match the regex
+    Index filtering:
+        i MID RAD
+            Displays all entries numnbers from MID - RAD to MID + RAD
+    Toggle ordering
+        o
+        Toggle between printing ordered by time index, or sorted by log type
+    Display help
+        h
+        Print help text'''
+        print(helptext)
+        print()
     else:
+        printEntries = False
         print('Filter command not recognized. Type "h" for help.')
         continue
 
-    filteredLogEntries = newFilteredLogEntries
+    filteredLogEntries = copy.deepcopy(newFilteredLogEntries)
 
-    if filteredCount > 100:
-        howMany= input('There are {n} entries. Display all/some/none (a/s/n)? '.format(n=filteredCount))
-        if howMany == 'a':
+    if printEntries:
+        filteredCount = sum([len(filteredLogEntries[key]) for key in filteredLogEntries])
+
+        if filteredCount > 100:
+            howMany = input('There are {n} entries. Display all/some/none (a/s/n)? '.format(n=filteredCount))
+            if howMany == 'a':
+                printLog(filteredLogEntries, abridge=False, ordered=ordered)
+            elif howMany == 's':
+                printLog(filteredLogEntries, abridge=True, ordered=ordered)
+        else:
             printLog(filteredLogEntries, abridge=False, ordered=ordered)
-        elif howMany == 's':
-            printLog(filteredLogEntries, abridge=True, ordered=ordered)
-    else:
-        printLog(filteredLogEntries, abridge=False, ordered=ordered)
 
-    print()
+        print()
 
     summarizeLog(logEntries, filteredLogEntries)
-    print('Filters:')
-    print('\n'.join(filterList))
+    print()
+
+    if len(filterList) > 0:
+        print('Filters:')
+        for filt in filterList:
+            print('\t'+filt)
+        print()
 
 
 #errorList = re.findall('([Ee]rror in [a-zA-Z\ ]*)([^\|]*)\|\|', logText, flags=(re.MULTILINE | re.DOTALL))
