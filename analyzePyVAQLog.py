@@ -13,13 +13,37 @@ def parseLog(logText):
         content = rawLogEntries[2*k].strip().splitlines()
         if state not in logEntries:
             logEntries[state] = []
-        logEntries[state].append((index, content))
+        logEntries[state].append((index, state, content))
     return logEntries
 
-def summarizeLog(logEntries):
+def summarizeLog(logEntries, filteredLogEntries):
     print("SUMMARY OF LOG MESSAGES:")
-    for key in logEntries.keys():
-        print(key + ": " + str(len(logEntries[key])))
+    lines = []
+    allKeys = list(set(logEntries.keys()) | set(filteredLogEntries.keys()))
+    keyHeader = 'Entry type'
+    countHeader = 'Total #'
+    filtCountHeader = 'Filtered #'
+    maxKeyLength = len(keyHeader)
+    maxCountLength = max(len(countHeader), len(filtCountHeader))
+    for key in allKeys:
+        if key in logEntries:
+            count = str(len(logEntries[key]))
+        else:
+            count = ''
+        if key in filteredLogEntries:
+            filtCount = str(len(filteredLogEntries[key]))
+        else:
+            filtCount = ''
+        lines.append([key, count, filtCount])
+        maxKeyLength = max(maxKeyLength, len(key))
+        maxCountLength = max(maxCountLength, len(count), len(filtCount))
+
+    tableSpec = '{key:{fill}<{keyWidth}}{filtCount:{fill}<{countWidth}}{count:{fill}<{countWidth}}'
+    fillChar = ' '
+    print(tableSpec.format(key=keyHeader, count=countHeader, filtCount=filtCountHeader, fill=fillChar, keyWidth=maxKeyLength+1, countWidth=maxCountLength+1))
+    for line in lines:
+        key, count, filtCount = line
+        print(tableSpec.format(key=key, count=count, filtCount=filtCount, fill=fillChar, keyWidth=maxKeyLength+1, countWidth=maxCountLength+1))
 
 def printLog(logEntries, abridge=False, ordered=False):
     if ordered:
@@ -69,40 +93,76 @@ if len(sampList) * len(frameList) > 0:
     print('Dropped frames:', max(abs((1 + np.array(imageIDList)) - np.array(frameList))))
 
 logEntries = parseLog(logText)
-summarizeLog(logEntries)
+filterList = []
+filteredLogEntries = copy.deepcopy(logEntries)
+ordered = False
+
+summarizeLog(logEntries, filteredLogEntries)
+
 
 while True:
-    filt = input("Enter a regex keyword to filter the log entries by or 'i' to search by index: ")
-    filteredLogEntries = {}
+    filtInput = input("Enter a filtering command ('h' for help): ")+' '
+    filtType, filt = filtInput.split(' ', maxsplit=1)
+    newFilteredLogEntries = filteredLogEntries
     filteredCount = 0
-    if filt == 'i':
-        ordered=True
-        cnt, rad = [int(i) for i in input("Enter center and radius indices separated by a space: ").split(' ')]
-        entries = []
-        for key in logEntries:
-            for entry in logEntries[key]:
-                index, content = entry
-                entry = (index, key, content) # Add type into entry
+    if filtType == 'i':
+        # INDEX FILTERING
+        newFilteredLogEntries = {}
+        filterList.append(filtInput)
+        cnt, rad = [int(i) for i in filt.strip().split(' ')]
+        for key in filteredLogEntries:
+            for entry in filteredLogEntries[key]:
+                index, state, content = entry
                 if abs(index - cnt) <= rad:
-                    if key not in filteredLogEntries:
-                        filteredLogEntries[key] = [];
-                    filteredLogEntries[key].append(entry)
+                    print('Yep!')
+                    if key not in newFilteredLogEntries:
+                        newFilteredLogEntries[key] = [];
+                    newFilteredLogEntries[key].append(entry)
                     filteredCount += 1
-    else:
+    elif filtType == 'r':
+        # REGEX FILTERING
+        newFilteredLogEntries = {}
+        filterList.append(filtInput)
         negate = False
         if filt.split(' ')[0] == 'not':
             filt = filt.split(' ', maxsplit=1)[1]
             negate = True
-        ordered=False
         filtRegex = re.compile(filt, flags=re.MULTILINE)
-        for key in logEntries.keys():
-            for entry in logEntries[key]:
-                index, content = entry
+        for key in filteredLogEntries.keys():
+            for entry in filteredLogEntries[key]:
+                index, state, content = entry
                 if negate ^ bool(re.search(filtRegex, '\n'.join(content))):
-                    if key not in filteredLogEntries:
-                        filteredLogEntries[key] = [];
-                    filteredLogEntries[key].append(entry)
+                    if key not in newFilteredLogEntries:
+                        newFilteredLogEntries[key] = [];
+                    newFilteredLogEntries[key].append(entry)
                     filteredCount += 1
+    elif filtType == 'c':
+        filterList = []
+        filteredLogEntries = copy.deepcopy(logEntries)
+        print('Clearing all filters')
+    elif filtType == 'o':
+        ordered = not ordered
+        if ordered:
+            print('Index ordering is now on')
+        else:
+            print('Index ordering is now off')
+    elif filtType == 'h':
+        # Help with filtering:
+        helptext = '''
+        Filter syntax:
+            Regex filtering:
+                r REGEX
+                    REGEX = a regular expression to filter by
+                r not REGEX
+                    Displays all entries that do NOT match the regex
+            Index filtering:
+                i MID RAD
+                    Displays all entries numnbers from MID - RAD to MID + RAD'''
+    else:
+        print('Filter command not recognized. Type "h" for help.')
+        continue
+
+    filteredLogEntries = newFilteredLogEntries
 
     if filteredCount > 100:
         howMany= input('There are {n} entries. Display all/some/none (a/s/n)? '.format(n=filteredCount))
@@ -115,7 +175,9 @@ while True:
 
     print()
 
-    summarizeLog(logEntries)
+    summarizeLog(logEntries, filteredLogEntries)
+    print('Filters:')
+    print('\n'.join(filterList))
 
 
 #errorList = re.findall('([Ee]rror in [a-zA-Z\ ]*)([^\|]*)\|\|', logText, flags=(re.MULTILINE | re.DOTALL))
