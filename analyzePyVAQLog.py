@@ -5,7 +5,7 @@ import numpy as np
 import copy
 
 def parseLog(logText):
-    rawLogEntries = re.split(r'\|\|\ ([a-zA-Z0-9]*\ \-\ )?\*+\ \/\\ ([a-zA-Z0-9\ \_]*) \/\\ \**', logText, flags=re.MULTILINE)
+    rawLogEntries = re.split(r'\|\| (?:[a-zA-Z0-9\-\_]* \- )?\*+ \/\\ ([a-zA-Z0-9 \_]*) \/\\ \**', logText, flags=re.MULTILINE)
     logEntries = {}
     for k in range(len(rawLogEntries)//2):
         index = k
@@ -39,7 +39,6 @@ def printLog(logEntries, abridge=False, ordered=False):
                 if len(logEntries[key]) > threshold:
                     logEntries[key] = logEntries[key][:threshold//2-1] + ['...'] + logEntries[key][-threshold//2:]
     pp.pprint(logEntries)
-
 
 pp = pprint.PrettyPrinter(width=240)
 root, thisScript = os.path.split(os.path.realpath(__file__))
