@@ -1691,34 +1691,50 @@ him know. Otherwise, I had nothing to do with it.
             # self.log("Getting VideoWriter {camSerial} state...".format(camSerial=camSerial))
             states['videoWriteStates'][camSerial] = VideoWriter.stateList[self.videoWriteProcesses[camSerial].publishedStateVar.value]
             # self.log("...done getting VideoWriter {camSerial} state".format(camSerial=camSerial))
+        else:
+            states['videoWriteStates'][camSerial] = 'None'
         for camSerial in self.videoAcquireProcesses:
             # self.log("Getting VideoAcquirer {camSerial} state...".format(camSerial=camSerial))
             states['videoAcquireStates'][camSerial] = VideoAcquirer.stateList[self.videoAcquireProcesses[camSerial].publishedStateVar.value]
             # self.log("...done getting VideoAcquirer {camSerial} state".format(camSerial=camSerial))
+        else:
+            states['videoAcquireStates'] = 'None'
         if self.audioWriteProcess is not None:
             # self.log("Getting AudioWriter state...")
             states['audioWriteState'] = AudioWriter.stateList[self.audioWriteProcess.publishedStateVar.value]
             # self.log("...done getting AudioWriter state")
+        else:
+            states['audioWriteState'] = 'None'
         if self.audioAcquireProcess is not None:
             # self.log("Getting AudioAcquirer state...")
             states['audioAcquireState'] = AudioAcquirer.stateList[self.audioAcquireProcess.publishedStateVar.value]
             # self.log("...done getting AudioAcquirer state")
+        else:
+            states['audioAcquireState'] = 'None'
         if self.syncProcess is not None:
             # self.log("Getting Synchronizer state...")
             states['syncState'] = Synchronizer.stateList[self.syncProcess.publishedStateVar.value]
             # self.log("...done getting Synchronizer state...")
+        else:
+            states['syncState'] = 'None'
         if self.mergeProcess is not None:
             # self.log("Getting AVMerger state...")
             states['mergeState'] = AVMerger.stateList[self.mergeProcess.publishedStateVar.value]
             # self.log("...done getting AVMerger state")
+        else:
+            states['mergeState'] = 'None'
         if self.audioTriggerProcess is not None:
             # self.log("Getting AudioTriggerer state...")
             states['audioTriggerState'] = AudioTriggerer.stateList[self.audioTriggerProcess.publishedStateVar.value]
             # self.log("...done getting AVMerger state")
+        else:
+            states['audioTriggerState'] = 'None'
         if self.continuousTriggerProcess is not None:
             # self.log("Getting AudioTriggerer state...")
             states['continuousTriggerState'] = continuousTriggerer.stateList[self.continuousTriggerProcess.publishedStateVar.value]
             # self.log("...done getting AVMerger state")
+        else:
+            states['continuousTriggerState'] = 'None'
 
         if verbose:
             for camSerial in states['videoWriteStates']:
