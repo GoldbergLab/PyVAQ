@@ -900,8 +900,8 @@ class PyVAQ:
             "numProcesses":             dict(get=self.getNumProcesses,                                  set=self.setNumProcesses),
             "numSyncedProcesses":       dict(get=self.getNumSyncedProcesses,                            set=self.setNumSyncedProcesses),
             "acquireSettings":          dict(get=self.getAcquireSettings,                               set=self.setAcquireSettings),
-            "continuousTriggerPeriod":  dict(get=self.continuousTriggerPeriodVar,                       set=self.continuousTriggerPeriodVar.set),
-            "audioTagContinuousTrigs":  dict(get=self.continuousTriggerPeriodVar,                       set=self.continuousTriggerPeriodVar.set),
+            "continuousTriggerPeriod":  dict(get=self.continuousTriggerPeriodVar.get,                   set=self.continuousTriggerPeriodVar.set),
+            "audioTagContinuousTrigs":  dict(get=self.audioTagContinuousTrigsVar.get,                   set=self.audioTagContinuousTrigsVar.set),
         }
 
         self.createAudioAnalysisMonitor()
