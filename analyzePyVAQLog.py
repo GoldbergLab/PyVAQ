@@ -71,6 +71,8 @@ root, thisScript = os.path.split(os.path.realpath(__file__))
 if len(sys.argv) > 1:
     # Don't use most recent log, look back N logs, N given by the first commandline argument
     lookback = int(sys.argv[1])
+else:
+    lookback = 0
 
 #root = r'C:\Users\Goldberg\Documents\PyVAQ'
 logFolder = os.path.join(root, 'logs')
