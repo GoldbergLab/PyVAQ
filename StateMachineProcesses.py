@@ -1188,7 +1188,8 @@ class AudioTriggerer(StateMachineProcess):
         'scheduleEnabled',
         'scheduleStartTime',
         'scheduleStopTime',
-        'triggerWriters'
+        'tagTriggerEnabled',
+        'writeTriggerEnabled'
         ]
 
     def __init__(self,
@@ -1213,8 +1214,9 @@ class AudioTriggerer(StateMachineProcess):
                 verbose=False,
                 audioMessageQueue=None,             # Queue to send triggers to audio writers
                 videoMessageQueues={},              # Queues to send triggers to video writers
-                triggerWriters=True,                # Send triggers to writer processes?
-                continuousTriggerMsgQueue=None,
+                taggerQueues=None,
+                tagTriggerEnabled=False,            # Enable sending triggers to writer queues?
+                writeTriggerEnabled=False,          # Enable sending triggers to tagger queues?
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.audioQueue = audioQueue
@@ -1224,8 +1226,11 @@ class AudioTriggerer(StateMachineProcess):
         self.analysisMonitorQueue = mp.Queue()  # A queue to send analysis results to GUI for monitoring
         self.audioMessageQueue = audioMessageQueue
         self.videoMessageQueues = videoMessageQueues
-        self.triggerWriters = triggerWriters
-        self.continuousTriggerMsgQueue = continuousTriggerMsgQueue
+
+        self.tagTriggerEnabled = tagTriggerEnabled      # Send triggers to tagger queues?
+        self.writeTriggerEnabled = writeTriggerEnabled  # Send triggers to writer queues?
+        self.taggerQueues = taggerQueues            # List of queues to processes that will use the audio triggers for tagging purposes
+
         self.audioFrequencyVar = audioFrequency
         self.audioFrequency = None
         self.chunkSize = chunkSize
@@ -1367,7 +1372,7 @@ class AudioTriggerer(StateMachineProcess):
 
                     # Throw away received audio
                     try:
-                        self.audioQueue.get(block=True, timeout=0.1)
+                        self.audioQueue.get(block=True, timeout=None)
                     except queue.Empty:
                         # No audio data available, no prob.
                         pass
@@ -1621,11 +1626,12 @@ class AudioTriggerer(StateMachineProcess):
         return y
 
     def sendTrigger(self, trigger):
-        self.audioMessageQueue.put((AudioWriter.TRIGGER, trigger))
-        for camSerial in self.videoMessageQueues:
-            self.videoMessageQueues[camSerial].put((VideoWriter.TRIGGER, trigger))
-        if self.continuousTriggerMsgQueue is not None:
-            self.continuousTriggerMsgQueue.put((ContinuousTriggerer.TAGTRIGGER, ))
+        if not self.tagOnly:
+            self.audioMessageQueue.put((AudioWriter.TRIGGER, trigger))
+            for camSerial in self.videoMessageQueues:
+                self.videoMessageQueues[camSerial].put((VideoWriter.TRIGGER, trigger))
+        for queue in self.taggerQueues:
+            queue.put((ContinuousTriggerer.TAGTRIGGER, ))
 
 class AudioAcquirer(StateMachineProcess):
     # Class for acquiring an audio signal (or any analog signal) at a rate that

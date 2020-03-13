@@ -815,6 +815,10 @@ class PyVAQ:
         self.continuousTriggerPeriodVar = tk.StringVar(); self.continuousTriggerPeriodVar.set("20")
         self.continuousTriggerPeriodEntry = ttk.Entry(self.continuousTriggerPeriodFrame, textvariable=self.continuousTriggerPeriodVar); self.continuousTriggerPeriodEntry.bind('<FocusOut>', self.updateContinuousTriggerSettings)
 
+        self.audioTagContinuousTrigsVar = tk.BooleanVar(); self.audioTagContinuousTrigsVar.set(True)
+        self.audioTagContinuousTrigsCheckbutton = ttk.Checkbutton(self.triggerModeControlGroupFrames['Continuous'], text="Tag files with high audio", variable=self.audioTagContinuousTrigsVar, offvalue=False, onvalue=True)
+        self.audioTagContinuousTrigsVar.trace('w', self.updateContinuousTriggerSettings)
+
         # Audio analysis monitoring widgets
         self.audioAnalysisMonitorFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Audio analysis")
         self.audioAnalysisWidgets = {}
@@ -896,7 +900,8 @@ class PyVAQ:
             "numProcesses":             dict(get=self.getNumProcesses,                                  set=self.setNumProcesses),
             "numSyncedProcesses":       dict(get=self.getNumSyncedProcesses,                            set=self.setNumSyncedProcesses),
             "acquireSettings":          dict(get=self.getAcquireSettings,                               set=self.setAcquireSettings),
-            "continuousTriggerPeriod":  dict(get=lambda:float(self.continuousTriggerPeriodVar.get()),   set=self.continuousTriggerPeriodVar.set),
+            "continuousTriggerPeriod":  dict(get=self.continuousTriggerPeriodVar,                       set=self.continuousTriggerPeriodVar.set),
+            "audioTagContinuousTrigs":  dict(get=self.continuousTriggerPeriodVar,                       set=self.continuousTriggerPeriodVar.set),
         }
 
         self.createAudioAnalysisMonitor()
@@ -1213,10 +1218,19 @@ him know. Otherwise, I had nothing to do with it.
     def updateContinuousTriggerSettings(self, *args):
         if self.continuousTriggerProcess is not None:
             paramList = [
-                'continuousTriggerPeriod'
+                'continuousTriggerPeriod',
             ]
             params = self.getParams(*paramList, mapping=True)
             self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.SETPARAMS, params))
+
+            if self.audioTriggerProcess is not None:
+                if self.getParams('audioTagContinuousTrigs'):
+                    self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STARTANALYZE, None)
+                else:
+                    self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOPANALYZE, None)
+            else:
+                self.log('Warning, audio trigger process not available for continuous trigger tagging')
+                self.endLog(inspect.currentframe().f_code.co_name)
 
     def updateAVMergerState(self, *args):
         merging = self.mergeFilesVar.get()
@@ -1297,11 +1311,16 @@ him know. Otherwise, I had nothing to do with it.
         if newMode == "Audio":
             if self.audioTriggerProcess is not None:
                 self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STARTANALYZE, None))
-                self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(triggerWriters=True)))
+                self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(writeTriggerEnabled=True, tagTriggerEnabled=False)))
             self.autoUpdateAudioAnalysisMonitors()
         elif newMode == "Continuous":
             if self.audioTriggerProcess is not None:
-                self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(triggerWriters=False)))
+                if self.getParams('audioTagContinuousTrigs'):
+                    self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STARTANALYZE, None))
+                    self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(writeTriggerEnabled=False, tagTriggerEnabled=True)))
+                else:
+                    self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOPANALYZE, None))
+                    self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(writeTriggerEnabled=False, tagTriggerEnabled=False)))
         else:
             if self.audioTriggerProcess is not None:
                 self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOPANALYZE, None))
