@@ -1734,7 +1734,7 @@ him know. Otherwise, I had nothing to do with it.
         self.checkStates()
 #        self.log(r"main>> ****************************** /\ /\ DEBUG ALL /\ /\ *******************************")
 
-    def autoDebugAll(self, *args, interval=3000, startAuto=True):
+    def autoDebugAll(self, *args, interval=10000, startAuto=True):
         self.debugAll()
 
         if startAuto:
