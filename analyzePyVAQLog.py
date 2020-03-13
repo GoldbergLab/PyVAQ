@@ -125,35 +125,30 @@ while True:
             for entry in filteredLogEntries[key]:
                 index, state, content = entry
                 if abs(index - cnt) <= rad:
-                    print('Yep!')
                     if key not in newFilteredLogEntries:
                         newFilteredLogEntries[key] = [];
                     newFilteredLogEntries[key].append(entry)
     elif filtType == 'rx':
         filterList.append(filtInput)
         filtRegex = re.compile(filt, flags=re.MULTILINE)
+        groups = filtRegex.groups + 1
         extractedData = []
         matches = []
-        maxMatchLengths = []
+        maxMatchLengths = [0 for k in range(groups)]
         for key in filteredLogEntries.keys():
             for entry in filteredLogEntries[key]:
                 index, state, content = entry
-                matches.append(re.findall(filtRegex, '\n'.join(content)))
+                matches += re.finditer(filtRegex, '\n'.join(content))
         for match in matches:
             extractedDatum = []
-            for k in range(filtRegex.groups):
+            for k in range(groups):
                 extractedDatum.append(match.group(k))
+                maxMatchLengths[k] = max(maxMatchLengths[k], len(extractedDatum[k])+2)
             extractedData.append(extractedDatum)
-            maxMatchLengths = [max(maxMatchLengths[k], extractedData[k]) for k in range(filtRegex.groups)]
 
+        print(''.join(['{data['+str(k)+']:{width['+str(k)+']}}' for k in range(groups)]).format(data=['Match'] + ['Group {k}'.format(k=k) for k in range(groups)], width=maxMatchLengths))
         for extractedDatum in extractedData:
-            print(''.join(['{data[{k}]:{width[{k}]}}'.format(k=k) for k in range(filtRegex.groups)]).format(data=extractedDatum, width=maxMatchLengths))
-
-        print('Whole match:')
-        print(extractedInfo[0])
-        for k in range(1, filtRegex.groups):
-            print('Group #', k)
-            print(extractedInfo[k])
+            print(''.join(['{data['+str(k)+']:{width['+str(k)+']}}' for k in range(groups)]).format(data=extractedDatum, width=maxMatchLengths))
     elif filtType == 'r':
         # REGEX FILTERING
         newFilteredLogEntries = {}
