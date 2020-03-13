@@ -2176,7 +2176,7 @@ class AudioWriter(StateMachineProcess):
                                 nextState = AudioWriter.WRITING
                             else:
                                 # Time is after trigger range...
-                                if self.verbose >= 0: self.log("Warning, completely missed audio trigger start!")
+                                if self.verbose >= 0: self.log("Warning, completely missed entire audio trigger!")
                                 timeWrote = 0
                                 nextState = AudioWriter.BUFFERING
                                 triggers.pop(0)   # Pop off trigger that we missed
@@ -2281,6 +2281,8 @@ class AudioWriter(StateMachineProcess):
                                     audioFile = None
                                 # Remove current trigger
                                 triggers.pop(0)
+                                # Last chunk wasn't part of this trigger, so it didn't get written. Put it back in buffer.
+                                self.buffer.appendleft(audioChunk)
                             else:
                                 # Audio chunk does overlap with trigger period. Continue writing.
                                 pass
@@ -2983,7 +2985,7 @@ class VideoWriter(StateMachineProcess):
                         self.log("Image queue size: ", self.imageQueue.qsize())
                         self.log("Images in buffer: ", len(self.buffer))
 
-                    im, frameTime, imageID = self.rotateImages()
+                    im, frameTime, imageID = self.rotateImageBuffer()
 
                     # CHECK FOR MESSAGES
                     try:
@@ -3016,11 +3018,11 @@ class VideoWriter(StateMachineProcess):
                                         self.log("Got trigger start!")
                                     else:
                                         # More than one frame after trigger start - we missed some
-                                        self.log("partially missed video trigger by {t} seconds, which is {f} frames!".format(t=delta, f=delta * self.frameRate))
+                                        self.log("partially missed video trigger start by {t} seconds, which is {f} frames!".format(t=delta, f=delta * self.frameRate))
                                 timeWrote = 0
                                 nextState = VideoWriter.WRITING
                             else:                       # Time is after trigger range
-                                if self.verbose >= 0: self.log("Missed trigger start by {triggerState} seconds!".format(triggerState=triggerState))
+                                if self.verbose >= 0: self.log("Missed entire trigger by {triggerState} seconds!".format(triggerState=triggerState))
                                 timeWrote = 0
                                 nextState = VideoWriter.BUFFERING
                                 triggers.pop(0)
@@ -3081,7 +3083,7 @@ class VideoWriter(StateMachineProcess):
                             videoFileInterface.write(imp.data, shape=(imp.width, imp.height))
                             if self.verbose >= 2: self.log("wrote frame!")
 
-                    im, frameTime, imageID = self.rotateImages(fillBuffer=False)
+                    im, frameTime, imageID = self.rotateImageBuffer(fillBuffer=False)
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
@@ -3135,6 +3137,8 @@ class VideoWriter(StateMachineProcess):
                                         self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
                                     videoFileInterface = None
                                 triggers.pop(0)
+                                # Last image wasn't part of this trigger, so it didn't get written. Put it back in buffer.
+                                self.rotateImageBufferBack(im, frameTime, imageID)
                             else:
                                 # Frame is in trigger period - continue writing
                                 pass
@@ -3262,8 +3266,11 @@ class VideoWriter(StateMachineProcess):
         self.flushStdout()
         self.updatePublishedState(self.DEAD)
 
-    def rotateImages(self, fillBuffer=True):
-        # Pull image from acquirer, push to buffer
+    def rotateImageBufferBack(self, im, frameTime, imageID):
+        self.buffer.appendleft((im, frameTime, imageID))
+
+    def rotateImageBuffer(self, fillBuffer=True):
+        # Pull image from acquirer queue, push to buffer
         # Pull image from buffer, return it
 
         try:
