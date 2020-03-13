@@ -952,7 +952,7 @@ class PyVAQ:
         self.master.destroy()
         self.master.quit()
         self.log("Everything should be closed now!")
-        self.endLog(inspect.currentFrame().f_code.co_name)
+        self.endLog(inspect.currentframe().f_code.co_name)
 
     def setVerbosity(self):
         verbosityOptions = ['0', '1', '2', '3']
@@ -1153,7 +1153,7 @@ him know. Otherwise, I had nothing to do with it.
         else:
             showinfo('No inputs', 'No compatible audio/video inputs found. Please connect at least one USB3 vision camera for video input and/or a NI USB DAQ for audio input and synchronization.')
 
-        self.endLog(inspect.currentFrame().f_code.co_name)
+        self.endLog(inspect.currentframe().f_code.co_name)
 
 
     def setupInputMonitoringWidgets(self, camSerials=None, audioDAQChannels=None):
@@ -1248,7 +1248,7 @@ him know. Otherwise, I had nothing to do with it.
                 # Notify VideoWriter child process of new write directory
                 self.log("sending new video write directory: "+p['videoDirectories'][camSerial])
                 self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.SETPARAMS, dict(videoDirectory=p['videoDirectories'][camSerial])))
-        self.endLog(inspect.currentFrame().f_code.co_name)
+        self.endLog(inspect.currentframe().f_code.co_name)
     def audioDirectoryChangeHandler(self, *args):
         self.log("audioDirectoryChangeHandler")
         p = self.getParams(
@@ -1260,7 +1260,7 @@ him know. Otherwise, I had nothing to do with it.
                 # Notify AudioWriter child process of new write directory
                 self.log("sending new audio write directory: "+p['audioDirectory'])
                 self.audioWriteProcess.msgQueue.put((AudioWriter.SETPARAMS, dict(audioDirectory=p['audioDirectory'])))
-        self.endLog(inspect.currentFrame().f_code.co_name)
+        self.endLog(inspect.currentframe().f_code.co_name)
     def mergeDirectoryChangeHandler(self, *args):
         self.log("mergeDirectoryChangeHandler")
         p = self.getParams(
@@ -1272,7 +1272,7 @@ him know. Otherwise, I had nothing to do with it.
                 # Notify AVMerger child process of new write directory
                 self.log("sending new video write directory: "+p['mergeDirectory'])
                 self.mergeProcess.msgQueue.put((AVMerger.SETPARAMS, dict(directory=p['mergeDirectory'])))
-        self.endLog(inspect.currentFrame().f_code.co_name)
+        self.endLog(inspect.currentframe().f_code.co_name)
     def selectMergedWriteDirectory(self, *args):
         directory = askdirectory(
 #            initialdir = ,
@@ -1449,7 +1449,7 @@ him know. Otherwise, I had nothing to do with it.
         if beginAuto:
             self.audioAnalysisMonitorUpdateJob = self.master.after(100, self.autoUpdateAudioAnalysisMonitors)
 
-        self.endLog(inspect.currentFrame().f_code.co_name)
+        self.endLog(inspect.currentframe().f_code.co_name)
 
     def autoUpdateAudioMonitors(self, beginAuto=True):
         if self.audioAcquireProcess is not None:
@@ -1475,7 +1475,7 @@ him know. Otherwise, I had nothing to do with it.
         if beginAuto:
             self.audioMonitorUpdateJob = self.master.after(100, self.autoUpdateAudioMonitors)
 
-        self.endLog(inspect.currentFrame().f_code.co_name)
+        self.endLog(inspect.currentframe().f_code.co_name)
 
     def autoUpdateVideoMonitors(self, beginAuto=True):
         if self.videoAcquireProcesses is not None:
@@ -1618,7 +1618,7 @@ him know. Otherwise, I had nothing to do with it.
         if self.StdoutManager is not None:
             self.log("  stdoutQueue size:", self.StdoutManager.queue.qsize())
         self.log("...get qsizes")
-        self.endLog(inspect.currentFrame().f_code.co_name)
+        self.endLog(inspect.currentframe().f_code.co_name)
 
     def getPIDs(self):
         videoWritePIDs = {}
@@ -1649,7 +1649,7 @@ him know. Otherwise, I had nothing to do with it.
             mergePID = self.mergeProcess.PID.value
             self.log("  mergePID:", mergePID)
         self.log("...PIDs:")
-        self.endLog(inspect.currentFrame().f_code.co_name)
+        self.endLog(inspect.currentframe().f_code.co_name)
 
     def checkStates(self, verbose=True):
         states = dict(
@@ -1698,7 +1698,7 @@ him know. Otherwise, I had nothing to do with it.
             self.log("mergeState:", states['mergeState'])
             self.log("...check states")
 
-        self.endLog(inspect.currentFrame().f_code.co_name)
+        self.endLog(inspect.currentframe().f_code.co_name)
 
         return states
 
@@ -1758,13 +1758,13 @@ him know. Otherwise, I had nothing to do with it.
         if self.continuousTriggerProcess is not None:
             self.log("Sending start signal to continuous trigger process")
             self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.START, None))
-            self.endLog(inspect.currentFrame().f_code.co_name)
+            self.endLog(inspect.currentframe().f_code.co_name)
 
     def continuousTriggerStopButtonClick(self):
         if self.continuousTriggerProcess is not None:
             self.log("Sending stop signal to continuous trigger process")
             self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.STOP, None))
-            self.endLog(inspect.currentFrame().f_code.co_name)
+            self.endLog(inspect.currentframe().f_code.co_name)
 
     def saveSettings(self, *args, path=None):
         params = self.getParams()
@@ -1797,7 +1797,7 @@ him know. Otherwise, I had nothing to do with it.
             self.log("Loaded settings:")
             self.log(params)
             self.setParams(**params)
-        self.endLog(inspect.currentFrame().f_code.co_name)
+        self.endLog(inspect.currentframe().f_code.co_name)
 
     def setVideoBaseFileNames(self, baseFileNames, *args):
         # Expects baseFileNames to be a list of baseFileNames, which will be used
@@ -2126,7 +2126,7 @@ him know. Otherwise, I had nothing to do with it.
         if self.mergeProcess is not None: self.mergeProcess.start()
         if self.continuousTriggerProcess is not None: self.continuousTriggerProcess.start()
 
-        self.endLog(inspect.currentFrame().f_code.co_name)
+        self.endLog(inspect.currentframe().f_code.co_name)
 
     def startChildProcesses(self):
         # Tell all child processes to start
@@ -2166,7 +2166,7 @@ him know. Otherwise, I had nothing to do with it.
             self.startChildProcesses()
         else:
             self.log("Attempted to restart child processes, but could not get them to stop.")
-            self.endLog(inspect.currentFrame().f_code.co_name)
+            self.endLog(inspect.currentframe().f_code.co_name)
 
     def stopChildProcesses(self):
         # Tell all child processes to stop
@@ -2232,7 +2232,7 @@ him know. Otherwise, I had nothing to do with it.
         self.StdoutManager = StdoutManager()
         self.StdoutManager.start()
 
-        self.endLog(inspect.currentFrame().f_code.co_name)
+        self.endLog(inspect.currentframe().f_code.co_name)
 
     def sendWriteTrigger(self, t=None):
         p = self.getParams('preTriggerTime', 'recordTime')
@@ -2246,7 +2246,7 @@ him know. Otherwise, I had nothing to do with it.
         if self.audioWriteProcess is not None:
             self.audioWriteProcess.msgQueue.put((AudioWriter.TRIGGER, trig))
             self.log("...sent to audio writer")
-        self.endLog(inspect.currentFrame().f_code.co_name)
+        self.endLog(inspect.currentframe().f_code.co_name)
 
     def update(self):
         # root window
