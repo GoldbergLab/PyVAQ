@@ -1626,12 +1626,13 @@ class AudioTriggerer(StateMachineProcess):
         return y
 
     def sendTrigger(self, trigger):
-        if not self.tagOnly:
+        if self.writeTriggerEnabled:
             self.audioMessageQueue.put((AudioWriter.TRIGGER, trigger))
             for camSerial in self.videoMessageQueues:
                 self.videoMessageQueues[camSerial].put((VideoWriter.TRIGGER, trigger))
-        for queue in self.taggerQueues:
-            queue.put((ContinuousTriggerer.TAGTRIGGER, ))
+        if self.tagTriggerEnabled:
+            for queue in self.taggerQueues:
+                queue.put((ContinuousTriggerer.TAGTRIGGER, ))
 
 class AudioAcquirer(StateMachineProcess):
     # Class for acquiring an audio signal (or any analog signal) at a rate that
