@@ -102,8 +102,12 @@ print()
 
 while True:
     printEntries = True
-    filtInput = input("Enter a filtering command ('h' for help): ")+' '
-    filtType, filt = filtInput.split(' ', maxsplit=1)
+    filtInput = input("Enter a filtering command ('h' for help): ")
+    try:
+        filtType, filt = filtInput.split(' ', maxsplit=1)
+    except ValueError:
+        filtType = filtInput
+        filt = ''
     newFilteredLogEntries = copy.deepcopy(filteredLogEntries)
     if filtType == 'i':
         # INDEX FILTERING
@@ -118,6 +122,31 @@ while True:
                     if key not in newFilteredLogEntries:
                         newFilteredLogEntries[key] = [];
                     newFilteredLogEntries[key].append(entry)
+    elif filtType == 'rx':
+        filterList.append(filtInput)
+        filtRegex = re.compile(filt, flags=re.MULTILINE)
+        extractedData = []
+        matches = []
+        maxMatchLengths = []
+        for key in filteredLogEntries.keys():
+            for entry in filteredLogEntries[key]:
+                index, state, content = entry
+                matches.append(re.findall(filtRegex, '\n'.join(content)))
+        for match in matches:
+            extractedDatum = []
+            for k in range(filtRegex.groups):
+                extractedDatum.append(match.group(k))
+            extractedData.append(extractedDatum)
+            maxMatchLengths = [max(maxMatchLengths[k], extractedData[k]) for k in range(filtRegex.groups)]
+
+        for extractedDatum in extractedData:
+            print(''.join(['{data[{k}]:{width[{k}]}}'.format(k=k) for k in range(filtRegex.groups)]).format(data=extractedDatum, width=maxMatchLengths))
+
+        print('Whole match:')
+        print(extractedInfo[0])
+        for k in range(1, filtRegex.groups):
+            print('Group #', k)
+            print(extractedInfo[k])
     elif filtType == 'r':
         # REGEX FILTERING
         newFilteredLogEntries = {}
@@ -132,7 +161,17 @@ while True:
                 index, state, content = entry
                 if negate ^ bool(re.search(filtRegex, '\n'.join(content))):
                     if key not in newFilteredLogEntries:
-                        newFilteredLogEntries[key] = [];
+                        newFilteredLogEntries[key] = []
+                    newFilteredLogEntries[key].append(entry)
+    elif filtType == 't':
+        # ENTRY TYPE REGEX FILTERING
+        newFilteredLogEntries = {}
+        filterList.append(filtInput)
+        filtRegex = re.compile(filt)
+        for key in filteredLogEntries.keys():
+            if re.search(filtRegex, key):
+                newFilteredLogEntries[key] = []
+                for entry in filteredLogEntries[key]:
                     newFilteredLogEntries[key].append(entry)
     elif filtType == 'c':
         printEntries = False
