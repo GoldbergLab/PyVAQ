@@ -3486,7 +3486,7 @@ class ContinuousTriggerer(StateMachineProcess):
                             lastTriggerTime = newTriggerTime
                             self.sendTrigger(newTrigger)
                             activeTriggers.append(newTrigger)
-                            if self.verbose >= 1: self.log("Sent new trigger!")
+                            if self.verbose >= 1: self.log("Sent new trigger! {s}-{e}".format(s=newTrigger.startTime, e=newTrigger.endTime))
 
                             self.updateTriggerTags(activeTriggers, tagTriggers)
 
