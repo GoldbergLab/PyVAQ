@@ -8,7 +8,7 @@ import nidaqmx.system as nisys
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter.filedialog import askdirectory, asksaveasfilename, askopenfilename
-from tkinter.messagebox import showinfo
+from tkinter.messagebox import showinfo, showwarning
 import queue
 from PIL import Image
 import pprint
@@ -1759,12 +1759,16 @@ him know. Otherwise, I had nothing to do with it.
             self.log("Sending start signal to continuous trigger process")
             self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.START, None))
             self.endLog(inspect.currentframe().f_code.co_name)
+        else:
+            showWarning(title="No continuous trigger process available", message="Continuous triggering process does not appear to be available. Try starting up acquisition first")
 
     def continuousTriggerStopButtonClick(self):
         if self.continuousTriggerProcess is not None:
             self.log("Sending stop signal to continuous trigger process")
             self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.STOP, None))
             self.endLog(inspect.currentframe().f_code.co_name)
+        else:
+            showWarning(title="No continuous trigger process available", message="Continuous triggering process does not appear to be available. Try starting up acquisition first")
 
     def saveSettings(self, *args, path=None):
         params = self.getParams()
