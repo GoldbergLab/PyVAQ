@@ -1691,14 +1691,10 @@ him know. Otherwise, I had nothing to do with it.
             # self.log("Getting VideoWriter {camSerial} state...".format(camSerial=camSerial))
             states['videoWriteStates'][camSerial] = VideoWriter.stateList[self.videoWriteProcesses[camSerial].publishedStateVar.value]
             # self.log("...done getting VideoWriter {camSerial} state".format(camSerial=camSerial))
-        else:
-            states['videoWriteStates'][camSerial] = 'None'
         for camSerial in self.videoAcquireProcesses:
             # self.log("Getting VideoAcquirer {camSerial} state...".format(camSerial=camSerial))
             states['videoAcquireStates'][camSerial] = VideoAcquirer.stateList[self.videoAcquireProcesses[camSerial].publishedStateVar.value]
             # self.log("...done getting VideoAcquirer {camSerial} state".format(camSerial=camSerial))
-        else:
-            states['videoAcquireStates'] = 'None'
         if self.audioWriteProcess is not None:
             # self.log("Getting AudioWriter state...")
             states['audioWriteState'] = AudioWriter.stateList[self.audioWriteProcess.publishedStateVar.value]
