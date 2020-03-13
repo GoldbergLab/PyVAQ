@@ -834,7 +834,8 @@ class PyVAQ:
         self.continuousTriggerProcess = None
         self.syncProcess = None
         self.mergeProcess = None
-        self.StdoutManager = None
+        self.StdoutManager = StdoutManager()
+        self.StdoutManager.start()
 
         # Actual a/v frequency shared vars
         self.actualVideoFrequency = None
@@ -939,9 +940,9 @@ class PyVAQ:
                 self.StdoutManager.queue.put(self.stdoutBuffer)
             else:
                 print('Warning, logging failed - stdout queue not created.')
-                log, opts = self.stdoutBuffer
-                for logLine in self.log:
-                    print(logLine, **opts)
+                for msgBundle in self.stdoutBuffer:
+                    args, kwargs = msgBundle
+                    print(*args, **kwargs)
         self.stdoutBuffer = []
 
     def cleanupAndExit(self):
@@ -2234,8 +2235,7 @@ him know. Otherwise, I had nothing to do with it.
         self.videoWriteProcesses = {}
         self.mergeProcess = None
         self.syncProcess = None
-        self.StdoutManager = StdoutManager()
-        self.StdoutManager.start()
+        self.StdoutManager = None
 
         self.endLog(inspect.currentframe().f_code.co_name)
 
