@@ -2194,7 +2194,8 @@ him know. Otherwise, I had nothing to do with it.
             self.audioAcquireProcess.msgQueue.put((AudioAcquirer.START, None))
 
         # Start continuous trigger process
-#        self.continuousTriggerProcess.msgQueue.put((AudioTriggerer.START, None))
+        if self.getParams('triggerMode') == 'Continuous':
+            self.continuousTriggerProcess.msgQueue.put((AudioTriggerer.START, None))
 
         # For each camera
         for camSerial in self.camSerials:
