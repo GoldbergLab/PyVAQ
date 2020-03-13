@@ -1225,9 +1225,13 @@ him know. Otherwise, I had nothing to do with it.
 
             if self.audioTriggerProcess is not None:
                 if self.getParams('audioTagContinuousTrigs'):
-                    self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STARTANALYZE, None)
+                    # Tell audio triggerer to start analyzing and send any tag triggers.
+                    self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STARTANALYZE, None))
+                    self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(tagTriggerEnabled=True)))
                 else:
-                    self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOPANALYZE, None)
+                    # Tell audio triggerer to stop analyzing and don't send any tag triggers.
+                    self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOPANALYZE, None))
+                    self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(tagTriggerEnabled=False)))
             else:
                 self.log('Warning, audio trigger process not available for continuous trigger tagging')
                 self.endLog(inspect.currentframe().f_code.co_name)
@@ -2393,8 +2397,9 @@ him know. Otherwise, I had nothing to do with it.
 
         self.continuousTriggerModeStart.grid(row=0, column=0)
         self.continuousTriggerModeStop.grid(row=0, column=1)
-        self.continuousTriggerPeriodFrame.grid(row=1, column=0, columnspan=2)
+        self.continuousTriggerPeriodFrame.grid(row=1, column=0)
         self.continuousTriggerPeriodEntry.grid(row=0, column=0)
+        self.audioTagContinuousTrigsCheckbutton.grid(row=1, column=1)
 
         self.audioAnalysisMonitorFrame.grid(row=4, column=0, columnspan=3)
         self.audioAnalysisWidgets['canvas'].get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
