@@ -37,7 +37,8 @@ except ModuleNotFoundError:
     # pip seems to install PySpin as pyspin sometimes...
     import pyspin as PySpin
 from MonitorWidgets import AudioMonitor, CameraMonitor
-from StateMachineProcesses import Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, nodeAccessorFunctions, nodeAccessorTypes, ContinuousTriggerer
+from StateMachineProcesses import Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, nodeAccessorFunctions, nodeAccessorTypes, ContinuousTriggerer, syncPrint
+import inspect
 
 VERSION='0.2.0'
 
@@ -614,6 +615,9 @@ class PyVAQ:
         self.style.configure('InvalidDirectory.TEntry', fieldbackground=WIDGET_COLORS[3])
 #        self.style.map('Directory.TEntry.label', background=[(('!invalid',), 'green'),(('invalid',), 'red')])
 
+        self.ID = 'GUI'
+        self.stdoutBuffer = []
+
         self.audioDAQChannels = []
 
         self.audioSyncSource = None
@@ -921,15 +925,34 @@ class PyVAQ:
     #     newEntry = ttk.Entry(parent, width=width, )
     #     setattr(self, settingName+"Var")
 
+    def log(self, msg, *args, **kwargs):
+        syncPrint('|| {ID} - {msg}'.format(ID=self.ID, msg=msg), *args, buffer=self.stdoutBuffer, **kwargs)
+
+    def endLog(self, state):
+        if len(self.stdoutBuffer) > 0:
+            self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=state))
+            self.flushStdout()
+
+    def flushStdout(self):
+        if len(self.stdoutBuffer) > 0:
+            if self.StdoutManager is not None:
+                self.StdoutManager.queue.put(self.stdoutBuffer)
+            else:
+                print('Warning, logging failed - stdout queue not created.')
+                for logLine in self.stdoutBuffer:
+                    print(logLine)
+        self.stdoutBuffer = []
+
     def cleanupAndExit(self):
         # Cancel automatic update jobs
         self.stopMonitors()
-        print("main>> Stopping acquisition")
+        self.log("Stopping acquisition")
         self.stopChildProcesses()
-        print("main>> Destroying master")
+        self.log("Destroying master")
         self.master.destroy()
         self.master.quit()
-        print("main>> Everything should be closed now!")
+        self.log("Everything should be closed now!")
+        self.endLog(inspect.currentFrame().f_code.co_name)
 
     def setVerbosity(self):
         verbosityOptions = ['0', '1', '2', '3']
@@ -1046,14 +1069,14 @@ him know. Otherwise, I had nothing to do with it.
                     pass
 
     def selectInputs(self, *args):
-        debug = False
-        if debug:
-            print("main>> GUI DEBUG MODE - using fake cameras and DAQ channels")
-            audioDAQChannels = ['fakeDebugAudioChannel1', 'fakeDebugAudioChannel2']
-            # availableClockChannels = ['fakeDebugClockChannel1', 'fakeDebugClockChannel2', 'fakeDebugClockChannel3', 'fakeDebugClockChannel4', 'fakeDebugClockChannel5', 'fakeDebugClockChannel6']
-            camSerials = ['fakeDebugCam1', 'fakeDebugCam2']
-            self.setupInputMonitoringWidgets(camSerials=camSerials, audioDAQChannels=audioDAQChannels)
-            return
+        # debug = False
+        # if debug:
+        #     self.log("GUI DEBUG MODE - using fake cameras and DAQ channels")
+        #     audioDAQChannels = ['fakeDebugAudioChannel1', 'fakeDebugAudioChannel2']
+        #     # availableClockChannels = ['fakeDebugClockChannel1', 'fakeDebugClockChannel2', 'fakeDebugClockChannel3', 'fakeDebugClockChannel4', 'fakeDebugClockChannel5', 'fakeDebugClockChannel6']
+        #     camSerials = ['fakeDebugCam1', 'fakeDebugCam2']
+        #     self.setupInputMonitoringWidgets(camSerials=camSerials, audioDAQChannels=audioDAQChannels)
+        #     return
 
         availableAudioChannels = flattenList(discoverDAQAudioChannels().values())
         availableClockChannels = flattenList(discoverDAQClockChannels().values()) + ['None']
@@ -1115,8 +1138,8 @@ him know. Otherwise, I had nothing to do with it.
                     self.acquisitionStartTriggerSource = None
 
 
-                print('main>> Got audioDAQChannels:', audioDAQChannels)
-                print('main>> Got camSerials:', camSerials)
+                self.log('Got audioDAQChannels:', audioDAQChannels)
+                self.log('Got camSerials:', camSerials)
 
                 self.setupInputMonitoringWidgets(camSerials=camSerials, audioDAQChannels=audioDAQChannels)
 
@@ -1126,9 +1149,12 @@ him know. Otherwise, I had nothing to do with it.
                 self.updateAcquisitionButton()
                 self.startMonitors()
             else:
-                print('main>> User input cancelled.')
+                self.log('User input cancelled.')
         else:
             showinfo('No inputs', 'No compatible audio/video inputs found. Please connect at least one USB3 vision camera for video input and/or a NI USB DAQ for audio input and synchronization.')
+
+        self.endLog(inspect.currentFrame().f_code.co_name)
+
 
     def setupInputMonitoringWidgets(self, camSerials=None, audioDAQChannels=None):
         # Set up widgets and other entities for specific selected audio and video inputs
@@ -1212,7 +1238,7 @@ him know. Otherwise, I had nothing to do with it.
             self.mergeProcess.msgQueue.put((AVMerger.SETPARAMS, params))
 
     def videoDirectoryChangeHandler(self, *args):
-        print("main>> videoDirectoryChangeHandler")
+        self.log("videoDirectoryChangeHandler")
         p = self.getParams(
             'videoDirectories',
             'videoBaseFileNames'
@@ -1220,10 +1246,11 @@ him know. Otherwise, I had nothing to do with it.
         for camSerial in self.videoWriteProcesses:
             if len(p['videoDirectories'][camSerial]) == 0 or os.path.isdir(p['videoDirectories'][camSerial]):
                 # Notify VideoWriter child process of new write directory
-                print("main>> sending new video write directory: "+p['videoDirectories'][camSerial])
+                self.log("sending new video write directory: "+p['videoDirectories'][camSerial])
                 self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.SETPARAMS, dict(videoDirectory=p['videoDirectories'][camSerial])))
+        self.endLog(inspect.currentFrame().f_code.co_name)
     def audioDirectoryChangeHandler(self, *args):
-        print("main>> audioDirectoryChangeHandler")
+        self.log("audioDirectoryChangeHandler")
         p = self.getParams(
             'audioDirectory',
             'audioBaseFileName'
@@ -1231,10 +1258,11 @@ him know. Otherwise, I had nothing to do with it.
         if self.audioWriteProcess is not None:
             if len(p['audioDirectory']) == 0 or os.path.isdir(p['audioDirectory']):
                 # Notify AudioWriter child process of new write directory
-                print("main>> sending new audio write directory: "+p['audioDirectory'])
+                self.log("sending new audio write directory: "+p['audioDirectory'])
                 self.audioWriteProcess.msgQueue.put((AudioWriter.SETPARAMS, dict(audioDirectory=p['audioDirectory'])))
+        self.endLog(inspect.currentFrame().f_code.co_name)
     def mergeDirectoryChangeHandler(self, *args):
-        print("main>> mergeDirectoryChangeHandler")
+        self.log("mergeDirectoryChangeHandler")
         p = self.getParams(
             'mergeDirectory',
             'mergeBaseFileName'
@@ -1242,9 +1270,9 @@ him know. Otherwise, I had nothing to do with it.
         if self.mergeProcess is not None:
             if len(p['mergeDirectory']) == 0 or os.path.isdir(p['mergeDirectory']):
                 # Notify AVMerger child process of new write directory
-                print("main>> sending new video write directory: "+p['mergeDirectory'])
+                self.log("sending new video write directory: "+p['mergeDirectory'])
                 self.mergeProcess.msgQueue.put((AVMerger.SETPARAMS, dict(directory=p['mergeDirectory'])))
-
+        self.endLog(inspect.currentFrame().f_code.co_name)
     def selectMergedWriteDirectory(self, *args):
         directory = askdirectory(
 #            initialdir = ,
@@ -1346,10 +1374,10 @@ him know. Otherwise, I had nothing to do with it.
                 pass
 
             if analysisSummary is not None:
-                # print(analysisSummary)
+                # self.log(analysisSummary)
                 lag = time.time_ns()/1000000000 - analysisSummary['chunkStartTime']
                 if lag > 1.5:
-                    print("main>> WARNING, high analysis monitoring lag:", lag, 's', 'qsize:', self.audioTriggerProcess.analysisMonitorQueue.qsize())
+                    self.log("WARNING, high analysis monitoring lag:", lag, 's', 'qsize:', self.audioTriggerProcess.analysisMonitorQueue.qsize())
 
                 # Update bar charts using last received analysis summary
 
@@ -1392,9 +1420,9 @@ him know. Otherwise, I had nothing to do with it.
                         tLow  = t[-1] - (analysisSummary['triggerLowChunks'] -1)*analysisSummary['chunkSize']/analysisSummary['audioFrequency']
                         tHigh = t[-1] - (analysisSummary['triggerHighChunks']-1)*analysisSummary['chunkSize']/analysisSummary['audioFrequency']
                     except TypeError:
-                        print('main>> weird analysis monitoring error:')
+                        self.log('weird analysis monitoring error:')
                         traceback.print_exc()
-                        print('main>> t:', t)
+                        self.log('t:', t)
                     # Plot low level time period demarcation
                     self.audioAnalysisWidgets['volumeTraceAxes'].plot([tLow,  tLow],  [0, yMax], 'r-', linewidth=1)
                     # Plot high level time period demarcation
@@ -1421,6 +1449,8 @@ him know. Otherwise, I had nothing to do with it.
         if beginAuto:
             self.audioAnalysisMonitorUpdateJob = self.master.after(100, self.autoUpdateAudioAnalysisMonitors)
 
+        self.endLog(inspect.currentFrame().f_code.co_name)
+
     def autoUpdateAudioMonitors(self, beginAuto=True):
         if self.audioAcquireProcess is not None:
             newAudioData = None
@@ -1434,9 +1464,9 @@ him know. Otherwise, I had nothing to do with it.
                         newAudioData = np.concatenate((newAudioData, audioData), axis=1)
                     else:
                         newAudioData = audioData
-                print("main>> WARNING! Audio monitor is not getting data fast enough to keep up with stream.")
+                self.log("WARNING! Audio monitor is not getting data fast enough to keep up with stream.")
             except queue.Empty:
-#                print('main>> exhausted audio monitoring queue, got', chunkCount)
+#                self.log('exhausted audio monitoring queue, got', chunkCount)
                 pass
 
             if newAudioData is not None:
@@ -1444,6 +1474,8 @@ him know. Otherwise, I had nothing to do with it.
 
         if beginAuto:
             self.audioMonitorUpdateJob = self.master.after(100, self.autoUpdateAudioMonitors)
+
+        self.endLog(inspect.currentFrame().f_code.co_name)
 
     def autoUpdateVideoMonitors(self, beginAuto=True):
         if self.videoAcquireProcesses is not None:
@@ -1486,7 +1518,7 @@ him know. Otherwise, I had nothing to do with it.
         # syncPrint()
         # pp = pprint.PrettyPrinter(indent=1, depth=1)
         # pp.pprint(attributeNode)
-        # syncPrint()
+        # syncPrint.log()
 
         widgets = [frame]
         childWidgets = []
@@ -1571,21 +1603,22 @@ him know. Otherwise, I had nothing to do with it.
             system.ReleaseInstance()
 
     def getQueueSizes(self):
-        print("main>> Get qsizes...")
+        self.log("Get qsizes...")
         for camSerial in self.videoAcquireProcesses:
-            print("main>>   videoMonitorQueues[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].monitorImageReceiver.qsize())
-            print("main>>   imageQueues[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].imageQueue.qsize())
+            self.log("  videoMonitorQueues[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].monitorImageReceiver.qsize())
+            self.log("  imageQueues[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].imageQueue.qsize())
         if self.audioAcquireProcess is not None:
-            print("main>>   audioAcquireProcess.audioQueue size:", self.audioAcquireProcess.audioQueue.qsize())
-            print("main>>   audioAnalysisQueue size:", self.audioAcquireProcess.analysisQueue.qsize())
-            print("main>>   audioMonitorQueue size:", self.audioAcquireProcess.monitorQueue.qsize())
+            self.log("  audioAcquireProcess.audioQueue size:", self.audioAcquireProcess.audioQueue.qsize())
+            self.log("  audioAnalysisQueue size:", self.audioAcquireProcess.analysisQueue.qsize())
+            self.log("  audioMonitorQueue size:", self.audioAcquireProcess.monitorQueue.qsize())
         if self.audioTriggerProcess is not None:
-            print("main>>   audioAnalysisMonitorQueue size:", self.audioTriggerProcess.analysisMonitorQueue.qsize())
+            self.log("  audioAnalysisMonitorQueue size:", self.audioTriggerProcess.analysisMonitorQueue.qsize())
         if self.mergeProcess is not None:
-            print("main>>   mergeMessageQueue size:", self.mergeProcess.msgQueue.qsize())
+            self.log("  mergeMessageQueue size:", self.mergeProcess.msgQueue.qsize())
         if self.StdoutManager is not None:
-            print("main>>   stdoutQueue size:", self.StdoutManager.queue.qsize())
-        print("main>> ...get qsizes")
+            self.log("  stdoutQueue size:", self.StdoutManager.queue.qsize())
+        self.log("...get qsizes")
+        self.endLog(inspect.currentFrame().f_code.co_name)
 
     def getPIDs(self):
         videoWritePIDs = {}
@@ -1595,27 +1628,28 @@ him know. Otherwise, I had nothing to do with it.
         syncPID = None
         mergePID = None
 
-        print("main>> PIDs...")
-        print("main>> main thread:", os.getpid())
+        self.log("PIDs...")
+        self.log("main thread:", os.getpid())
         for camSerial in self.videoWriteProcesses:
             videoWritePIDs[camSerial] = self.videoWriteProcesses[camSerial].PID.value
-            print("main>>   videoWritePIDs["+camSerial+"]:", videoWritePIDs[camSerial])
+            self.log("  videoWritePIDs["+camSerial+"]:", videoWritePIDs[camSerial])
         for camSerial in self.videoAcquireProcesses:
             videoAcquirePIDs[camSerial] = self.videoAcquireProcesses[camSerial].PID.value
-            print("main>>   videoAcquirePIDs["+camSerial+"]:", videoAcquirePIDs[camSerial])
+            self.log("  videoAcquirePIDs["+camSerial+"]:", videoAcquirePIDs[camSerial])
         if self.audioWriteProcess is not None:
             audioWritePID = self.audioWriteProcess.PID.value
-            print("main>>   audioWritePID:", audioWritePID)
+            self.log("  audioWritePID:", audioWritePID)
         if self.audioAcquireProcess is not None:
             audioAcquirePID = self.audioAcquireProcess.PID.value
-            print("main>>   audioAcquirePID:", audioAcquirePID)
+            self.log("  audioAcquirePID:", audioAcquirePID)
         if self.syncProcess is not None:
             syncPID = self.syncProcess.PID.value
-            print("main>>   syncPID:", syncPID)
+            self.log("  syncPID:", syncPID)
         if self.mergeProcess is not None:
             mergePID = self.mergeProcess.PID.value
-            print("main>>   mergePID:", mergePID)
-        print("main>> ...PIDs:")
+            self.log("  mergePID:", mergePID)
+        self.log("...PIDs:")
+        self.endLog(inspect.currentFrame().f_code.co_name)
 
     def checkStates(self, verbose=True):
         states = dict(
@@ -1627,50 +1661,53 @@ him know. Otherwise, I had nothing to do with it.
             mergeState = None
         )
 
-        print("main>> Check states...")
+        self.log("Check states...")
         for camSerial in self.videoWriteProcesses:
-            print("main>> Getting VideoWriter {camSerial} state...".format(camSerial=camSerial))
+            self.log("Getting VideoWriter {camSerial} state...".format(camSerial=camSerial))
             states['videoWriteStates'][camSerial] = VideoWriter.stateList[self.videoWriteProcesses[camSerial].publishedStateVar.value]
-            print("main>> ...done getting VideoWriter {camSerial} state".format(camSerial=camSerial))
+            self.log("...done getting VideoWriter {camSerial} state".format(camSerial=camSerial))
         for camSerial in self.videoAcquireProcesses:
-            print("main>> Getting VideoAcquirer {camSerial} state...".format(camSerial=camSerial))
+            self.log("Getting VideoAcquirer {camSerial} state...".format(camSerial=camSerial))
             states['videoAcquireStates'][camSerial] = VideoAcquirer.stateList[self.videoAcquireProcesses[camSerial].publishedStateVar.value]
-            print("main>> ...done getting VideoAcquirer {camSerial} state".format(camSerial=camSerial))
+            self.log("...done getting VideoAcquirer {camSerial} state".format(camSerial=camSerial))
         if self.audioWriteProcess is not None:
-            print("main>> Getting AudioWriter state...")
+            self.log("Getting AudioWriter state...")
             states['audioWriteState'] = AudioWriter.stateList[self.audioWriteProcess.publishedStateVar.value]
-            print("main>> ...done getting AudioWriter state")
+            self.log("...done getting AudioWriter state")
         if self.audioAcquireProcess is not None:
-            print("main>> Getting AudioAcquirer state...")
+            self.log("Getting AudioAcquirer state...")
             states['audioAcquireState'] = AudioAcquirer.stateList[self.audioAcquireProcess.publishedStateVar.value]
-            print("main>> ...done getting AudioAcquirer state")
+            self.log("...done getting AudioAcquirer state")
         if self.syncProcess is not None:
-            print("main>> Getting Synchronizer state...")
+            self.log("Getting Synchronizer state...")
             states['syncState'] = Synchronizer.stateList[self.syncProcess.publishedStateVar.value]
-            print("main>> ...done getting Synchronizer state...")
+            self.log("...done getting Synchronizer state...")
         if self.mergeProcess is not None:
-            print("main>> Getting AVMerger state...")
+            self.log("Getting AVMerger state...")
             states['mergeState'] = AVMerger.stateList[self.mergeProcess.publishedStateVar.value]
-            print("main>> ...done getting AVMerger state")
+            self.log("...done getting AVMerger state")
 
         if verbose:
             for camSerial in states['videoWriteStates']:
-                print("main>> videoWriteStates[", camSerial, "]:", states['videoWriteStates'][camSerial])
+                self.log("videoWriteStates[", camSerial, "]:", states['videoWriteStates'][camSerial])
             for camSerial in states['videoAcquireStates']:
-                print("main>> videoAcquireStates[", camSerial, "]:", states['videoAcquireStates'][camSerial])
-            print("main>> audioWriteState:", states['audioWriteState'])
-            print("main>> audioAcquireState:", states['audioAcquireState'])
-            print("main>> syncState:", states['syncState'])
-            print("main>> mergeState:", states['mergeState'])
-            print("main>> ...check states")
+                self.log("videoAcquireStates[", camSerial, "]:", states['videoAcquireStates'][camSerial])
+            self.log("audioWriteState:", states['audioWriteState'])
+            self.log("audioAcquireState:", states['audioAcquireState'])
+            self.log("syncState:", states['syncState'])
+            self.log("mergeState:", states['mergeState'])
+            self.log("...check states")
+
+        self.endLog(inspect.currentFrame().f_code.co_name)
+
         return states
 
     def debugAll(self):
-        print(r"main>> ****************************** \/ \/ DEBUG ALL \/ \/ *******************************")
+#        self.log(r"main>> ****************************** \/ \/ DEBUG ALL \/ \/ *******************************")
         self.getQueueSizes()
         self.getPIDs()
         self.checkStates()
-        print(r"main>> ****************************** /\ /\ DEBUG ALL /\ /\ *******************************")
+#        self.log(r"main>> ****************************** /\ /\ DEBUG ALL /\ /\ *******************************")
 
     def autoDebugAll(self, *args, interval=3000, startAuto=True):
         self.debugAll()
@@ -1719,13 +1756,15 @@ him know. Otherwise, I had nothing to do with it.
 
     def continuousTriggerStartButtonClick(self):
         if self.continuousTriggerProcess is not None:
-            print("main>> Sending start signal to continuous trigger process")
+            self.log("Sending start signal to continuous trigger process")
             self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.START, None))
+            self.endLog(inspect.currentFrame().f_code.co_name)
 
     def continuousTriggerStopButtonClick(self):
         if self.continuousTriggerProcess is not None:
-            print("main>> Sending stop signal to continuous trigger process")
+            self.log("Sending stop signal to continuous trigger process")
             self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.STOP, None))
+            self.endLog(inspect.currentFrame().f_code.co_name)
 
     def saveSettings(self, *args, path=None):
         params = self.getParams()
@@ -1755,9 +1794,10 @@ him know. Otherwise, I had nothing to do with it.
                 params = json.loads(f.read())
             params["scheduleStart"] = serializableToTime(params["scheduleStart"])
             params["scheduleStop"] = serializableToTime(params["scheduleStop"])
-            print("main>> Loaded settings:")
-            print(params)
+            self.log("Loaded settings:")
+            self.log(params)
             self.setParams(**params)
+        self.endLog(inspect.currentFrame().f_code.co_name)
 
     def setVideoBaseFileNames(self, baseFileNames, *args):
         # Expects baseFileNames to be a list of baseFileNames, which will be used
@@ -1934,13 +1974,14 @@ him know. Otherwise, I had nothing to do with it.
         return False
 
     def createChildProcesses(self):
-        print("main>> Creating child processes")
+        self.log("Creating child processes")
         p = self.getParams()
 
         ready = mp.Barrier(p["numSyncedProcesses"])
 
-        self.StdoutManager = StdoutManager()
-        self.StdoutManager.start()
+        if self.StdoutManager is None:
+            self.StdoutManager = StdoutManager()
+            self.StdoutManager.start()
 
         # Shared values so all processes can access actual DAQ frequencies
         #   determined by Synchronizer process. This value should only change
@@ -2085,6 +2126,8 @@ him know. Otherwise, I had nothing to do with it.
         if self.mergeProcess is not None: self.mergeProcess.start()
         if self.continuousTriggerProcess is not None: self.continuousTriggerProcess.start()
 
+        self.endLog(inspect.currentFrame().f_code.co_name)
+
     def startChildProcesses(self):
         # Tell all child processes to start
 
@@ -2122,7 +2165,8 @@ him know. Otherwise, I had nothing to do with it.
         if stopped:
             self.startChildProcesses()
         else:
-            print("main>> Attempted to restart child processes, but could not get them to stop.")
+            self.log("Attempted to restart child processes, but could not get them to stop.")
+            self.endLog(inspect.currentFrame().f_code.co_name)
 
     def stopChildProcesses(self):
         # Tell all child processes to stop
@@ -2173,9 +2217,9 @@ him know. Otherwise, I had nothing to do with it.
             s = io.StringIO()
             ps = pstats.Stats(self.profiler, stream=s)
             ps.print_stats()
-            print('main>> ', s.getvalue())
+            self.log('', s.getvalue())
         except:
-            print('main>> Error printing profiler stats')
+            self.log('Error printing profiler stats')
 
         self.audioTriggerProcess = None
         self.continuousTriggerProcess = None
@@ -2185,20 +2229,24 @@ him know. Otherwise, I had nothing to do with it.
         self.videoWriteProcesses = {}
         self.mergeProcess = None
         self.syncProcess = None
-        self.StdoutManager = None
+        self.StdoutManager = StdoutManager()
+        self.StdoutManager.start()
+
+        self.endLog(inspect.currentFrame().f_code.co_name)
 
     def sendWriteTrigger(self, t=None):
         p = self.getParams('preTriggerTime', 'recordTime')
         if t is None:
             t = time.time_ns()/1000000000
         trig = Trigger(t-p['preTriggerTime'], t, t + p['recordTime'] - p['preTriggerTime'])
-        print("main>> Sending manual trigger!")
+        self.log("Sending manual trigger!")
         for camSerial in self.camSerials:
             self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.TRIGGER, trig))
-            print("main>> ...sent to", camSerial, "video writer")
+            self.log("...sent to", camSerial, "video writer")
         if self.audioWriteProcess is not None:
             self.audioWriteProcess.msgQueue.put((AudioWriter.TRIGGER, trig))
-            print("main>> ...sent to audio writer")
+            self.log("...sent to audio writer")
+        self.endLog(inspect.currentFrame().f_code.co_name)
 
     def update(self):
         # root window
