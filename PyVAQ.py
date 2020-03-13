@@ -1319,6 +1319,7 @@ him know. Otherwise, I had nothing to do with it.
             self.autoUpdateAudioAnalysisMonitors()
         elif newMode == "Continuous":
             if self.audioTriggerProcess is not None:
+                self.continuousTriggerProcess.msgQueue.put((AudioTriggerer.START, None))
                 if self.getParams('audioTagContinuousTrigs'):
                     self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STARTANALYZE, None))
                     self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(writeTriggerEnabled=False, tagTriggerEnabled=True)))
