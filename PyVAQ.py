@@ -1727,7 +1727,7 @@ him know. Otherwise, I had nothing to do with it.
             states['audioTriggerState'] = 'None'
         if self.continuousTriggerProcess is not None:
             # self.log("Getting AudioTriggerer state...")
-            states['continuousTriggerState'] = continuousTriggerer.stateList[self.continuousTriggerProcess.publishedStateVar.value]
+            states['continuousTriggerState'] = ContinuousTriggerer.stateList[self.continuousTriggerProcess.publishedStateVar.value]
             # self.log("...done getting AVMerger state")
         else:
             states['continuousTriggerState'] = 'None'
