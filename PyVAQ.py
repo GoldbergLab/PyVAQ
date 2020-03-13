@@ -939,8 +939,9 @@ class PyVAQ:
                 self.StdoutManager.queue.put(self.stdoutBuffer)
             else:
                 print('Warning, logging failed - stdout queue not created.')
-                for logLine in self.stdoutBuffer:
-                    print(logLine)
+                log, opts = self.stdoutBuffer
+                for logLine in self.log:
+                    print(logLine, **opts)
         self.stdoutBuffer = []
 
     def cleanupAndExit(self):
