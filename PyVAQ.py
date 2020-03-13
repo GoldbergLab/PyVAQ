@@ -2134,7 +2134,7 @@ him know. Otherwise, I had nothing to do with it.
                 multiChannelStartBehavior=p["multiChannelStartBehavior"],
                 multiChannelStopBehavior=p["multiChannelStopBehavior"],
                 bandpassFrequencies=(p['triggerLowBandpass'], p['triggerHighBandpass']),
-                continuousTriggerMsgQueue=self.continuousTriggerProcess.msgQueue,
+                taggerQueues=[self.continuousTriggerProcess.msgQueue],
                 verbose=self.audioTriggerVerbose,
                 audioMessageQueue=self.audioWriteProcess.msgQueue,
                 videoMessageQueues=dict([(camSerial, self.videoWriteProcesses[camSerial].msgQueue) for camSerial in self.videoWriteProcesses]),
