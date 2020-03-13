@@ -1760,7 +1760,7 @@ him know. Otherwise, I had nothing to do with it.
             self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.START, None))
             self.endLog(inspect.currentframe().f_code.co_name)
         else:
-            showWarning(title="No continuous trigger process available", message="Continuous triggering process does not appear to be available. Try starting up acquisition first")
+            showwarning(title="No continuous trigger process available", message="Continuous triggering process does not appear to be available. Try starting up acquisition first")
 
     def continuousTriggerStopButtonClick(self):
         if self.continuousTriggerProcess is not None:
@@ -1768,7 +1768,7 @@ him know. Otherwise, I had nothing to do with it.
             self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.STOP, None))
             self.endLog(inspect.currentframe().f_code.co_name)
         else:
-            showWarning(title="No continuous trigger process available", message="Continuous triggering process does not appear to be available. Try starting up acquisition first")
+            showwarning(title="No continuous trigger process available", message="Continuous triggering process does not appear to be available. Try starting up acquisition first")
 
     def saveSettings(self, *args, path=None):
         params = self.getParams()
