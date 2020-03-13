@@ -793,7 +793,7 @@ class AVMerger(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log('*********************************** /\ M ' + self.stateList[state] + ' /\ ********************************************')
+                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             # Prepare to advance to next state
             lastState = state
@@ -1125,7 +1125,7 @@ class Synchronizer(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log('*********************************** /\ S ' + self.stateList[state] + ' /\ ********************************************')
+                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
 
@@ -1591,7 +1591,7 @@ class AudioTriggerer(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log('*********************************** /\ AT ' + self.stateList[state] + ' /\ ********************************************')
+                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
 
@@ -1955,7 +1955,7 @@ class AudioAcquirer(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log('*********************************** /\ AA ' + self.stateList[state] + ' /\ ********************************************')
+                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
 
@@ -2380,7 +2380,7 @@ class AudioWriter(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log('*********************************** /\ AW ' + self.stateList[state] + ' /\ ********************************************')
+                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
 
@@ -2781,7 +2781,7 @@ class VideoAcquirer(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log('*********************************** /\ ' + self.ID + ' ' + self.stateList[state] + ' /\ ********************************************')
+                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
 
@@ -3245,7 +3245,7 @@ class VideoWriter(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log('*********************************** /\ ' + self.ID + ' ' + self.stateList[state] + ' /\ ********************************************')
+                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
 
@@ -3591,7 +3591,7 @@ class ContinuousTriggerer(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log('*********************************** /\ CT ' + self.stateList[state] + ' /\ ********************************************')
+                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
 
