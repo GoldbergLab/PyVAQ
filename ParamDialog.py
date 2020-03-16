@@ -34,7 +34,7 @@ class Param():
         self.mainFrame = ttk.LabelFrame(parent, text=self.name)
         self.widgetFrame = ttk.Frame(self.mainFrame)
         if self.description is not None and len(self.description) > 0:
-            labelWidth = max([len(self.name), 10]) * 10
+            labelWidth = max([len(self.name), 7]) * 10
             self.label = ttk.Label(self.mainFrame, text=self.description, wraplength=labelWidth)
         if self.widgetType == Param.TEXT:
             self.var = tk.StringVar()
