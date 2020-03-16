@@ -1144,7 +1144,6 @@ him know. Otherwise, I had nothing to do with it.
                 else:
                     self.acquisitionStartTriggerSource = None
 
-
                 self.log('Got audioDAQChannels:', audioDAQChannels)
                 self.log('Got camSerials:', camSerials)
 
@@ -2134,7 +2133,7 @@ him know. Otherwise, I had nothing to do with it.
 
         self.continuousTriggerProcess = ContinuousTriggerer(
             startTime=startTime,
-            recordPeriod=1,
+            recordPeriod=p['continuousTriggerPeriod'],
             verbose=self.continuousTriggerVerbose,
             audioMessageQueue=self.audioWriteProcess.msgQueue,
             videoMessageQueues=dict([(camSerial, self.videoWriteProcesses[camSerial].msgQueue) for camSerial in self.videoWriteProcesses]),
