@@ -1765,6 +1765,8 @@ class AudioAcquirer(StateMachineProcess):
                     self.audioFrequency = self.audioFrequencyVar.value
 
                     data = np.zeros((len(self.inputChannels), self.chunkSize), dtype='float')   # A pre-allocated array to receive audio data
+                    monitorDataCopy = np.copy(data)
+
                     processedData = data.copy()
                     readTask = nidaqmx.Task(new_task_name="audioTask")                            # Create task
                     reader = AnalogMultiChannelReader(readTask.in_stream)  # Set up an analog stream reader
@@ -1856,7 +1858,9 @@ class AudioAcquirer(StateMachineProcess):
                         else:
                             if self.verbose >= 2: self.log('' + processedData)
 
-                        monitorDataCopy = np.copy(data)
+                        # Copy audio data for monitoring queues
+                        np.copyto(monitorDataCopy, data)
+                        
                         if self.monitorQueue is not None:
                             self.monitorQueue.put((self.inputChannels, chunkStartTime, monitorDataCopy))      # If a monitoring queue is provided, queue up the data
                         if self.analysisQueue is not None:
