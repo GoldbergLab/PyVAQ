@@ -625,7 +625,6 @@ class PyVAQ:
         self.videoSyncSource = None
         self.videoSyncTerminal = None
         self.acquisitionStartTriggerSource = None
-        self.dummyReadChannel = None
 
         ########### GUI WIDGETS #####################
 
@@ -1103,7 +1102,6 @@ him know. Otherwise, I had nothing to do with it.
             params.append(Param(name='Video Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI5", description="This must match your selection for Video Sync Channel. Check DAQ pinout for matching PFI channel."))
         params.append(Param(name='Start acquisition immediately', widgetType=Param.MONOCHOICE, options=['Yes', 'No'], default='Yes'))
         params.append(Param(name='Acquisition start trigger channel', widgetType=Param.MONOCHOICE, options=availableDigitalChannels, default="None", description="Choose a channel that will trigger the acquisition start with a rising edge. Leave as None if you wish the acquisition to start without waiting for a digital trigger."))
-        params.append(Param(name='Acquisition start dummy channel', widgetType=Param.MONOCHOICE, options=availableDigitalChannels, default="None", description="Choose a channel to use as a dummy read channel for acqusition triggering. Must be specified if you specify a start trigger channel."))
 
         choices = None
         if len(params) > 0:
@@ -1145,15 +1143,6 @@ him know. Otherwise, I had nothing to do with it.
                         self.acquisitionStartTriggerSource = choices['Acquisition start trigger channel']
                 else:
                     self.acquisitionStartTriggerSource = None
-                if 'Acquisition start dummy channel' in choices and len(choices['Acquisition start dummy channel']) > 0:
-                    if choices['Acquisition start dummy channel'] == 'None':
-                        self.dummyReadChannel = None
-                    else:
-                        self.dummyReadChannel = choices['Acquisition start trigger channel']
-                else:
-                    self.dummyReadChannel = None
-
-
 
                 self.log('Got audioDAQChannels:', audioDAQChannels)
                 self.log('Got camSerials:', camSerials)
@@ -2079,7 +2068,6 @@ him know. Otherwise, I had nothing to do with it.
                 actualAudioFrequency=self.actualAudioFrequency,
                 startTime=startTime,
                 startTriggerChannel=self.acquisitionStartTriggerSource,
-                dummyReadChannel=self.dummyReadChannel,
                 audioSyncChannel=self.audioSyncTerminal,
                 videoSyncChannel=self.videoSyncTerminal,
                 requestedAudioFrequency=p["audioFrequency"],

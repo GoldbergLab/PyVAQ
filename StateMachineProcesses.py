@@ -857,7 +857,6 @@ class Synchronizer(StateMachineProcess):
         audioSyncChannel=None,           # The counter channel on which to generate the audio sync signal Dev3/ctr1
         audioDutyCycle=0.5,
         startTriggerChannel=None,             # A digital channel on which to wait for a start trigger signal. If this is none, sync process starts ASAP.
-        dummyReadChannel=None,              # An unused digital channel to read from for dummy purposes
         startTime=None,                         # Shared value that is set when sync starts, used as start time by all processes (relevant for manual triggers)
         verbose=False,
         ready=None,                             # Synchronization barrier to ensure everyone's ready before beginning
@@ -875,7 +874,6 @@ class Synchronizer(StateMachineProcess):
         self.videoDutyCycle = videoDutyCycle
         self.audioDutyCycle = audioDutyCycle
         self.startTriggerChannel = startTriggerChannel
-        self.dummyReadChannel = dummyReadChannel
         self.ready = ready
         self.errorMessages = []
         self.verbose = verbose
@@ -938,9 +936,6 @@ class Synchronizer(StateMachineProcess):
                     else:
                         trigTask = nidaqmx.Task()                       # Create task
                         if self.startTriggerChannel is not None:
-                            if self.dummyReadChannel is None:
-                                startTask = None
-                                raise AttributeError("Must specify dummy read channel if start trigger channel is defined")
                             startTask = nidaqmx.Task()
                         else:
                             startTask = None
