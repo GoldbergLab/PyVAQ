@@ -1711,7 +1711,6 @@ class AudioAcquirer(StateMachineProcess):
             self.channelConfig = nidaqmx.constants.TerminalConfiguration.PSEUDODIFFERENTIAL
         elif channelConfig == "RSE":
             self.channelConfig = nidaqmx.constants.TerminalConfiguration.RSE
-        self.channelConfig = channelConfig
         self.syncChannel = syncChannel
         self.ready = ready
         self.errorMessages = []
