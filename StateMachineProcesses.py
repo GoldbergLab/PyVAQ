@@ -1680,6 +1680,7 @@ class AudioAcquirer(StateMachineProcess):
                 audioFrequency = 44100,               # Maximum expected rate of the specified synchronization channel
                 bufferSize = None,                  # Size of device buffer. Defaults to 1 second's worth of data
                 channelNames = [],                  # Channel name for analog input (microphone signal)
+                channelConfig = "DEFAULT",
                 syncChannel = None,                 # Channel name for synchronization source
                 verbose = False,
                 ready=None,                         # Synchronization barrier to ensure everyone's ready before beginning
@@ -1700,6 +1701,17 @@ class AudioAcquirer(StateMachineProcess):
         #     self.monitorQueue.cancel_join_thread()
         self.chunkSize = chunkSize
         self.inputChannels = channelNames
+        if channelConfig == "DEFAULT":
+            self.channelConfig = nidaqmx.constants.TerminalConfiguration.DEFAULT
+        elif channelConfig == "DIFFERENTIAL":
+            self.channelConfig = nidaqmx.constants.TerminalConfiguration.DIFFERNETIAL
+        elif channelConfig == "NRSE":
+            self.channelConfig = nidaqmx.constants.TerminalConfiguration.NRSE
+        elif channelConfig == "PSEUDODIFFERENTIAL":
+            self.channelConfig = nidaqmx.constants.TerminalConfiguration.PSEUDODIFFERENTIAL
+        elif channelConfig == "RSE":
+            self.channelConfig = nidaqmx.constants.TerminalConfiguration.RSE
+        self.channelConfig = channelConfig
         self.syncChannel = syncChannel
         self.ready = ready
         self.errorMessages = []
@@ -1773,7 +1785,7 @@ class AudioAcquirer(StateMachineProcess):
                     for inputChannel in self.inputChannels:
                         readTask.ai_channels.add_ai_voltage_chan(               # Set up analog input channel
                             inputChannel,
-                            terminal_config=nidaqmx.constants.TerminalConfiguration.DIFFERENTIAL,
+                            terminal_config=self.channelConfig,
                             max_val=10,
                             min_val=-10)
                     readTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
@@ -1860,7 +1872,7 @@ class AudioAcquirer(StateMachineProcess):
 
                         # Copy audio data for monitoring queues
                         np.copyto(monitorDataCopy, data)
-                        
+
                         if self.monitorQueue is not None:
                             self.monitorQueue.put((self.inputChannels, chunkStartTime, monitorDataCopy))      # If a monitoring queue is provided, queue up the data
                         if self.analysisQueue is not None:

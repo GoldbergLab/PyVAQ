@@ -625,6 +625,7 @@ class PyVAQ:
         self.videoSyncSource = None
         self.videoSyncTerminal = None
         self.acquisitionStartTriggerSource = None
+        self.audioChannelConfiguration = None
 
         ########### GUI WIDGETS #####################
 
@@ -1089,6 +1090,13 @@ him know. Otherwise, I had nothing to do with it.
         availableClockChannels = flattenList(discoverDAQClockChannels().values()) + ['None']
         availableDigitalChannels = ['None'] + flattenList(discoverDAQTerminals().values())
         availableCamSerials = discoverCameras()
+        audioChannelConfigurations = [
+            "DEFAULT",
+            "DIFFERENTIAL",
+            "NRSE",
+            "PSEUDODIFFERENTIAL",
+            "RSE"
+        ]
 
         params = []
         if len(availableAudioChannels) > 0:
@@ -1100,8 +1108,9 @@ him know. Otherwise, I had nothing to do with it.
             params.append(Param(name='Video Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default="None"))
             params.append(Param(name='Audio Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI4", description="This must match your selection for Audio Sync Channel. Check DAQ pinout for matching PFI channel."))
             params.append(Param(name='Video Sync PFI Interface', widgetType=Param.TEXT, options=None, default="PFI5", description="This must match your selection for Video Sync Channel. Check DAQ pinout for matching PFI channel."))
-        params.append(Param(name='Start acquisition immediately', widgetType=Param.MONOCHOICE, options=['Yes', 'No'], default='Yes'))
+        params.append(Param(name='Audio channel configuration', widgetType=Param.MONOCHOICE, options=audioChannelConfigurations, default="DEFAULT", description="Choose an analog channel configuration for audio acquisition. Recommend differential if you have a 3-wire XLR-type output, RSE if you only use two wires."))
         params.append(Param(name='Acquisition start trigger channel', widgetType=Param.MONOCHOICE, options=availableDigitalChannels, default="None", description="Choose a channel that will trigger the acquisition start with a rising edge. Leave as None if you wish the acquisition to start without waiting for a digital trigger."))
+        params.append(Param(name='Start acquisition immediately', widgetType=Param.MONOCHOICE, options=['Yes', 'No'], default='Yes'))
 
         choices = None
         if len(params) > 0:
@@ -1143,6 +1152,8 @@ him know. Otherwise, I had nothing to do with it.
                         self.acquisitionStartTriggerSource = choices['Acquisition start trigger channel']
                 else:
                     self.acquisitionStartTriggerSource = None
+                if 'Audio channel configuration' in choices and len(choices['Audio channel configuration']) > 0:
+                    self.audioChannelConfiguration = choices['Audio channel configuration']
 
                 self.log('Got audioDAQChannels:', audioDAQChannels)
                 self.log('Got camSerials:', camSerials)
@@ -2085,6 +2096,7 @@ him know. Otherwise, I had nothing to do with it.
                 audioFrequency=self.actualAudioFrequency,
                 bufferSize=None,
                 channelNames=self.audioDAQChannels,
+                channelConfig=self.audioChannelConfiguration,
                 syncChannel=self.audioSyncSource,
                 verbose=self.audioAcquireVerbose,
                 ready=ready,
