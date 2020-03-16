@@ -996,6 +996,8 @@ class Synchronizer(StateMachineProcess):
                         trigTask.start()
                         postTime = time.time_ns()
                         self.startTime.value = (preTime + postTime) / 2000000000
+                        if self.verbose >= 1: self.log("Sync task started at {time} s".format(time=self.startTime.value))
+                        if self.verbose >= 1: self.log("Sync task startup took {time} s".format(time=(postTime - preTime)/1000000000))
                     except BrokenBarrierError:
                         if self.verbose >= 0: self.log("Simultaneous start failure")
                         nextState = Synchronizer.STOPPING
@@ -1632,7 +1634,7 @@ class AudioTriggerer(StateMachineProcess):
                 self.videoMessageQueues[camSerial].put((VideoWriter.TRIGGER, trigger))
         if self.tagTriggerEnabled:
             for queue in self.taggerQueues:
-                queue.put((ContinuousTriggerer.TAGTRIGGER, ))
+                queue.put((ContinuousTriggerer.TAGTRIGGER, trigger))
 
 class AudioAcquirer(StateMachineProcess):
     # Class for acquiring an audio signal (or any analog signal) at a rate that
