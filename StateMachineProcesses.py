@@ -3616,7 +3616,6 @@ class ContinuousTriggerer(StateMachineProcess):
             state = nextState
 
         clearQueue(self.msgQueue)
-        clearQueue(self.analysisMonitorQueue)
         if self.verbose >= 1: self.log("Audio write process STOPPED")
 
         self.flushStdout()
