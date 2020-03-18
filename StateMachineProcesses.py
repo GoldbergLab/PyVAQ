@@ -241,7 +241,7 @@ TIME_FORMAT = '%Y-%m-%d-%H-%M-%S-%f'
 
 def getDaySubfolder(root, trigger):
     dateString = dt.datetime.fromtimestamp(trigger.triggerTime).strftime(DATE_FORMAT)
-    os.path.join(root, dateString)
+    return os.path.join(root, dateString)
 
 def ensureDirectoryExists(directory):
     # Creates directory (and subdirectories if necessary) to ensure that the directory exists in the filesystem
@@ -645,6 +645,7 @@ class AVMerger(StateMachineProcess):
                             mergeDirectory = self.directory
                         else:
                             mergeDirectory = getDaySubfolder(self.directory, fileEventGroup[0]['trigger'])
+                        if self.verbose >= 1: self.log('Merging into directory: {d}, daySubFolders={dsf}'.format(d=mergeDirectory, dsf=self.daySubfolders))
                         if not self.montage:  # Make a separate file for each video stream
                             # Construct command template
                             mergeCommandTemplate = 'ffmpeg -i "{videoFile}" ' + audioFileInputText + ' -c:v libx264 -preset veryfast -crf {compression} -shortest -nostdin -y "{outputFile}"'
