@@ -641,7 +641,7 @@ class AVMerger(StateMachineProcess):
                         videoFileEvents = tuple(filter(lambda fileEvent:fileEvent['streamType'] == AVMerger.VIDEO, fileEventGroup))
                         # Construct the audio part of the ffmpeg command template
                         audioFileInputText = ' '.join(['-i "{{audioFile{k}}}"'.format(k=k) for k in range(len(audioFileEvents))])
-                        if daySubfolders:
+                        if self.daySubfolders:
                             mergeDirectory = self.directory
                         else:
                             mergeDirectory = getDaySubfolder(self.directory, fileEventGroup[0]['trigger'])
