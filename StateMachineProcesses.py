@@ -3427,6 +3427,9 @@ class ContinuousTriggerer(StateMachineProcess):
         self.videoMessageQueues = videoMessageQueues
         self.recordPeriod = recordPeriod
 
+        self.updatePeriod = None
+        self.updateUpdatePeriod()
+
         self.scheduleEnabled = scheduleEnabled
         self.scheduleStartTime = scheduleStartTime
         self.scheduleStopTime = scheduleStopTime
@@ -3441,11 +3444,15 @@ class ContinuousTriggerer(StateMachineProcess):
                 if key == 'continuousTriggerPeriod':
                     if params[key] > 0:
                         self.recordPeriod = params[key]
+                        self.updateUpdatePeriod()
                     else:
                         raise AttributeError('Record period must be greater than zero')
                 if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
             else:
                 if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
+
+    def updateUpdatePeriod(self):
+        self.updatePeriod = min(self.recordPeriod/20, 0.1)
 
     def run(self):
         self.PID.value = os.getpid()
@@ -3550,7 +3557,7 @@ class ContinuousTriggerer(StateMachineProcess):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.msgQueue.get(block=False)
+                        msg, arg = self.msgQueue.get(block=False, timeout=self.updatePeriod)
                         if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                         elif msg == ContinuousTriggerer.TAGTRIGGER: self.updateTagTriggers(tagTriggers, arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
