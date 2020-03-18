@@ -241,7 +241,7 @@ TIME_FORMAT = '%Y-%m-%d-%H-%M-%S-%f'
 
 def getDaySubfolder(root, trigger):
     dateString = dt.datetime.fromtimestamp(trigger.triggerTime).strftime(DATE_FORMAT)
-    os.path.join(root, dateString)
+    return os.path.join(root, dateString)
 
 def ensureDirectoryExists(directory):
     # Creates directory (and subdirectories if necessary) to ensure that the directory exists in the filesystem
@@ -641,10 +641,12 @@ class AVMerger(StateMachineProcess):
                         videoFileEvents = tuple(filter(lambda fileEvent:fileEvent['streamType'] == AVMerger.VIDEO, fileEventGroup))
                         # Construct the audio part of the ffmpeg command template
                         audioFileInputText = ' '.join(['-i "{{audioFile{k}}}"'.format(k=k) for k in range(len(audioFileEvents))])
-                        if daySubfolders:
-                            mergeDirectory = self.directory
-                        else:
+                        if self.daySubfolders:
                             mergeDirectory = getDaySubfolder(self.directory, fileEventGroup[0]['trigger'])
+                        else:
+                            mergeDirectory = self.directory
+                        ensureDirectoryExists(mergeDirectory)
+                        if self.verbose >= 1: self.log('Merging into directory: {d}, daySubfolders={dsf}'.format(d=mergeDirectory, dsf=self.daySubfolders))
                         if not self.montage:  # Make a separate file for each video stream
                             # Construct command template
                             mergeCommandTemplate = 'ffmpeg -i "{videoFile}" ' + audioFileInputText + ' -c:v libx264 -preset veryfast -crf {compression} -shortest -nostdin -y "{outputFile}"'
@@ -2248,9 +2250,9 @@ class AudioWriter(StateMachineProcess):
                             audioFileStartTime = audioChunk.chunkStartTime
                             audioFileNameTags = [','.join(self.channelNames), generateTimeString(triggers[0])] + list(triggers[0].tags)
                             if self.daySubfolders:
-                                audioDirectory = self.audioDirectory
-                            else:
                                 audioDirectory = getDaySubfolder(self.audioDirectory, triggers[0])
+                            else:
+                                audioDirectory = self.audioDirectory
                             audioFileName = generateFileName(directory=audioDirectory, baseName=self.audioBaseFileName, extension='.wav', tags=audioFileNameTags)
                             ensureDirectoryExists(audioDirectory)
                             audioFile = wave.open(audioFileName, 'w')
@@ -3093,9 +3095,9 @@ class VideoWriter(StateMachineProcess):
                             videoFileStartTime = frameTime
                             videoFileNameTags = [self.camSerial, generateTimeString(triggers[0])] + list(triggers[0].tags)
                             if self.daySubfolders:
-                                videoDirectory = self.videoDirectory
-                            else:
                                 videoDirectory = getDaySubfolder(self.videoDirectory, triggers[0])
+                            else:
+                                videoDirectory = self.videoDirectory
                             videoFileName = generateFileName(directory=videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
                             ensureDirectoryExists(videoDirectory)
                             if self.videoWriteMethod == "PySpin":
