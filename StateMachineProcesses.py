@@ -236,12 +236,17 @@ class AudioChunk():
 
 #  audioChunkBytes = b''.join(map(lambda x:struct.pack(bytePackingPattern, *x), audioChunk.transpose().tolist()))
 
+DATE_FORMAT = '%Y-%m-%d'
+TIME_FORMAT = '%Y-%m-%d-%H-%M-%S-%f'
+
+def getDaySubfolder(root, trigger):
+    dateString = dt.datetime.fromtimestamp(trigger.triggerTime).strftime(DATE_FORMAT)
+    os.path.join(root, dateString)
+
 def ensureDirectoryExists(directory):
     # Creates directory (and subdirectories if necessary) to ensure that the directory exists in the filesystem
     if len(directory) > 0:
         os.makedirs(directory, exist_ok=True)
-
-TIME_FORMAT = '%Y-%m-%d-%H-%M-%S-%f'
 
 def generateTimeString(trigger):
     return dt.datetime.fromtimestamp(trigger.triggerTime).strftime(TIME_FORMAT)
@@ -399,7 +404,8 @@ class AVMerger(StateMachineProcess):
         'montage',
         'deleteMergedAudioFiles',
         'deleteMergedVideoFiles',
-        'compression'
+        'compression',
+        'daySubfolders'
     ]
 
     def __init__(self,
@@ -411,6 +417,7 @@ class AVMerger(StateMachineProcess):
         deleteMergedVideoFiles=False,    # After merging, delete unmerged video originals
         montage=False,              # Combine videos side by side
         compression='0',            # CRF factor for libx264 compression. '0'=lossless '23'=default '51'=terrible
+        daySubfolders=True,
         **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
@@ -427,6 +434,7 @@ class AVMerger(StateMachineProcess):
         self.compression = compression
         if self.numFilesPerTrigger < 2:
             if self.verbose >= 0: self.log("Warning! AVMerger can't merge less than 2 files!")
+        self.daySubfolders = daySubfolders
 
     def setParams(self, **params):
         for key in params:
@@ -633,6 +641,10 @@ class AVMerger(StateMachineProcess):
                         videoFileEvents = tuple(filter(lambda fileEvent:fileEvent['streamType'] == AVMerger.VIDEO, fileEventGroup))
                         # Construct the audio part of the ffmpeg command template
                         audioFileInputText = ' '.join(['-i "{{audioFile{k}}}"'.format(k=k) for k in range(len(audioFileEvents))])
+                        if daySubfolders:
+                            mergeDirectory = self.directory
+                        else:
+                            mergeDirectory = getDaySubfolder(self.directory, fileEventGroup[0]['trigger'])
                         if not self.montage:  # Make a separate file for each video stream
                             # Construct command template
                             mergeCommandTemplate = 'ffmpeg -i "{videoFile}" ' + audioFileInputText + ' -c:v libx264 -preset veryfast -crf {compression} -shortest -nostdin -y "{outputFile}"'
@@ -642,7 +654,7 @@ class AVMerger(StateMachineProcess):
                                 # Add/update dictionary to reflect this video file
                                 kwargs['videoFile'] = videoFileEvent['filePath']
                                 fileNameTags = [videoFileEvent['streamID'], 'merged', generateTimeString(videoFileEvent['trigger'])] + list(videoFileEvent['trigger'].tags)
-                                kwargs['outputFile'] = generateFileName(directory=self.directory, baseName=self.baseFileName, extension='.avi', tags=fileNameTags)
+                                kwargs['outputFile'] = generateFileName(directory=mergeDirectory, baseName=self.baseFileName, extension='.avi', tags=fileNameTags)
                                 kwargs['compression'] = self.compression
                                 # Substitute strings into command template
                                 mergeCommand = mergeCommandTemplate.format(**kwargs)
@@ -664,7 +676,7 @@ class AVMerger(StateMachineProcess):
                                 [('audioFile{k}'.format(k=k), audioFileEvents[k]['filePath']) for k in range(len(audioFileEvents))] + \
                                 [('videoFile{k}'.format(k=k), videoFileEvents[k]['filePath']) for k in range(len(videoFileEvents))])
                             fileNameTags = [videoFileEvent['streamID'], 'montage', generateTimeString(videoFileEvent['trigger'])] + list(videoFileEvent['trigger'].tags)
-                            kwargs['outputFile'] = generateFileName(directory=self.directory, baseName=self.baseFileName, extension='.avi', tags=fileNameTags)
+                            kwargs['outputFile'] = generateFileName(directory=mergeDirectory, baseName=self.baseFileName, extension='.avi', tags=fileNameTags)
                             kwargs['compression'] = self.compression
                             mergeCommand = mergeCommandTemplate.format(**kwargs)
                             if self.verbose >= 1:
@@ -2027,7 +2039,8 @@ class AudioWriter(StateMachineProcess):
     settableParams = [
         'verbose',
         'audioBaseFileName',
-        'audioDirectory'
+        'audioDirectory',
+        'daySubfolders'
         ]
 
     def __init__(self,
@@ -2042,6 +2055,7 @@ class AudioWriter(StateMachineProcess):
                 verbose=False,
                 audioDepthBytes=2,
                 mergeMessageQueue=None, # Queue to put (filename, trigger) in for merging
+                daySubfolders=True,         # Create and write to subfolders labeled by day?
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.ID = "AW"
@@ -2062,6 +2076,7 @@ class AudioWriter(StateMachineProcess):
         self.errorMessages = []
         self.verbose = verbose
         self.audioDepthBytes = audioDepthBytes
+        self.daySubfolders = daySubfolders
 
     def setParams(self, **params):
         for key in params:
@@ -2232,8 +2247,12 @@ class AudioWriter(StateMachineProcess):
                             # Start new audio file
                             audioFileStartTime = audioChunk.chunkStartTime
                             audioFileNameTags = [','.join(self.channelNames), generateTimeString(triggers[0])] + list(triggers[0].tags)
-                            audioFileName = generateFileName(directory=self.audioDirectory, baseName=self.audioBaseFileName, extension='.wav', tags=audioFileNameTags)
-                            ensureDirectoryExists(self.audioDirectory)
+                            if self.daySubfolders:
+                                audioDirectory = self.audioDirectory
+                            else:
+                                audioDirectory = getDaySubfolder(self.audioDirectory, triggers[0])
+                            audioFileName = generateFileName(directory=audioDirectory, baseName=self.audioBaseFileName, extension='.wav', tags=audioFileNameTags)
+                            ensureDirectoryExists(audioDirectory)
                             audioFile = wave.open(audioFileName, 'w')
                             audioFile.audioFileName = audioFileName
                             # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
@@ -2889,7 +2908,8 @@ class VideoWriter(StateMachineProcess):
     settableParams = [
         'verbose',
         'videoBaseFileName',
-        'videoDirectory'
+        'videoDirectory',
+        'daySubfolders'
         ]
 
     def __init__(self,
@@ -2902,6 +2922,7 @@ class VideoWriter(StateMachineProcess):
                 bufferSizeSeconds=2.2,
                 camSerial='',
                 verbose=False,
+                daySubfolders=True,
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.camSerial = camSerial
@@ -2920,6 +2941,7 @@ class VideoWriter(StateMachineProcess):
         self.errorMessages = []
         self.verbose = verbose
         self.videoWriteMethod = 'PySpin'   # options are ffmpeg, PySpin, OpenCV
+        self.daySubfolders = daySubfolders
 
     def setParams(self, **params):
         for key in params:
@@ -3070,8 +3092,12 @@ class VideoWriter(StateMachineProcess):
                             # Start new video file
                             videoFileStartTime = frameTime
                             videoFileNameTags = [self.camSerial, generateTimeString(triggers[0])] + list(triggers[0].tags)
-                            videoFileName = generateFileName(directory=self.videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
-                            ensureDirectoryExists(self.videoDirectory)
+                            if self.daySubfolders:
+                                videoDirectory = self.videoDirectory
+                            else:
+                                videoDirectory = getDaySubfolder(self.videoDirectory, triggers[0])
+                            videoFileName = generateFileName(directory=videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
+                            ensureDirectoryExists(videoDirectory)
                             if self.videoWriteMethod == "PySpin":
                                 videoFileInterface = PySpin.SpinVideo()
                                 option = PySpin.AVIOption()

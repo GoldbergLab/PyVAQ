@@ -734,6 +734,11 @@ class PyVAQ:
         self.mergeCompression = ttk.Combobox(self.mergeCompressionFrame, textvariable=self.mergeCompressionVar, values=[str(k) for k in range(52)], width=12)
         self.mergeCompressionVar.trace('w', lambda *args: self.changeAVMergerParams(compression=self.mergeCompressionVar.get()))
 
+        self.fileSettingsFrame = ttk.LabelFrame(self.acquisitionFrame, text="File settings")
+        self.daySubfoldersVar = tk.BooleanVar(); self.daySubfoldersVar.set(True)
+        self.daySubfoldersCheckbutton = ttk.Checkbutton(self.fileSettingsFrame, text="File in day subfolders", variable=self.daySubfoldersVar)
+        self.daySubfoldersVar.trace('w', lambda *args: self.updateDaySubfolderSetting())
+
         self.scheduleFrame = ttk.LabelFrame(self.acquisitionFrame, text="Trigger enable schedule")
         self.scheduleEnabledVar = tk.BooleanVar(); self.scheduleEnabledVar.set(False)
         self.scheduleEnabledCheckbutton = ttk.Checkbutton(self.scheduleFrame, text="Restrict trigger to schedule", variable=self.scheduleEnabledVar)
@@ -903,6 +908,7 @@ class PyVAQ:
             "acquireSettings":          dict(get=self.getAcquireSettings,                               set=self.setAcquireSettings),
             "continuousTriggerPeriod":  dict(get=lambda:float(self.continuousTriggerPeriodVar.get()),   set=self.continuousTriggerPeriodVar.set),
             "audioTagContinuousTrigs":  dict(get=self.audioTagContinuousTrigsVar.get,                   set=self.audioTagContinuousTrigsVar.set),
+            "daySubfolders":            dict(get=self.daySubfoldersVar.get,                             set=self.daySubfoldersVar.set)
         }
 
         self.createAudioAnalysisMonitor()
@@ -1018,6 +1024,17 @@ class PyVAQ:
         for camSerial in self.videoAcquireProcesses:
             self.videoAcquireProcesses[camSerial].msgQueue.put((VideoAcquirer.SETPARAMS, {'verbose':self.videoAcquireVerbose}))
             self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.SETPARAMS, {'verbose':self.videoWriteVerbose}))
+
+    def updateDaySubfolderSetting(self, *args):
+        # Change day subfolder setting in all child processes
+        daySubfolders = self.getParams('daySubfolders')
+        if self.audioWriteProcess is not None:
+            self.audioWriteProcess.msgQueue.put((AudioWriter.SETPARAMS, {'daySubfolders':daySubfolders}))
+        if self.mergeProcess is not None:
+            self.mergeProcess.msgQueue.put((AVMerger.SETPARAMS, {'daySubfolders':daySubfolders}))
+        for camSerial in self.videoWriteProcesses:
+            self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.SETPARAMS, {'daySubfolders':daySubfolders}))
+
 
     def validateExposure(self, *args):
         exposureTime = self.getParams('exposureTime')
@@ -2320,6 +2337,9 @@ him know. Otherwise, I had nothing to do with it.
         #           audioMonitorMasterFrame
         #       controlFrame
         #           acquisitionFrame
+        #               mergeFrame
+        #               scheduleFrame
+        #               fileSettingsFrame
         #           triggerFrame
         #               triggerModeChooserFrame
         #               triggerModeControlGroupFrame (only the active one is gridded)
@@ -2372,7 +2392,7 @@ him know. Otherwise, I had nothing to do with it.
 
         self.updateInputsButton.grid(row=3, column=0)
 
-        self.mergeFrame.grid(row=4, column=0, sticky=tk.NSEW)
+        self.mergeFrame.grid(row=4, rowspan=2, column=0, sticky=tk.NSEW)
         self.mergeFilesCheckbutton.grid(row=1, column=0, sticky=tk.NW)
         self.deleteMergedFilesFrame.grid(row=2, column=0, sticky=tk.NW)
         self.mergeCompressionFrame.grid(row=2, column=1, sticky=tk.NW)
@@ -2383,7 +2403,10 @@ him know. Otherwise, I had nothing to do with it.
 
         self.mergeFileWidget.grid(row=4, column=0, columnspan=2)
 
-        self.scheduleFrame.grid(row=4, column=1, columnspan=2, sticky=tk.NSEW)
+        self.fileSettingsFrame.grid(row=4, column=1, columnspan=2, sticky=tk.NSEW)
+        self.daySubfoldersCheckbutton.grid(row=0, column=0)
+
+        self.scheduleFrame.grid(row=5, column=1, columnspan=2, sticky=tk.NSEW)
         self.scheduleEnabledCheckbutton.grid(row=0, column=0, sticky=tk.NW)
         self.scheduleStartTimeEntry.grid(row=1, column=0, sticky=tk.NW)
         self.scheduleStopTimeEntry.grid(row=2, column=0, sticky=tk.NW)
