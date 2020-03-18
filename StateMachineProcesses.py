@@ -1716,7 +1716,7 @@ class AudioAcquirer(StateMachineProcess):
         if channelConfig == "DEFAULT":
             self.channelConfig = nidaqmx.constants.TerminalConfiguration.DEFAULT
         elif channelConfig == "DIFFERENTIAL":
-            self.channelConfig = nidaqmx.constants.TerminalConfiguration.DIFFERNETIAL
+            self.channelConfig = nidaqmx.constants.TerminalConfiguration.DIFFERENTIAL
         elif channelConfig == "NRSE":
             self.channelConfig = nidaqmx.constants.TerminalConfiguration.NRSE
         elif channelConfig == "PSEUDODIFFERENTIAL":
