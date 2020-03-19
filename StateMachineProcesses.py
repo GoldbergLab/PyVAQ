@@ -13,7 +13,7 @@ from threading import BrokenBarrierError
 import itertools
 import ffmpegWriter as fw
 import nidaqmx
-from nidaqmx.stream_readers import AnalogMultiChannelReader
+from nidaqmx.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
 from nidaqmx.constants import Edge, TriggerType
 from SharedImageQueue import SharedImageSender
 import traceback
@@ -962,9 +962,14 @@ class Synchronizer(StateMachineProcess):
                     # Configure and generate synchronization signal
                     if self.audioSyncChannel is None and self.videoSyncChannel is None:
                         trigTask = None
+                        startTask = None
                         raise IOError("At least one audio or video sync channel must be specified.")
                     else:
                         trigTask = nidaqmx.Task()                       # Create task
+                        if self.startTriggerChannel is not None:
+                            startTask = nidaqmx.Task()
+                        else:
+                            startTask = None
 
                     if self.videoSyncChannel is not None:
                         trigTask.co_channels.add_co_pulse_chan_freq(
@@ -982,11 +987,11 @@ class Synchronizer(StateMachineProcess):
                             initial_delay=0.0,
                             freq=self.audioFrequency,
                             duty_cycle=self.audioDutyCycle)     # Prepare a counter output channel for the audio sync signal
-                    if (self.startTriggerChannel is not None) and ((self.videoSyncChannel is not None) or (self.audioSyncChannel is not None)):
-                        # Configure task to wait for a digital pulse on the specified channel.
-                        trigTask.triggers.arm_start_trigger.dig_edge_src=self.startTriggerChannel
-                        trigTask.triggers.arm_start_trigger.trig_type=TriggerType.DIGITAL_EDGE
-                        trigTask.triggers.arm_start_trigger.dig_edge_edge=Edge.RISING
+                    # if (self.startTriggerChannel is not None) and ((self.videoSyncChannel is not None) or (self.audioSyncChannel is not None)):
+                    #     # Configure task to wait for a digital pulse on the specified channel.
+                    #     trigTask.triggers.arm_start_trigger.dig_edge_src=self.startTriggerChannel
+                    #     trigTask.triggers.arm_start_trigger.trig_type=TriggerType.DIGITAL_EDGE
+                    #     trigTask.triggers.arm_start_trigger.dig_edge_edge=Edge.RISING
                     trigTask.timing.cfg_implicit_timing(sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS)
 
                     # Set shared values so other processes can get actual a/v frequencies
@@ -996,6 +1001,22 @@ class Synchronizer(StateMachineProcess):
                     if self.actualVideoFrequency is not None:
                         self.actualVideoFrequency.value = trigTask.co_channels['videoFrequency'].co_pulse_freq
                         if self.verbose > 0: self.log('Requested video frequency: ', self.videoFrequency, ' | actual video frequency: ', self.actualVideoFrequency.value);
+
+                    if startTask is not None:
+                        # Add dummy write channel to force execute to block until task gets start trigger
+#                        startTask.do_channels.add_do_chan(lines=self.startTriggerChannel)
+                        # startTask.timing.cfg_samp_clk_timing(rate=10000, sample_mode=nidaqmx.constants.AcquisitionType.FINITE, samps_per_chan=1)
+                        # # Configure task to wait for a digital pulse on the specified channel.
+                        # startTask.triggers.arm_start_trigger.dig_edge_src=self.startTriggerChannel
+                        # startTask.triggers.arm_start_trigger.trig_type=TriggerType.DIGITAL_EDGE
+                        # startTask.triggers.arm_start_trigger.dig_edge_edge=Edge.RISING
+                        startReader = DigitalSingleChannelReader(startTask.in_stream)  # Set up an analog stream reader
+                        startTask.di_channels.add_di_chan(self.startTriggerChannel)
+                        # startTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
+                        #     rate=1000,
+                        #     active_edge=nidaqmx.constants.Edge.RISING,
+                        #     sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
+                        #     samps_per_chan=1)
 
                     # CHECK FOR MESSAGES
                     try:
@@ -1023,12 +1044,21 @@ class Synchronizer(StateMachineProcess):
                             self.ready.wait()
                         # To give audio and video processes a chance to get totally set up for acquiring, wait a second.
                         time.sleep(1)
+
+                        if startTask is not None:
+                            startTask.start()
+                            while not startReader.read_one_sample_one_line():
+                                pass
+                            self.log("Got sync start trigger!")
+
                         preTime = time.time_ns()
                         trigTask.start()
                         postTime = time.time_ns()
                         self.startTime.value = (preTime + postTime) / 2000000000
                         if self.verbose >= 1: self.log("Sync task started at {time} s".format(time=self.startTime.value))
                         if self.verbose >= 1: self.log("Sync task startup took {time} s".format(time=(postTime - preTime)/1000000000))
+                        if startTask is not None:
+                            startTask.stop()
                     except BrokenBarrierError:
                         if self.verbose >= 0: self.log("Simultaneous start failure")
                         nextState = Synchronizer.STOPPING
