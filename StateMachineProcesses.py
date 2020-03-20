@@ -3690,7 +3690,7 @@ class ContinuousTriggerer(StateMachineProcess):
             triggerIndex = [tagTrigger.id for tagTrigger in tagTriggers].index(newTagTrigger.id)
             # This is an updated trigger, not a new trigger
             if self.verbose >= 2: self.log("Updating tag trigger")
-            if triggerIndex > 0 and newTagTrigger.startTime > newTagTrigger.endTime:
+            if newTagTrigger.startTime >= newTagTrigger.endTime:
                 # End time has been set before start time, and this is not the active trigger, so delete this trigger.
                 del tagTriggers[triggerIndex]
                 if self.verbose >= 2: self.log("Deleting invalidated tag trigger")
