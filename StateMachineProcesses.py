@@ -3770,9 +3770,11 @@ class ContinuousTriggerer(StateMachineProcess):
         for camSerial in self.videoMessageQueues:
             self.videoMessageQueues[camSerial].put((VideoWriter.TRIGGER, trigger))
 
-    def purgeOldTagTriggers(self, tagTriggers, currentTime):
-        # Purge tagTriggers that are entirely in the past
-        oldTagTriggers = [tagTrigger for tagTrigger in tagTriggers if tagTrigger.state(currentTime) > 0]
+    def purgeOldTagTriggers(self, tagTriggers, activeTriggers):
+        # Get earliest trigger time
+        earliestTime = min([trigger.startTime for trigger in activeTriggers])
+        # Purge tagTriggers that are entirely before the earliest trigger start time
+        oldTagTriggers = [tagTrigger for tagTrigger in tagTriggers if tagTrigger.state(earliestTime) > 0]
         for oldTagTrigger in oldTagTriggers:
             tagTriggers.remove(oldTagTrigger)
 
@@ -3783,10 +3785,11 @@ class ContinuousTriggerer(StateMachineProcess):
             # This is an updated trigger, not a new trigger
             if self.verbose >= 2: self.log("Updating tag trigger")
             if newTagTrigger.startTime >= newTagTrigger.endTime:
-                # End time has been set before start time, and this is not the active trigger, so delete this trigger.
+                # End time has been set before start time, so delete this trigger.
                 del tagTriggers[triggerIndex]
                 if self.verbose >= 2: self.log("Deleting invalidated tag trigger")
             else:
+                # This is a valid updated trigger
                 tagTriggers[triggerIndex] = newTagTrigger
         except ValueError:
             # This is a new trigger
