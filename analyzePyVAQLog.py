@@ -54,16 +54,28 @@ def printLog(logEntries, abridge=False, ordered=False):
         logEntries = sorted(flattenedLogEntries, key=lambda entry:entry[0])
         if abridge:
             threshold = 50
-            logEntries = logEntries[:threshold//2-1] + ['...'] + logEntries[-threshold//2:]
+            logEntries = logEntries[:threshold//2-1] + [('...', '', '')] + logEntries[-threshold//2:]
+        for logEntry in logEntries:
+            index, type, lines = logEntry
+            print('{index}: {type}'.format(index=index, type=type))
+            for line in lines:
+                print('   {line}'.format(line=line))
     else:
+        logEntryKeys = logEntries.keys()
         if abridge:
             threshold = 10
             logEntries = copy.deepcopy(logEntries)
-            logEntryKeys = logEntries.keys()
             for key in logEntryKeys:
                 if len(logEntries[key]) > threshold:
-                    logEntries[key] = logEntries[key][:threshold//2-1] + ['...'] + logEntries[key][-threshold//2:]
-    pp.pprint(logEntries)
+                    logEntries[key] = logEntries[key][:threshold//2-1] + [('...', '', '')] + logEntries[key][-threshold//2:]
+        for key in logEntryKeys:
+            print(key)
+            for logEntry in logEntries[key]:
+                index, type, lines = logEntry
+                print('   {index}: {type}'.format(index=index, type=type))
+                for line in lines:
+                    print('      {line}'.format(line=line))
+#    pp.pprint(logEntries)
 
 pp = pprint.PrettyPrinter(width=240)
 root, thisScript = os.path.split(os.path.realpath(__file__))
