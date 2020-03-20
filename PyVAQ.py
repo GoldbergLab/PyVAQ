@@ -689,7 +689,7 @@ class PyVAQ:
         self.exposureTimeEntry.bind('<FocusOut>', self.validateExposure)
 
         self.gainFrame =    ttk.LabelFrame(self.acquisitionFrame, text="Gain", style='SingleContainer.TLabelframe')
-        self.gainVar =      tk.StringVar(); self.gainVar.set("1")
+        self.gainVar =      tk.StringVar(); self.gainVar.set("10")
         self.gainEntry =    ttk.Entry(self.gainFrame, width=18, textvariable=self.gainVar)
         self.gainEntry.bind('<FocusOut>', self.validateGain)
 
