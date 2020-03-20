@@ -3783,13 +3783,13 @@ class ContinuousTriggerer(StateMachineProcess):
         try:
             triggerIndex = [tagTrigger.id for tagTrigger in tagTriggers].index(newTagTrigger.id)
             # This is an updated trigger, not a new trigger
-            if self.verbose >= 2: self.log("Updating tag trigger")
             if newTagTrigger.startTime >= newTagTrigger.endTime:
                 # End time has been set before start time, so delete this trigger.
-                del tagTriggers[triggerIndex]
                 if self.verbose >= 2: self.log("Deleting invalidated tag trigger")
+                del tagTriggers[triggerIndex]
             else:
                 # This is a valid updated trigger
+                if self.verbose >= 2: self.log("Updating tag trigger")
                 tagTriggers[triggerIndex] = newTagTrigger
         except ValueError:
             # This is a new trigger
