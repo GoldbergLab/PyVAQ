@@ -688,6 +688,11 @@ class PyVAQ:
         self.exposureTimeEntry =    ttk.Entry(self.exposureTimeFrame, width=18, textvariable=self.exposureTimeVar)
         self.exposureTimeEntry.bind('<FocusOut>', self.validateExposure)
 
+        self.gainFrame =    ttk.LabelFrame(self.acquisitionFrame, text="Gain", style='SingleContainer.TLabelframe')
+        self.gainVar =      tk.StringVar(); self.gainVar.set("1")
+        self.gainEntry =    ttk.Entry(self.gainFrame, width=18, textvariable=self.gainVar)
+        self.gainEntry.bind('<FocusOut>', self.validateGain)
+
         self.preTriggerTimeFrame =  ttk.LabelFrame(self.acquisitionFrame, text="Pre-trigger record time (s)", style='SingleContainer.TLabelframe')
         self.preTriggerTimeVar =    tk.StringVar(); self.preTriggerTimeVar.set("2.0")
         self.preTriggerTimeEntry =  ttk.Entry(self.preTriggerTimeFrame, width=26, textvariable=self.preTriggerTimeVar)
@@ -874,7 +879,7 @@ class PyVAQ:
             'videoFrequency':           dict(get=lambda:int(self.videoFrequencyVar.get()),              set=self.videoFrequencyVar.set),
             'chunkSize':                dict(get=lambda:int(self.chunkSizeVar.get()),                   set=self.chunkSizeVar.set),
             'exposureTime':             dict(get=lambda:int(self.exposureTimeVar.get()),                set=self.exposureTimeVar.set),
-            'exposureTime':             dict(get=lambda:int(self.exposureTimeVar.get()),                set=self.exposureTimeVar.set),
+            'gain':                     dict(get=lambda:int(self.gainVar.get()),                        set=self.gainVar.set),
             'preTriggerTime':           dict(get=lambda:float(self.preTriggerTimeVar.get()),            set=self.preTriggerTimeVar.set),
             'recordTime':               dict(get=lambda:float(self.recordTimeVar.get()),                set=self.recordTimeVar.set),
             'triggerHighLevel':         dict(get=lambda:float(self.triggerHighLevelVar.get()),          set=self.triggerHighLevelVar.set),
@@ -1038,7 +1043,6 @@ class PyVAQ:
         for camSerial in self.videoWriteProcesses:
             self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.SETPARAMS, {'daySubfolders':daySubfolders}))
 
-
     def validateExposure(self, *args):
         exposureTime = self.getParams('exposureTime')
         videoFrequency = self.getParams('videoFrequency')
@@ -1047,6 +1051,17 @@ class PyVAQ:
             exposureTime = maxExposureTime
         exposureTime = int(exposureTime)
         self.setParams(exposureTime=exposureTime)
+
+    def validateGain(self, *args):
+        gain = self.getParams('gain')
+        if gain < 0:
+            gain = 0
+        # videoFrequency = self.getParams('videoFrequency')
+        # maxExposureTime = 1000000 * 0.95 / videoFrequency
+        # if exposureTime > maxExposureTime:
+        #     exposureTime = maxExposureTime
+        # exposureTime = int(exposureTime)
+        self.setParams(gain=gain)
 
     def showHelpDialog(self, *args):
         msg = 'Sorry, nothing here yet.'
@@ -2002,7 +2017,9 @@ him know. Otherwise, I had nothing to do with it.
     def getNumSyncedProcesses(self):
         return (len(self.audioDAQChannels)>0) + len(self.camSerials) + 1  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
     def getAcquireSettings(self):
-        exposureTime = self.getParams('exposureTime')
+        params = self.getParams('exposureTime', 'gain')
+        exposureTime = params['exposureTime']
+        gain = params['gain']
         return [
             ('AcquisitionMode', 'Continuous', 'enum'),
             ('TriggerMode', 'Off', 'enum'),
@@ -2014,6 +2031,8 @@ him know. Otherwise, I had nothing to do with it.
             # ('Width', 800, 'integer'),
             # ('Height', 800, 'integer'),
             ('TriggerMode', 'On', 'enum'),
+            ('GainAuto', 'Off', 'enum'),
+            ('Gain', gain, 'float'),
             ('ExposureAuto', 'Off', 'enum'),
             ('ExposureMode', 'Timed', 'enum'),
             ('ExposureTime', exposureTime, 'float')]   # List of attribute/value pairs to be applied to the camera in the given order
@@ -2392,6 +2411,8 @@ him know. Otherwise, I had nothing to do with it.
         self.preTriggerTimeEntry.grid()
         self.recordTimeFrame.grid(row=2, column=1, sticky=tk.EW)
         self.recordTimeEntry.grid()
+        self.gainFrame.grid(row=2, column=2, sticky=tk.EW)
+        self.gainEntry.grid()
 
         self.updateInputsButton.grid(row=3, column=0)
 
