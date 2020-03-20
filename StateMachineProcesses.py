@@ -3805,7 +3805,8 @@ class ContinuousTriggerer(StateMachineProcess):
                     tags |= tagTrigger.tags
             if len(tags) > 0 and tags != activeTrigger.tags:
                 # Tags for this trigger have changed
-                if self.verbose >= 1: self.log("Applying tags to trigger: " + ','.join(tags))
+                if self.verbose >= 2: self.log("Applying tags to trigger: " + ','.join(tags))
                 activeTrigger.tags = tags
                 # Resend updated trigger because its tags have changed
+                if self.verbose >= 1: self.log("Resending trigger with new tags: " + ','.join(tags))
                 self.sendTrigger(activeTrigger)
