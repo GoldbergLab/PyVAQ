@@ -756,43 +756,46 @@ class PyVAQ:
         self.triggerModeRadioButtons = {}
         self.triggerModeControlGroupFrames = {}
 
+        self.triggerControlTabs = ttk.Notebook(self.triggerFrame)
         for mode in self.triggerModes:
             self.triggerModeRadioButtons[mode] = ttk.Radiobutton(self.triggerModeChooserFrame, text=mode, variable=self.triggerModeVar, value=mode)
-            self.triggerModeControlGroupFrames[mode] = ttk.Frame(self.triggerFrame)
+            self.triggerModeControlGroupFrames[mode] = ttk.Frame(self.triggerControlTabs)
+            self.triggerControlTabs.add(self.triggerModeControlGroupFrames[mode], text=mode)
 
         # Manual controls
         self.manualWriteTriggerButton = ttk.Button(self.triggerModeControlGroupFrames['Manual'], text="Manual write trigger", command=self.writeButtonClick)
 
         # Audio trigger controls
-        self.triggerHighLevelFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="High volume threshold", style='SingleContainer.TLabelframe')
+        self.triggerHiLoFrame = ttk.Frame(self.triggerModeControlGroupFrames['Audio'])
+        self.triggerHighLevelFrame = ttk.LabelFrame(self.triggerHiLoFrame, text="High volume threshold", style='SingleContainer.TLabelframe')
         self.triggerHighLevelVar = tk.StringVar(); self.triggerHighLevelVar.set("0.1")
         self.triggerHighLevelEntry = ttk.Entry(self.triggerHighLevelFrame, textvariable=self.triggerHighLevelVar); self.triggerHighLevelEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
-        self.triggerLowLevelFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Low volume threshold", style='SingleContainer.TLabelframe')
+        self.triggerLowLevelFrame = ttk.LabelFrame(self.triggerHiLoFrame, text="Low volume threshold", style='SingleContainer.TLabelframe')
         self.triggerLowLevelVar = tk.StringVar(); self.triggerLowLevelVar.set("0.05")
         self.triggerLowLevelEntry = ttk.Entry(self.triggerLowLevelFrame, textvariable=self.triggerLowLevelVar); self.triggerLowLevelEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
-        self.triggerHighTimeFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="High threshold time", style='SingleContainer.TLabelframe')
+        self.triggerHighTimeFrame = ttk.LabelFrame(self.triggerHiLoFrame, text="High threshold time", style='SingleContainer.TLabelframe')
         self.triggerHighTimeVar = tk.StringVar(); self.triggerHighTimeVar.set("0.5")
         self.triggerHighTimeEntry = ttk.Entry(self.triggerHighTimeFrame, textvariable=self.triggerHighTimeVar); self.triggerHighTimeEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
-        self.triggerLowTimeFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Low threshold time", style='SingleContainer.TLabelframe')
+        self.triggerLowTimeFrame = ttk.LabelFrame(self.triggerHiLoFrame, text="Low threshold time", style='SingleContainer.TLabelframe')
         self.triggerLowTimeVar = tk.StringVar(); self.triggerLowTimeVar.set("2.0")
         self.triggerLowTimeEntry = ttk.Entry(self.triggerLowTimeFrame, textvariable=self.triggerLowTimeVar); self.triggerLowTimeEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
-        self.triggerHighFractionFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Frac. of time above high threshold", style='SingleContainer.TLabelframe')
+        self.triggerHighFractionFrame = ttk.LabelFrame(self.triggerHiLoFrame, text="Frac. of time above high threshold", style='SingleContainer.TLabelframe')
         self.triggerHighFractionVar = tk.StringVar(); self.triggerHighFractionVar.set("0.1")
         self.triggerHighFractionEntry = ttk.Entry(self.triggerHighFractionFrame, textvariable=self.triggerHighFractionVar); self.triggerHighFractionEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
-        self.triggerLowFractionFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Frac. of time below low threshold", style='SingleContainer.TLabelframe')
+        self.triggerLowFractionFrame = ttk.LabelFrame(self.triggerHiLoFrame, text="Frac. of time below low threshold", style='SingleContainer.TLabelframe')
         self.triggerLowFractionVar = tk.StringVar(); self.triggerLowFractionVar.set("0.99")
         self.triggerLowFractionEntry = ttk.Entry(self.triggerLowFractionFrame, textvariable=self.triggerLowFractionVar); self.triggerLowFractionEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
-        self.triggerHighBandpassFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="High bandpass cutoff freq. (Hz)", style='SingleContainer.TLabelframe')
+        self.triggerHighBandpassFrame = ttk.LabelFrame(self.triggerHiLoFrame, text="High bandpass cutoff freq. (Hz)", style='SingleContainer.TLabelframe')
         self.triggerHighBandpassVar = tk.StringVar(); self.triggerHighBandpassVar.set("7000")
         self.triggerHighBandpassEntry = ttk.Entry(self.triggerHighBandpassFrame, textvariable=self.triggerHighBandpassVar); self.triggerHighBandpassEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
-        self.triggerLowBandpassFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Low bandpass cutoff freq. (Hz)", style='SingleContainer.TLabelframe')
+        self.triggerLowBandpassFrame = ttk.LabelFrame(self.triggerHiLoFrame, text="Low bandpass cutoff freq. (Hz)", style='SingleContainer.TLabelframe')
         self.triggerLowBandpassVar = tk.StringVar(); self.triggerLowBandpassVar.set("100")
         self.triggerLowBandpassEntry = ttk.Entry(self.triggerLowBandpassFrame, textvariable=self.triggerLowBandpassVar); self.triggerLowBandpassEntry.bind('<FocusOut>', self.updateAudioTriggerSettings)
 
@@ -2416,12 +2419,14 @@ him know. Otherwise, I had nothing to do with it.
         self.triggerModeLabel.grid(row=0, column=0)
         for k, mode in enumerate(self.triggerModes):
             self.triggerModeRadioButtons[mode].grid(row=0, column=k+1)
-            if mode == self.triggerModeVar.get():
-                self.triggerModeControlGroupFrames[mode].grid(row=1, column=0)
-            else:
-                self.triggerModeControlGroupFrames[mode].grid_forget()
+        self.triggerControlTabs.grid(row=1, column=0)
+        # if mode == self.triggerModeVar.get():
+        #     self.triggerModeControlGroupFrames[mode].grid(row=1, column=0)
+        # else:
+        #     self.triggerModeControlGroupFrames[mode].grid_forget()
         self.manualWriteTriggerButton.grid(row=1, column=0)
 
+        self.triggerHiLoFrame.grid(row=0, column=0, columnspan=4, sticky=tk.NW)
         self.triggerHighLevelFrame.grid(row=0, column=0)
         self.triggerHighLevelEntry.grid()
         self.triggerLowLevelFrame.grid(row=1, column=0)
@@ -2439,18 +2444,18 @@ him know. Otherwise, I had nothing to do with it.
         self.triggerLowBandpassFrame.grid(row=1, column=3)
         self.triggerLowBandpassEntry.grid()
 
-        self.multiChannelStartBehaviorFrame.grid(row=2, column=0)
+        self.multiChannelStartBehaviorFrame.grid(row=1, rowspan=2, column=0, sticky=tk.NW)
         self.multiChannelStartBehaviorOR.grid(row=0)
         self.multiChannelStartBehaviorAND.grid(row=1)
 
-        self.multiChannelStopBehaviorFrame.grid(row=2, column=1)
+        self.multiChannelStopBehaviorFrame.grid(row=1, rowspan=2, column=1, sticky=tk.NW)
         self.multiChannelStopBehaviorOR.grid(row=0)
         self.multiChannelStopBehaviorAND.grid(row=1)
 
-        self.maxAudioTriggerTimeFrame.grid(row=2, column=2)
+        self.maxAudioTriggerTimeFrame.grid(row=1, column=2, sticky=tk.NW)
         self.maxAudioTriggerTimeEntry.grid()
 
-        self.audioTriggerStateFrame.grid(row=2, column=3)
+        self.audioTriggerStateFrame.grid(row=2, column=2, sticky=tk.NW)
         self.audioTriggerStateLabel.grid()
 
         self.continuousTriggerModeStart.grid(row=0, column=0)
