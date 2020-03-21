@@ -118,6 +118,9 @@ class Trigger():
         taggedPath = os.path.join(path, name+ext)
         return taggedPath
 
+    def isValid(self):
+        return self.startTime <= self.triggerTime and self.triggerTime <= self.endTime
+
     def state(self, time):
         # Given a frame/sample count and frame/sample rate:
         # If time is before trigger range
@@ -150,7 +153,7 @@ class Trigger():
         # Returns a boolean indicating whether or not this trigger overlaps
         #   otherTrigger. Returns False if either trigger is invalid
         overlap = self.overlap(otherTrigger)
-        return (overlap[0] * overlap[1]) <= 0 and overlap[0] <= overlap[1]
+        return (overlap[0] * overlap[1]) <= 0 and self.isValid() and otherTrigger.isValid()
 
 class AudioChunk():
     # A class to wrap a chunk of audio data.
@@ -1524,14 +1527,14 @@ class AudioTriggerer(StateMachineProcess):
                                     endTime = chunkStartTime - self.preTriggerTime + self.maxAudioTriggerTime,
                                     tags = set(['A']))
                                 self.sendTrigger(activeTrigger)
-                                if self.verbose >= 1: self.log("Send new trigger!")
+                                if self.verbose >= 1: self.log("Send new trigger: {t}".format(t=activeTrigger))
                             elif activeTrigger is not None and lowTrigger:
                                 # Send updated trigger
                                 # print("Sending updated stop trigger")
                                 activeTrigger.endTime = chunkStartTime
                                 # print("Setting trigger stop time to", activeTrigger.endTime)
                                 self.sendTrigger(activeTrigger)
-                                if self.verbose >= 1: self.log("Update trigger to stop now")
+                                if self.verbose >= 1: self.log("Update trigger to stop now: {t}".format(t=activeTrigger))
 
                             # Send analysis summary of this chunk to the GUI
                             summary = dict(
@@ -3645,7 +3648,7 @@ class ContinuousTriggerer(StateMachineProcess):
 
                             self.updateTriggerTags(activeTriggers, tagTriggers)
 
-                            self.purgeOldTagTriggers(tagTriggers, currentTime)
+                            self.purgeOldTagTriggers(tagTriggers, activeTriggers)
 
                     # CHECK FOR MESSAGES
                     try:
@@ -3776,15 +3779,18 @@ class ContinuousTriggerer(StateMachineProcess):
         # Purge tagTriggers that are entirely before the earliest trigger start time
         oldTagTriggers = [tagTrigger for tagTrigger in tagTriggers if tagTrigger.state(earliestTime) > 0]
         for oldTagTrigger in oldTagTriggers:
+            if self.verbose >= 2:
+                self.log("Removing tag trigger earlier than {et}: {t}".format(et=earliestTime, t=oldTagTrigger))
             tagTriggers.remove(oldTagTrigger)
 
     def updateTagTriggers(self, tagTriggers, newTagTrigger):
         # Update the list of tag triggers with the newly arrived tag trigger
+        if self.verbose >= 2: self.log("Updating tag triggers with: {t}".format(t=newTagTrigger))
         try:
             triggerIndex = [tagTrigger.id for tagTrigger in tagTriggers].index(newTagTrigger.id)
             # This is an updated trigger, not a new trigger
-            if newTagTrigger.startTime >= newTagTrigger.endTime:
-                # End time has been set before start time, so delete this trigger.
+            if not newTagTrigger.isValid():
+                # Delete this invalid trigger.
                 if self.verbose >= 2: self.log("Deleting invalidated tag trigger")
                 del tagTriggers[triggerIndex]
             else:
@@ -3803,10 +3809,12 @@ class ContinuousTriggerer(StateMachineProcess):
             for tagTrigger in tagTriggers:
                 if activeTrigger.overlaps(tagTrigger):
                     tags |= tagTrigger.tags
-            if len(tags) > 0 and tags != activeTrigger.tags:
+            if tags != activeTrigger.tags:
                 # Tags for this trigger have changed
                 if self.verbose >= 2: self.log("Applying tags to trigger: " + ','.join(tags))
                 activeTrigger.tags = tags
                 # Resend updated trigger because its tags have changed
-                if self.verbose >= 1: self.log("Resending trigger with new tags: " + ','.join(tags))
+                if self.verbose >= 2:
+                    self.log("Resending trigger {t}".format(t=activeTrigger))
+                    self.log("  with updated tags: " + ','.join(tags))
                 self.sendTrigger(activeTrigger)
