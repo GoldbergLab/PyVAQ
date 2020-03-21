@@ -2340,7 +2340,7 @@ him know. Otherwise, I had nothing to do with it.
         p = self.getParams('preTriggerTime', 'recordTime')
         if t is None:
             t = time.time_ns()/1000000000
-        trig = Trigger(t-p['preTriggerTime'], t, t + p['recordTime'] - p['preTriggerTime'])
+        trig = Trigger(t-p['preTriggerTime'], t, t + p['recordTime'] - p['preTriggerTime'], idspace='GUI')
         self.log("Sending manual trigger!")
         for camSerial in self.camSerials:
             self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.TRIGGER, trig))
