@@ -96,11 +96,11 @@ class Stopwatch:
 class Trigger():
     newid = itertools.count().__next__   # Source of this clever little idea: https://stackoverflow.com/a/1045724/1460057
     # A class to represent a trigger object
-    def __init__(self, startTime, triggerTime, endTime, tags=set()):
+    def __init__(self, startTime, triggerTime, endTime, tags=set(), idspace=None):
         # times in seconds
         if not (endTime >= triggerTime >= startTime):
             raise ValueError("Trigger times must satisfy startTime <= triggerTime <= endTime")
-        self.id = Trigger.newid()
+        self.id = (Trigger.newid(), idspace)
         self.startTime = startTime
         self.triggerTime = triggerTime
         self.endTime = endTime
@@ -163,9 +163,10 @@ class AudioChunk():
     def __init__(self,
                 chunkStartTime=None,    # Time of first sample, in seconds since something
                 audioFrequency=None,      # Audio sampling rate, in Hz
-                data=None               # Audio data as a CxN numpy array, C=# of channels, N=# of samples
+                data=None,               # Audio data as a CxN numpy array, C=# of channels, N=# of samples
+                idspace=None,           # A parameter designed to make IDs unique across processes. Pass a different idspace for calls from different processes.
                 ):
-        self.id = AudioChunk.newid()
+        self.id = (AudioChunk.newid(), idspace)
         self.data = data
         self.chunkStartTime = chunkStartTime
         self.audioFrequency = audioFrequency
@@ -1525,7 +1526,8 @@ class AudioTriggerer(StateMachineProcess):
                                     startTime = chunkStartTime - self.preTriggerTime,
                                     triggerTime = chunkStartTime,
                                     endTime = chunkStartTime - self.preTriggerTime + self.maxAudioTriggerTime,
-                                    tags = set(['A']))
+                                    tags = set(['A']),
+                                    idspace = self.ID)
                                 self.sendTrigger(activeTrigger)
                                 if self.verbose >= 1: self.log("Send new trigger: {t}".format(t=activeTrigger))
                             elif activeTrigger is not None and lowTrigger:
@@ -1926,7 +1928,7 @@ class AudioAcquirer(StateMachineProcess):
                         sampleCount += self.chunkSize
                         if self.verbose >= 3: self.log('# samples:'+str(sampleCount))
                         processedData = AudioAcquirer.rescaleAudio(data)
-                        audioChunk = AudioChunk(chunkStartTime = chunkStartTime, audioFrequency = self.audioFrequency, data = processedData)
+                        audioChunk = AudioChunk(chunkStartTime = chunkStartTime, audioFrequency = self.audioFrequency, data = processedData, idspace=self.ID)
                         if self.audioQueue is not None:
                             self.audioQueue.put(audioChunk)              # If a data queue is provided, queue up the new data
                         else:
@@ -3637,8 +3639,8 @@ class ContinuousTriggerer(StateMachineProcess):
                             newTrigger = Trigger(
                                 startTime = newTriggerTime,
                                 triggerTime = newTriggerTime,
-                                endTime = newTriggerTime + self.recordPeriod)
-
+                                endTime = newTriggerTime + self.recordPeriod,
+                                idspace = self.ID)
                             lastTriggerTime = newTriggerTime
                             self.sendTrigger(newTrigger)
                             activeTriggers.append(newTrigger)
