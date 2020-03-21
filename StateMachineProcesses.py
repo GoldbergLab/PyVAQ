@@ -3654,7 +3654,7 @@ class ContinuousTriggerer(StateMachineProcess):
 
                     # CHECK FOR MESSAGES
                     try:
-                        msg, arg = self.msgQueue.get(block=False, timeout=self.updatePeriod)
+                        msg, arg = self.msgQueue.get(block=True, timeout=self.updatePeriod)
                         if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                         elif msg == ContinuousTriggerer.TAGTRIGGER: self.updateTagTriggers(tagTriggers, arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
