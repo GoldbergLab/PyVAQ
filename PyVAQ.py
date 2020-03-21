@@ -879,7 +879,7 @@ class PyVAQ:
             'videoFrequency':           dict(get=lambda:int(self.videoFrequencyVar.get()),              set=self.videoFrequencyVar.set),
             'chunkSize':                dict(get=lambda:int(self.chunkSizeVar.get()),                   set=self.chunkSizeVar.set),
             'exposureTime':             dict(get=lambda:int(self.exposureTimeVar.get()),                set=self.exposureTimeVar.set),
-            'gain':                     dict(get=lambda:int(self.gainVar.get()),                        set=self.gainVar.set),
+            'gain':                     dict(get=lambda:float(self.gainVar.get()),                      set=self.gainVar.set),
             'preTriggerTime':           dict(get=lambda:float(self.preTriggerTimeVar.get()),            set=self.preTriggerTimeVar.set),
             'recordTime':               dict(get=lambda:float(self.recordTimeVar.get()),                set=self.recordTimeVar.set),
             'triggerHighLevel':         dict(get=lambda:float(self.triggerHighLevelVar.get()),          set=self.triggerHighLevelVar.set),
