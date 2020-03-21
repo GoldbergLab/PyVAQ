@@ -3626,9 +3626,14 @@ class ContinuousTriggerer(StateMachineProcess):
                     if not self.scheduleEnabled or (self.scheduleStartTime <= currentTimeOfDay and self.scheduleStopTime <= currentTimeOfDay):
                         # If the scheduling feature is disabled, or it's enabled and we're between start/stop times, then:
                         currentTime = time.time_ns()/1000000000
+                        activeTriggersChanged = False
                         # Purge triggers that are entirely in the past
                         while len(activeTriggers) > 0 and activeTriggers[0].state(currentTime) > 0:
-                            activeTriggers.popleft()
+                            oldTrigger = activeTriggers.popleft()
+                            activeTriggersChanged = True
+                            if self.verbose >= 2:
+                                self.log('Removing old trigger:')
+                                self.log('\t{t}'.format(t=oldTrigger))
                         # Create new triggers if any are needed
                         while len(activeTriggers) < activeTriggers.maxlen:
                             if lastTriggerTime is None:
@@ -3644,13 +3649,20 @@ class ContinuousTriggerer(StateMachineProcess):
                             lastTriggerTime = newTriggerTime
                             self.sendTrigger(newTrigger)
                             activeTriggers.append(newTrigger)
+                            activeTriggersChanged = True
                             if self.verbose >= 1:
-                                self.log("Sent new trigger!")
-                                self.log(newTrigger)
+                                self.log("Sent new trigger:")
+                                self.log("\t{t}".format(t=newTrigger))
 
-                            self.updateTriggerTags(activeTriggers, tagTriggers)
+                        self.updateTriggerTags(activeTriggers, tagTriggers)
 
-                            self.purgeOldTagTriggers(tagTriggers, activeTriggers)
+                        self.purgeOldTagTriggers(tagTriggers, activeTriggers)
+
+                        if activeTriggersChanged:
+                            if self.verbose >= 2:
+                                self.log('Current active triggers:')
+                                for at in activeTriggers:
+                                    self.log('\t{t}'.format(t=at))
 
                     # CHECK FOR MESSAGES
                     try:
