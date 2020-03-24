@@ -1696,6 +1696,8 @@ him know. Otherwise, I had nothing to do with it.
         videoAcquirePIDs = {}
         audioWritePID = None
         audioAcquirePID = None
+        audioTriggerPID = None
+        continuousTriggerPID = None
         syncPID = None
         mergePID = None
 
@@ -1713,6 +1715,12 @@ him know. Otherwise, I had nothing to do with it.
         if self.audioAcquireProcess is not None:
             audioAcquirePID = self.audioAcquireProcess.PID.value
             self.log("  audioAcquirePID:", audioAcquirePID)
+        if self.audioTriggerProcess is not None:
+            audioTriggerPID = self.audioTriggerProcess.PID.value
+            self.log("  audioTriggerPID:", audioTriggerPID)
+        if self.continuousTriggerProcess is not None:
+            continuousTriggerPID = self.continuousTriggerProcess.PID.value
+            self.log("  continuousTriggerPID:", continuousTriggerPID)
         if self.syncProcess is not None:
             syncPID = self.syncProcess.PID.value
             self.log("  syncPID:", syncPID)

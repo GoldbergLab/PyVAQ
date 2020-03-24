@@ -29,6 +29,7 @@ class AudioMonitor(ttk.LabelFrame):
         self.historyLength = historyLength          # Max number of samples to display in history
         self.displayAmplitude = displayAmplitude    # Max amplitude to display (if autoscale=False)
         self.autoscale = autoscale                  # Autoscale axes
+        self.audioTraces = []                        # matplotlib line
 
         self.fileWidget = FileWritingEntry(
             self,
@@ -38,6 +39,10 @@ class AudioMonitor(ttk.LabelFrame):
             text="Audio Writing"
             )
 
+        self.enableVar = tk.BooleanVar(); self.enableVar.set(True); self.enableVar.trace('w', self.updateEnableCheckbutton)
+        self.enableCheckButton = tk.Checkbutton(self, text="Enable viewer", variable=self.enableVar, offvalue=False, onvalue=True)
+        self.updateEnableCheckbutton()
+
         self.masterDisplayFrame = ttk.Frame(self)
 
         self.data = None
@@ -46,6 +51,15 @@ class AudioMonitor(ttk.LabelFrame):
             self.createChannelDisplay(channel, index)
 
         self.updateWidgets()
+
+    def viewerEnabled(self):
+        return self.enableVar.get()
+
+    def updateEnableCheckbutton(self, *args):
+        if self.viewerEnabled():
+            self.enableCheckButton["fg"] = 'green'
+        else:
+            self.enableCheckButton["fg"] = 'red'
 
     def getDirectory(self):
         return self.fileWidget.getDirectory()
@@ -62,24 +76,41 @@ class AudioMonitor(ttk.LabelFrame):
     def addAudioData(self, newData):
         # Concatenate new audio data with old data, trim to monitor length if
         #   necessary, and update displays
-        if self.data is None:
-            self.data = newData
-        else:
-            self.data = np.concatenate((self.data, newData), axis=1)
+        if self.viewerEnabled():
+            if newData.shape[1] > self.historyLength:
+                # Ok, this is really unlikely, but just in case
+                newData = newData[:, -self.historyLength:]
 
-        if self.data is not None:
-            # Trim data to specified size
-            startTrim = self.data.shape[1] - self.historyLength
-            if startTrim < 0:
-                startTrim = 0
-            self.data = self.data[:, startTrim:]
+            if self.data is None or self.data.shape[0] != newData.shape[0]:
+                # Either data is uninitialied or the new data has a different # of channels from the old data)
+                #   Note that a change in # of channels isn't really supported, just trying to avoid crashing
+                self.data = np.empty((newData.shape[0], 0), dtype=newData.dtype)
+
+            # Pad data to ensure it's self.historyLength long
+            padAmount = self.historyLength - self.data.shape[1]
+            if padAmount > 0:
+                # Pad data up to desired historyLength
+                self.data = np.pad(self.data, [(0, 0), (padAmount, 0)])
+            elif padAmount < 0:
+                # Data is too long for some reason
+                self.data = self.data[:, -self.historyLength:]
+
+            # Now data is guaranteed to have shape (N x L), N=# of channels, L=self.historyLength
+            self.data = np.roll(self.data, -newData.shape[1], axis=1)
+            self.data[:, -newData.shape[1]:] = newData
 
             # Display new data
             for k, channel in enumerate(self.channels):
                 axes = self.displayWidgets[channel]['axes']
                 fig = self.displayWidgets[channel]['figure']
-                axes.clear()
-                axes.plot(self.data[k, :].tolist(), LINE_STYLES[k % len(LINE_STYLES)], linewidth=1)
+                if len(self.audioTraces) < k+1 or self.data[k, :].shape != self.audioTraces[k].get_ydata().shape:
+                    # Either there is no audio data, or audio data has changed shape, so we clear axes and redraw from scratch
+                    axes.clear()
+                    self.audioTraces.append(axes.plot(self.data[k, :].tolist(), LINE_STYLES[k % len(LINE_STYLES)], linewidth=1)[0])
+                else:
+                    # Audio data already exists, and has not changed shape, just update it.
+                    self.audioTraces[k].set_ydata(self.data[k, :])
+
                 if self.autoscale:
                     axes.relim()
                     axes.autoscale_view(True, True, True)
@@ -112,8 +143,9 @@ class AudioMonitor(ttk.LabelFrame):
 
         if len(self.channels) > 0:
             # No channels, it would look weird to display directory entry
-            self.masterDisplayFrame.grid(row=0, column=0)
+            self.masterDisplayFrame.grid(row=0, column=0, columnspan=2)
             self.fileWidget.grid(row=1, column=0)
+            self.enableCheckButton.grid(row=1, column=1)
         else:
             self.masterDisplayFrame.grid_forget()
             self.fileWidget.grid_forget()
@@ -167,10 +199,23 @@ class CameraMonitor(ttk.LabelFrame):
             text="Video Writing - {camSerial}".format(camSerial=self.camSerial)
             )
 
-        self.canvas.grid(row=0, column=0)
+        self.enableVar = tk.BooleanVar(); self.enableVar.set(True); self.enableVar.trace('w', self.updateEnableCheckbutton)
+        self.enableCheckButton = tk.Checkbutton(self, text="Enable viewer", variable=self.enableVar, offvalue=False, onvalue=True)
+        self.updateEnableCheckbutton()
+
+        self.canvas.grid(row=0, column=0, columnspan=2)
         self.fileWidget.grid(row=1, column=0, sticky=tk.NSEW)
+        self.enableCheckButton.grid(row=1, column=1)
 
 #       self.cameraAttributeBrowserButton = ttk.Button(vFrame, text="Attribute browser", command=lambda:self.createCameraAttributeBrowser(camSerial))
+
+    def viewerEnabled(self):
+        return self.enableVar.get()
+    def updateEnableCheckbutton(self, *args):
+        if self.viewerEnabled():
+            self.enableCheckButton["fg"] = 'green'
+        else:
+            self.enableCheckButton["fg"] = 'red'
 
     def createCameraAttributeBrowser(self, camSerial):
         main = tk.Toplevel()
@@ -248,13 +293,14 @@ class CameraMonitor(ttk.LabelFrame):
 
     def updateImage(self, image):
         # Expects a PIL image object
-        newSize = self.getBestImageSize(image.size)
-        image = image.resize(newSize, resample=Image.BILINEAR)
-        self.currentImage = ImageTk.PhotoImage(image)
-        if self.imageID is None:
-            self.imageID = self.canvas.create_image((0, 0), image=self.currentImage, anchor=tk.NW)
-        else:
-            self.canvas.itemconfig(self.imageID, image=self.currentImage)
+        if self.viewerEnabled():
+            newSize = self.getBestImageSize(image.size)
+            image = image.resize(newSize, resample=Image.BILINEAR)
+            self.currentImage = ImageTk.PhotoImage(image)
+            if self.imageID is None:
+                self.imageID = self.canvas.create_image((0, 0), image=self.currentImage, anchor=tk.NW)
+            else:
+                self.canvas.itemconfig(self.imageID, image=self.currentImage)
 
     def getBestImageSize(self, imageSize):
         # Get a new image size that preserves the aspect ratio, and fits into
