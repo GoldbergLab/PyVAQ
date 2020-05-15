@@ -66,9 +66,9 @@ class Param():
                 self.var.append(var)
                 cbutton = ttk.Checkbutton(self.widgetFrame, text=option, variable=var, onvalue=option, offvalue='')
                 if (self.default is not None) and (option in self.default):
-                    self.var.set(option)
+                    self.var[k].set(option)
                 else:
-                    self.var.set('')
+                    self.var[k].set('')
                 if maxHeight is None:
                     row = k
                     column = 0
