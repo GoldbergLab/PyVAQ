@@ -21,7 +21,7 @@ WIDGET_COLORS = [
 LINE_STYLES = [c+'-' for c in 'bykcmgr']
 
 class AudioMonitor(ttk.LabelFrame):
-    def __init__(self, *args, historyLength=44100*2, displayAmplitude=5, autoscale=False, **kwargs):
+    def __init__(self, *args, historyLength=44100*2, displayAmplitude=5, autoscale=False, initialDirectory='', initialBaseFileName='', **kwargs):
         ttk.LabelFrame.__init__(self, *args, **kwargs)
 
         self.channels = []
@@ -33,8 +33,8 @@ class AudioMonitor(ttk.LabelFrame):
 
         self.fileWidget = FileWritingEntry(
             self,
-            defaultDirectory=r'E:\Audio',
-            defaultBaseFileName='audioWrite',
+            defaultDirectory=initialDirectory,
+            defaultBaseFileName=initialBaseFileName,
             purposeText='audio writing',
             text="Audio Writing"
             )
@@ -182,7 +182,7 @@ class AudioMonitor(ttk.LabelFrame):
         # self.displayWidgets[channel]['figureLine'] = line
 
 class CameraMonitor(ttk.LabelFrame):
-    def __init__(self, *args, displaySize=(400, 300), camSerial='Unknown camera', speedText='Unknown speed', **kwargs):
+    def __init__(self, *args, displaySize=(400, 300), camSerial='Unknown camera', speedText='Unknown speed', initialDirectory='', initialBaseFileName='', **kwargs):
         ttk.LabelFrame.__init__(self, *args, **kwargs)
         self.camSerial = camSerial
         self.config(text="{serial} ({speed})".format(serial=self.camSerial, speed=speedText))
@@ -193,8 +193,8 @@ class CameraMonitor(ttk.LabelFrame):
 
         self.fileWidget = FileWritingEntry(
             self,
-            defaultDirectory=r'F:\Video1',
-            defaultBaseFileName='videoWrite',
+            defaultDirectory=initialDirectory,
+            defaultBaseFileName=initialBaseFileName,
             purposeText='video writing',
             text="Video Writing - {camSerial}".format(camSerial=self.camSerial)
             )
