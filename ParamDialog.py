@@ -57,14 +57,15 @@ class Param():
                     column = k // maxHeight
                 rbutton.grid(row=row, column=column, sticky=tk.NW)
                 self.widgets.append(rbutton)
-                self.var.set(self.default)
+                if self.default is not None:
+                    self.var.set(self.default)
         elif self.widgetType == Param.MULTICHOICE:
             self.var = []
             for k, option in enumerate(self.options):
                 var = tk.StringVar()
                 self.var.append(var)
                 cbutton = ttk.Checkbutton(self.widgetFrame, text=option, variable=var, onvalue=option, offvalue='')
-                if option in self.default:
+                if (self.default is not None) and (option in self.default):
                     self.var.set(option)
                 else:
                     self.var.set('')
