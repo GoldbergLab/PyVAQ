@@ -12,7 +12,10 @@ class Param():
         # name = the name of the parameter
         # widgetType = one of Param.TEXT, Param.MONOCHOICE, Param.MULTICHOICE
         # options = a list of options to select from (not relevant for TEXT types)
-        # default = default value. If options are supplied (for MONOCHOICE and MULTICHOICE types, default either be None or one of the supplied options)
+        # default = default value. If default is supplied for MONOCHOICE,
+        #           default must be one of the options. or none. If default is
+        #           supplied for MULTICHOICE types, default either be None or
+        #           a list of one or more of the supplied options
         # parser = function to parse input string, for example 'float'
         if type in [Param.MONOCHOICE, Param.MULTICHOICE]:
             if default is not None:
@@ -61,6 +64,10 @@ class Param():
                 var = tk.StringVar()
                 self.var.append(var)
                 cbutton = ttk.Checkbutton(self.widgetFrame, text=option, variable=var, onvalue=option, offvalue='')
+                if option in self.default:
+                    self.var.set(option)
+                else:
+                    self.var.set('')
                 if maxHeight is None:
                     row = k
                     column = 0
