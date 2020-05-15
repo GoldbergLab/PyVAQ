@@ -587,6 +587,14 @@ WIDGET_COLORS = [
     '#FFC1C1'  # light red
 ]
 
+class GeneralVar:
+    def __init__(self):
+        self.value = None
+    def get(self):
+        return self.value
+    def set(self, value):
+        self.value = value
+
 class PyVAQ:
     def __init__(self, master):
         self.master = master
@@ -626,20 +634,20 @@ class PyVAQ:
         # self.acquisitionStartTriggerSource = None
         # self.audioChannelConfiguration = None
         # self.camSerials = []
-        self.videoBaseFileNames = tk.Variable(); self.videoBaseFileNames.set({})
-        self.videoDirectories = tk.Variable(); self.videoDirectories.set({})
-        self.audioBaseFileName = tk.Variable(); self.audioBaseFileName.set(None)
-        self.audioDirectory = tk.Variable(); self.audioDirectory.set(None)
-        self.mergeBaseFileName = tk.Variable(); self.mergeBaseFileName.set(None)
-        self.mergeDirectory = tk.Variable(); self.mergeDirectory.set(None)
-        self.audioDAQChannels = tk.Variable(); self.audioDAQChannels.set([])
-        self.camSerials = tk.Variable(); self.camSerials.set([])  # Cam serials selected for acquisition
-        self.audioSyncTerminal = tk.Variable(); self.audioSyncTerminal.set(None)
-        self.videoSyncTerminal = tk.Variable(); self.videoSyncTerminal.set(None)
-        self.audioSyncSource = tk.Variable(); self.audioSyncSource.set(None)
-        self.videoSyncSource = tk.Variable(); self.videoSyncSource.set(None)
-        self.acquisitionStartTriggerSource = tk.Variable(); self.acquisitionStartTriggerSource.set(None)
-        self.audioChannelConfiguration = tk.Variable(); self.audioChannelConfiguration.set(None)
+        self.videoBaseFileNames = GeneralVar(); self.videoBaseFileNames.set({})
+        self.videoDirectories = GeneralVar(); self.videoDirectories.set({})
+        self.audioBaseFileName = GeneralVar(); self.audioBaseFileName.set('')
+        self.audioDirectory = GeneralVar(); self.audioDirectory.set('')
+        self.mergeBaseFileName = GeneralVar(); self.mergeBaseFileName.set('')
+        self.mergeDirectory = GeneralVar(); self.mergeDirectory.set('')
+        self.audioDAQChannels = GeneralVar(); self.audioDAQChannels.set([])
+        self.camSerials = GeneralVar(); self.camSerials.set([])  # Cam serials selected for acquisition
+        self.audioSyncTerminal = GeneralVar(); self.audioSyncTerminal.set(None)
+        self.videoSyncTerminal = GeneralVar(); self.videoSyncTerminal.set(None)
+        self.audioSyncSource = GeneralVar(); self.audioSyncSource.set(None)
+        self.videoSyncSource = GeneralVar(); self.videoSyncSource.set(None)
+        self.acquisitionStartTriggerSource = GeneralVar(); self.acquisitionStartTriggerSource.set(None)
+        self.audioChannelConfiguration = GeneralVar(); self.audioChannelConfiguration.set(None)
 
         ########### GUI WIDGETS #####################
 
@@ -1276,8 +1284,10 @@ him know. Otherwise, I had nothing to do with it.
         audioDirectory = p["audioDirectory"]
         videoBaseFileNames = p["videoBaseFileNames"]
         videoDirectories = p["videoDirectories"]
+
         # Destroy old video stream monitoring widgets
-        for camSerial in camSerials:
+        oldCamSerials = self.cameraMonitors.keys()
+        for camSerial in oldCamSerials:
             self.cameraMonitors[camSerial].grid_forget()
             self.cameraMonitors[camSerial].destroy()
             del self.cameraMonitors[camSerial]
@@ -1380,11 +1390,15 @@ him know. Otherwise, I had nothing to do with it.
             self.mergeProcess.msgQueue.put((AVMerger.SETPARAMS, params))
 
     def videoBaseFileNameChangeHandler(self, *args):
-        newVideoBaseFileName = self.videoMonitor.getBaseFileName()
-        self.setVideoBaseFileName(newVideoBaseFileName, updateTextField=False)
+        videoBaseFileNames = {}
+        for camSerial in self.cameraMonitors:
+            videoBaseFileNames[camSerial] = self.cameraMonitors[camSerial].getBaseFileName()
+        self.setVideoBaseFileName(videoBaseFileNames, updateTextField=False)
     def videoDirectoryChangeHandler(self, *args):
-        newVideoDirectory = self.videoMonitor.getDirectory()
-        self.setVideoDirectory(newVideoDirectory, updateTextField=False)
+        videoDirectories = {}
+        for camSerial in self.cameraMonitors:
+            videoDirectories[camSerial] = self.cameraMonitors.getDirectory()
+        self.setVideoDirectories(videoDirectories, updateTextField=False)
     def audioBaseFileNameChangeHandler(self, *args):
         newAudioBaseFileName = self.audioMonitor.getBaseFileName()
         self.setAudioBaseFileName(newAudioBaseFileName, updateTextField=False)
@@ -1878,7 +1892,7 @@ him know. Otherwise, I had nothing to do with it.
             VideoAcquirer.ACQUIRING,
             VideoAcquirer.ACQUIRE_READY
         ]
-        for camSerial in self.getParams('camSerials'):
+        for camSerial in self.videoAcquireProcesses:
             state = self.videoAcquireProcesses[camSerial].publishedStateVar.value
             if state in activeVideoStates:
                 return True
@@ -1999,7 +2013,7 @@ him know. Otherwise, I had nothing to do with it.
         self.mergeBaseFileName.set(mergeBaseFileName)
         if updateTextField and self.mergeFileWidget is not None:
             # Update text field
-            self.mergeFileWidget.setBaseFileName(audioBaseFileName)
+            self.mergeFileWidget.setBaseFileName(mergeBaseFileName)
         if self.mergeProcess is not None:
             # Notify AVMerger child process of new write base filename
             self.mergeProcess.msgQueue.put((AVMerger.SETPARAMS, dict(mergeBaseFileName=mergeBaseFileName)))
@@ -2202,6 +2216,15 @@ him know. Otherwise, I had nothing to do with it.
                 stdoutQueue=self.StdoutManager.queue)
 
         for camSerial in p["camSerials"]:
+            if camSerial in p["videoDirectories"]:
+                videoDirectory = p["videoDirectories"]
+            else:
+                videoDirectory = ''
+            if camSerial in p["videoBaseFileNames"]:
+                videoBaseFileName = p["videoBaseFileNames"]
+            else:
+                videoBaseFileName = ''
+
             processes = {}
 
             videoAcquireProcess = VideoAcquirer(
@@ -2217,8 +2240,8 @@ him know. Otherwise, I had nothing to do with it.
                 stdoutQueue=self.StdoutManager.queue)
             videoWriteProcess = VideoWriter(
                 camSerial=camSerial,
-                videoDirectory=p["videoDirectories"][camSerial],
-                videoBaseFileName=p["videoBaseFileNames"][camSerial],
+                videoDirectory=videoDirectory,
+                videoBaseFileName=videoBaseFileName,
                 imageQueue=videoAcquireProcess.imageQueueReceiver,
                 frameRate=self.actualVideoFrequency,
                 requestedFrameRate=p["videoFrequency"],
@@ -2344,7 +2367,7 @@ him know. Otherwise, I had nothing to do with it.
             self.audioTriggerProcess.msgQueue.put((ContinuousTriggerer.EXIT, None))
         if self.continuousTriggerProcess is not None:
             self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.EXIT, None))
-        for camSerial in self.getParams('camSerials'):
+        for camSerial in self.videoAcquireProcesses:
             self.videoAcquireProcesses[camSerial].msgQueue.put((VideoAcquirer.EXIT, None))
         if self.audioAcquireProcess is not None:
             self.audioAcquireProcess.msgQueue.put((AudioAcquirer.EXIT, None))
