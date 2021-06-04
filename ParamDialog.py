@@ -7,7 +7,7 @@ class Param():
     MONOCHOICE='monochoice'
     MULTICHOICE='multichoice'
 
-    def __init__(self, name='unnamedParam', widgetType=TEXT, options=[], default='default', parser=lambda x:x, description=None):
+    def __init__(self, name='unnamedParam', widgetType=TEXT, options=[], default=None, parser=lambda x:x, description=None):
         # parent = a tkinter container that widgets should belong to
         # name = the name of the parameter
         # widgetType = one of Param.TEXT, Param.MONOCHOICE, Param.MULTICHOICE
@@ -44,7 +44,10 @@ class Param():
             entry = ttk.Entry(self.widgetFrame, textvariable=self.var)
             entry.grid(row=0, column=0, sticky=tk.NW)
             self.widgets.append(entry)
-            self.var.set(self.default)
+            if self.default is None:
+                self.var.set('')
+            else:
+                self.var.set(self.default)
         elif self.widgetType == Param.MONOCHOICE:
             self.var = tk.StringVar()
             for k, option in enumerate(self.options):
@@ -57,8 +60,10 @@ class Param():
                     column = k // maxHeight
                 rbutton.grid(row=row, column=column, sticky=tk.NW)
                 self.widgets.append(rbutton)
-                if self.default is not None:
-                    self.var.set(self.default)
+            if self.default is not None:
+                self.var.set(self.default)
+            else:
+                self.var.set(self.options[0])
         elif self.widgetType == Param.MULTICHOICE:
             self.var = []
             for k, option in enumerate(self.options):
@@ -66,9 +71,9 @@ class Param():
                 self.var.append(var)
                 cbutton = ttk.Checkbutton(self.widgetFrame, text=option, variable=var, onvalue=option, offvalue='')
                 if (self.default is not None) and (option in self.default):
-                    self.var.set(option)
+                    self.var[k].set(option)
                 else:
-                    self.var.set('')
+                    self.var[k].set('')
                 if maxHeight is None:
                     row = k
                     column = 0
