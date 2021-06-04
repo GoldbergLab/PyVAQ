@@ -119,6 +119,9 @@ class Param():
             raise AttributeError('You must call createWidgets on this Param object before calling get')
 
 class ParamDialog(tk.Toplevel):
+    # A container for a Tkinter widget
+    # This is a separate window for flexibly giving the user the ability to
+    #    select values for one or more parameters.
     HORIZONTAL='h'
     VERTICAL='v'
     BOX='b'
