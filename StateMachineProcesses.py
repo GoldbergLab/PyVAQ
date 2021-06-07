@@ -3469,6 +3469,10 @@ class VideoWriter(StateMachineProcess):
             triggers.append(newTrigger)
 
 class ContinuousTriggerer(StateMachineProcess):
+    '''
+    ContinuousTriggerer: A state machine class to automatically generate a
+        continuous train of triggers for both audio and video writer processes.
+    '''
     # States:
     STOPPED = 0
     INITIALIZING = 1
@@ -3783,8 +3787,11 @@ class ContinuousTriggerer(StateMachineProcess):
             self.sendTrigger(trigger)
 
     def sendTrigger(self, trigger):
-        self.audioMessageQueue.put((AudioWriter.TRIGGER, trigger))
+        if self.audioMessageQueue:
+            # If an audio message queue exists, send the trigger through it.
+            self.audioMessageQueue.put((AudioWriter.TRIGGER, trigger))
         for camSerial in self.videoMessageQueues:
+            # Send the trigger through any and all video message queues
             self.videoMessageQueues[camSerial].put((VideoWriter.TRIGGER, trigger))
 
     def purgeOldTagTriggers(self, tagTriggers, activeTriggers):
