@@ -2253,15 +2253,20 @@ him know. Otherwise, I had nothing to do with it.
             self.videoAcquireProcesses[camSerial] = videoAcquireProcess
             self.videoWriteProcesses[camSerial] = videoWriteProcess
 
+        # Create (but don't start) continuous trigger process for sending
+        #   automatic, continuous, and consecutive triggers to audio and video
+        #   writers
         self.continuousTriggerProcess = ContinuousTriggerer(
             startTime=startTime,
             recordPeriod=p['continuousTriggerPeriod'],
             verbose=self.continuousTriggerVerbose,
-            audioMessageQueue=self.audioWriteProcess.msgQueue,
+            audioMessageQueue=self.audioWriteProcess.msgQueue if self.audioWriteProcess else None,
             videoMessageQueues=dict([(camSerial, self.videoWriteProcesses[camSerial].msgQueue) for camSerial in self.videoWriteProcesses]),
             stdoutQueue=self.StdoutManager.queue
         )
 
+        # If we have an audioAcquireProcess, create (but don't start) an
+        #   audioTriggerProcess to generate audio-based triggers
         if self.audioAcquireProcess is not None:
             self.audioTriggerProcess = AudioTriggerer(
                 audioQueue=self.audioAcquireProcess.analysisQueue,
@@ -2285,6 +2290,7 @@ him know. Otherwise, I had nothing to do with it.
                 stdoutQueue=self.StdoutManager.queue
                 )
 
+        # Start all audio-related processes
         if len(p["audioDAQChannels"]) > 0:
             self.audioTriggerProcess.start()
             if self.getParams('triggerMode') == "Audio":
@@ -2292,9 +2298,12 @@ him know. Otherwise, I had nothing to do with it.
             self.audioWriteProcess.start()
             self.audioAcquireProcess.start()
 
+        # Start all video-related processes
         for camSerial in p["camSerials"]:
             self.videoWriteProcesses[camSerial].start()
             self.videoAcquireProcesses[camSerial].start()
+
+        # Start other processes
         if self.syncProcess is not None: self.syncProcess.start()
         if self.mergeProcess is not None: self.mergeProcess.start()
         if self.continuousTriggerProcess is not None: self.continuousTriggerProcess.start()
