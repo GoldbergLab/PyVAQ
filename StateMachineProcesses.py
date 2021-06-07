@@ -1206,6 +1206,10 @@ class Synchronizer(StateMachineProcess):
         self.updatePublishedState(self.DEAD)
 
 class AudioTriggerer(StateMachineProcess):
+    '''
+    AudioTriggerer: A state machine class to generate audio-based for both audio
+        and video writer processes.
+    '''
     # States:
     STOPPED = 0
     INITIALIZING = 1
@@ -2547,6 +2551,10 @@ class AudioWriter(StateMachineProcess):
             triggers.append(newTrigger)
 
 class VideoAcquirer(StateMachineProcess):
+    '''
+    VideoAcquirer: A state machine class to pull frames from a camera and pass
+        to a VideoWriter process, when a received trigger becomes active.
+    '''
     # States:
     STOPPED = 0
     INITIALIZING = 1
