@@ -2237,6 +2237,8 @@ him know. Otherwise, I had nothing to do with it.
                 verbose=self.videoAcquireVerbose,
                 bufferSizeSeconds=p["bufferSizeSeconds"],
                 ready=ready,
+                videoWidth=3208,  # Should not be hardcoded
+                videoHeight=2200, # Figure out how to obtain this automatically from camera
                 stdoutQueue=self.StdoutManager.queue)
             videoWriteProcess = VideoWriter(
                 camSerial=camSerial,
