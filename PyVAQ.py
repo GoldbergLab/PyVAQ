@@ -1393,7 +1393,7 @@ him know. Otherwise, I had nothing to do with it.
         videoBaseFileNames = {}
         for camSerial in self.cameraMonitors:
             videoBaseFileNames[camSerial] = self.cameraMonitors[camSerial].getBaseFileName()
-        self.setVideoBaseFileName(videoBaseFileNames, updateTextField=False)
+        self.setVideoBaseFileNames(videoBaseFileNames, updateTextField=False)
     def videoDirectoryChangeHandler(self, *args):
         videoDirectories = {}
         for camSerial in self.cameraMonitors:
@@ -2257,7 +2257,7 @@ him know. Otherwise, I had nothing to do with it.
             startTime=startTime,
             recordPeriod=p['continuousTriggerPeriod'],
             verbose=self.continuousTriggerVerbose,
-            audioMessageQueue=self.audioWriteProcess.msgQueue,
+            audioMessageQueue=self.audioWriteProcess.msgQueue if self.audioWriteProcess else None,
             videoMessageQueues=dict([(camSerial, self.videoWriteProcesses[camSerial].msgQueue) for camSerial in self.videoWriteProcesses]),
             stdoutQueue=self.StdoutManager.queue
         )
