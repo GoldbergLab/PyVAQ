@@ -976,14 +976,17 @@ class PyVAQ:
     #     setattr(self, settingName+"Var")
 
     def log(self, msg, *args, **kwargs):
+        # Add another message to the currently accumulating log entry
         syncPrint('|| {ID} - {msg}'.format(ID=self.ID, msg=msg), *args, buffer=self.stdoutBuffer, **kwargs)
 
     def endLog(self, state):
+        # Output accumulated log entry and output it
         if len(self.stdoutBuffer) > 0:
             self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=state))
             self.flushStdout()
 
     def flushStdout(self):
+        # Output currently accumulated log entry and clear buffer
         if len(self.stdoutBuffer) > 0:
             if self.StdoutManager is not None:
                 self.StdoutManager.queue.put(self.stdoutBuffer)
@@ -995,6 +998,7 @@ class PyVAQ:
         self.stdoutBuffer = []
 
     def cleanupAndExit(self):
+        # Attempt to gracefully shut everything down and exit
         # Cancel automatic update jobs
         self.stopMonitors()
         self.log("Stopping acquisition")
@@ -1006,6 +1010,8 @@ class PyVAQ:
         self.endLog(inspect.currentframe().f_code.co_name)
 
     def setVerbosity(self):
+        # Produce popup for setting logging verbosity, then update all process
+        #   verbosity based on user selections.
         verbosityOptions = ['0', '1', '2', '3']
         names = [
             'AudioAcquirer verbosity',
@@ -1046,6 +1052,7 @@ class PyVAQ:
         self.updateChildProcessVerbosity()
 
     def updateChildProcessVerbosity(self):
+        # Update child process logging verbosity based on currently stored settings
         if self.audioAcquireProcess is not None:
             self.audioAcquireProcess.msgQueue.put((AudioAcquirer.SETPARAMS, {'verbose':self.audioAcquireVerbose}))
         if self.audioWriteProcess is not None:
@@ -1073,6 +1080,8 @@ class PyVAQ:
             self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.SETPARAMS, {'daySubfolders':daySubfolders}))
 
     def validateExposure(self, *args):
+        # Sanitize current exposure settings (make sure it's an integer in a
+        #   reasonable range)
         exposureTime = self.getParams('exposureTime')
         videoFrequency = self.getParams('videoFrequency')
         maxExposureTime = 1000000 * 0.95 / videoFrequency
@@ -1082,6 +1091,7 @@ class PyVAQ:
         self.setParams(exposureTime=exposureTime)
 
     def validateGain(self, *args):
+        # Sanitize current gain settings (make sure it's >= 0)
         gain = self.getParams('gain')
         if gain < 0:
             gain = 0
@@ -1107,6 +1117,7 @@ him know. Otherwise, I had nothing to do with it.
         showinfo('About PyVAQ', msg)
 
     def configureAudioMonitoring(self):
+        # Show popup for user to select audio monitoring options
         if self.audioMonitor is None:
             showinfo('Please start acquisition before configuring audio monitor')
             return
@@ -1141,6 +1152,8 @@ him know. Otherwise, I had nothing to do with it.
                     pass
 
     def selectInputs(self, *args):
+        # Create a popup for the user to select acquisition options
+
         # debug = False
         # if debug:
         #     self.log("GUI DEBUG MODE - using fake cameras and DAQ channels")
@@ -1150,6 +1163,7 @@ him know. Otherwise, I had nothing to do with it.
         #     self.setupInputMonitoringWidgets(camSerials=camSerials, audioDAQChannels=audioDAQChannels)
         #     return
 
+        # Get current settings to use as defaults
         p = self.getParams(
             "audioDAQChannels",
             "camSerials",
@@ -1170,6 +1184,8 @@ him know. Otherwise, I had nothing to do with it.
         defaultAcquisitionStartTriggerSource = p["acquisitionStartTriggerSource"]
         defaultAudioChannelConfiguration = p["audioChannelConfiguration"]
 
+        # Query the system to determine what DAQ channels and cameras are
+        #   currently available
         availableAudioChannels = flattenList(discoverDAQAudioChannels().values())
         availableClockChannels = flattenList(discoverDAQClockChannels().values()) + ['None']
         availableDigitalChannels = ['None'] + flattenList(discoverDAQTerminals().values())
@@ -1182,6 +1198,7 @@ him know. Otherwise, I had nothing to do with it.
             "RSE"
         ]
 
+        # Define and create GUI elements
         params = []
         if len(availableAudioChannels) > 0:
             params.append(Param(name='Audio Channels', widgetType=Param.MULTICHOICE, options=availableAudioChannels, default=defaultAudioDAQChannels))
@@ -1201,10 +1218,12 @@ him know. Otherwise, I had nothing to do with it.
             pd = ParamDialog(self.master, params=params, title="Choose audio/video inputs to use", maxHeight=24)
             choices = pd.results
             if choices is not None:
+                # We're changing acquisition settings, so stop everything
                 self.stopMonitors()
                 self.updateAcquisitionButton()
                 self.destroyChildProcesses()
 
+                # Extract chosen parameters from GUI
                 if 'Audio Channels' in choices:
                     audioDAQChannels = choices['Audio Channels']
                 else:
@@ -1239,6 +1258,7 @@ him know. Otherwise, I had nothing to do with it.
                 if 'Audio channel configuration' in choices and len(choices['Audio channel configuration']) > 0:
                     audioChannelConfiguration = choices['Audio channel configuration']
 
+                # Set chosen parameters
                 self.setParams(
                     audioDAQChannels=audioDAQChannels,
                     camSerials=camSerials,
@@ -1253,8 +1273,10 @@ him know. Otherwise, I had nothing to do with it.
                 self.log('Got audioDAQChannels:', audioDAQChannels)
                 self.log('Got camSerials:', camSerials)
 
+                # Create GUI elements for monitoring the chosen inputs
                 self.setupInputMonitoringWidgets()
 
+                # Restart child processes with new acquisition values
                 self.createChildProcesses()
                 if 'Start acquisition immediately' in choices and choices['Start acquisition immediately'] == 'Yes':
                     self.startChildProcesses()
@@ -1332,6 +1354,8 @@ him know. Otherwise, I had nothing to do with it.
         self.update()
 
     def updateAudioTriggerSettings(self, *args):
+        # Update settings that determine for what audio values the GUI will
+        #   send a record trigger.
         if self.audioTriggerProcess is not None:
             paramList = [
                 'triggerHighLevel',
@@ -1348,6 +1372,8 @@ him know. Otherwise, I had nothing to do with it.
             self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, params))
 
     def updateContinuousTriggerSettings(self, *args):
+        # Update settings for continuous triggering (sending consecutive
+        #   triggers, one after another)
         if self.continuousTriggerProcess is not None:
             paramList = [
                 'continuousTriggerPeriod',

@@ -94,6 +94,14 @@ class Stopwatch:
         return (self.t1 - self.t0)
 
 class Trigger():
+    # A class to represent a record trigger.
+    # It maintains a unique ID, to allow processes to ensure they don't reuse
+    #   triggers
+    # It contains information about the start, end, and arbitrary "trigger" time
+    # It also contains tags to allow processes to pass information about the
+    #   trigger, typically to be added onto the filename of the recorded audio/video
+
+    # Generator for new unique IDs
     newid = itertools.count().__next__   # Source of this clever little idea: https://stackoverflow.com/a/1045724/1460057
     # A class to represent a trigger object
     def __init__(self, startTime, triggerTime, endTime, tags=set(), idspace=None):
@@ -107,9 +115,11 @@ class Trigger():
         self.tags = tags
 
     def __str__(self):
+        # Create string representation of trigger for logging/debug purposes
         return 'Trigger id {id}: {s}-->{t}-->{e} tags: {tags}'.format(id=self.id, s=self.startTime, t=self.triggerTime, e=self.endTime, tags=self.tags)
 
     def tagFilename(self, filename, separator='_'):
+        # Add trigger tags onto filename in a standardized way
         if len(self.tags) == 0:
             return filename
         root, ext = os.path.splitext(filename)
@@ -119,6 +129,7 @@ class Trigger():
         return taggedPath
 
     def isValid(self):
+        # Sanity check the trigger values
         return self.startTime <= self.triggerTime and self.triggerTime <= self.endTime
 
     def state(self, time):
@@ -177,6 +188,8 @@ class AudioChunk():
         return 'Audio chunk {id}: {start} ---- {samples} samp x {n} ch ----> {end} @ {freq} Hz'.format(start=self.chunkStartTime, end=self.chunkEndTime, samples=self.chunkSize, n=self.channelNumber, freq=self.audioFrequency, id=self.id)
 
     def getTriggerState(self, trigger):
+        # Check the manner in which this audio chunk overlaps, or does not
+        #   overlap, with the given trigger
         chunkStartTriggerState = trigger.state(self.chunkStartTime)
         chunkEndTriggerState =   trigger.state(self.chunkEndTime)
         return chunkStartTriggerState, chunkEndTriggerState
@@ -261,6 +274,8 @@ DATE_FORMAT = '%Y-%m-%d'
 TIME_FORMAT = '%Y-%m-%d-%H-%M-%S-%f'
 
 def getDaySubfolder(root, trigger):
+    # Construct a standardized path for a subfolder representing the day in
+    #   which the trigger falls
     dateString = dt.datetime.fromtimestamp(trigger.triggerTime).strftime(DATE_FORMAT)
     return os.path.join(root, dateString)
 
@@ -270,9 +285,12 @@ def ensureDirectoryExists(directory):
         os.makedirs(directory, exist_ok=True)
 
 def generateTimeString(trigger):
+    # Generate a time string from the trigger time
     return dt.datetime.fromtimestamp(trigger.triggerTime).strftime(TIME_FORMAT)
 
 def generateFileName(directory='.', baseName='unnamed', tags=[], extension=''):
+    # Construct a standardized filename based on a root directory a base name,
+    #   zero or more tags, and an extension.
     extension = '.' + slugify(extension)
     fileName = baseName
     for tag in tags:
@@ -283,6 +301,7 @@ def generateFileName(directory='.', baseName='unnamed', tags=[], extension=''):
     return os.path.join(directory, fileName)
 
 def generateButterBandpassCoeffs(lowcut, highcut, fs, order=5):
+    # Set up audio bandpass filter coefficients
     nyq = 0.5 * fs
     low = lowcut / nyq
     high = highcut / nyq
@@ -349,20 +368,25 @@ class StdoutManager(mp.Process):
                 print('Failed to close log file')
 
 class StateMachineProcess(mp.Process):
+    # The base process that all other state machine processes inherit from.
+    # It contains functionality for receiving messages from other processes,
+    # and other conveniences.
     def __init__(self, *args, stdoutQueue=None, daemon=True, **kwargs):
         mp.Process.__init__(self, *args, daemon=daemon, **kwargs)
-        self.ID = "X"
-        self.msgQueue = mp.Queue()
+        self.ID = "X"                                # An ID for logging purposes to identify the source of log messages
+        self.msgQueue = mp.Queue()                   # Queue for receiving messages/requests from other processes
         self.stdoutQueue = stdoutQueue               # Queue for pushing output message groups to for printing
-        self.publishedStateVar = mp.Value('i', -1)
-        self.PID = mp.Value('i', -1)
-        self.exitFlag = False
-        self.stdoutBuffer = []
+        self.publishedStateVar = mp.Value('i', -1)   # A thread-safe variable so other processes can query this process's state
+        self.PID = mp.Value('i', -1)                 # A thread-safe variable so other processes can query this process's PID
+        self.exitFlag = False                        # A flag to set to ensure the process exits ASAP
+        self.stdoutBuffer = []                       # A buffer to accumulate log messages before sending out
 
     def run(self):
+        # Start run by recording this process's PID
         self.PID.value = os.getpid()
 
     def updatePublishedState(self, state):
+        # Update the thread-safe variable holding the current state info
         if self.publishedStateVar is not None:
             L = self.publishedStateVar.get_lock()
             locked = L.acquire(block=False)
@@ -371,15 +395,17 @@ class StateMachineProcess(mp.Process):
                 L.release()
 
     def log(self, msg, *args, **kwargs):
+        # Queue up another ID-tagged log message
         syncPrint('|| {ID} - {msg}'.format(ID=self.ID, msg=msg), *args, buffer=self.stdoutBuffer, **kwargs)
 
     def flushStdout(self):
+        # Send current accumulated log buffer out, clear buffer.
         if len(self.stdoutBuffer) > 0:
             self.stdoutQueue.put(self.stdoutBuffer)
         self.stdoutBuffer = []
 
 class AVMerger(StateMachineProcess):
-# Class for merging audio and video files using ffmpeg
+    # Class for merging audio and video files using ffmpeg
 
     # States:
     STOPPED = 0
@@ -392,6 +418,7 @@ class AVMerger(StateMachineProcess):
     EXITING = 7
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
         STOPPED :'STOPPED',
@@ -405,7 +432,7 @@ class AVMerger(StateMachineProcess):
         DEAD :'DEAD'
     }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     MERGE = 'msg_merge'
     STOP = 'msg_stop'
@@ -413,10 +440,11 @@ class AVMerger(StateMachineProcess):
     CHILL = 'msg_chill'
     SETPARAMS = 'msg_setParams'
 
-    #Stream types
+    # Stream types
     VIDEO = 'video'
     AUDIO = 'audio'
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
         'directory',
@@ -431,14 +459,14 @@ class AVMerger(StateMachineProcess):
 
     def __init__(self,
         verbose=False,
-        numFilesPerTrigger=2,       # Number of files expected per trigger event (audio + video)
-        directory='.',              # Directory for writing merged files
-        baseFileName='',            # Base filename (sans extension) for writing merged files
-        deleteMergedAudioFiles=False,    # After merging, delete unmerged audio originals
-        deleteMergedVideoFiles=False,    # After merging, delete unmerged video originals
-        montage=False,              # Combine videos side by side
-        compression='0',            # CRF factor for libx264 compression. '0'=lossless '23'=default '51'=terrible
-        daySubfolders=True,
+        numFilesPerTrigger=2,           # Number of files expected per trigger event (audio + video)
+        directory='.',                  # Directory for writing merged files
+        baseFileName='',                # Base filename (sans extension) for writing merged files
+        deleteMergedAudioFiles=False,   # After merging, delete unmerged audio originals
+        deleteMergedVideoFiles=False,   # After merging, delete unmerged video originals
+        montage=False,                  # Combine videos side by side
+        compression='0',                # CRF factor for libx264 compression. '0'=lossless '23'=default '51'=terrible
+        daySubfolders=True,             # Put output files into separate day folders?
         **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
@@ -860,6 +888,7 @@ class Synchronizer(StateMachineProcess):
     EXITING = 6
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
          STOPPED:'STOPPED',
@@ -872,12 +901,13 @@ class Synchronizer(StateMachineProcess):
          DEAD:'DEAD'
     }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     STOP = 'msg_stop'
     EXIT = 'msg_exit'
     SETPARAMS = 'msg_setParams'
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
     ]
@@ -1220,6 +1250,7 @@ class AudioTriggerer(StateMachineProcess):
     EXITING = 6
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
         STOPPED :'STOPPED',
@@ -1232,7 +1263,7 @@ class AudioTriggerer(StateMachineProcess):
         DEAD :'DEAD'
     }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     STARTANALYZE = "msg_startanalyze"
     STOPANALYZE = "msg_stopanalyze"
@@ -1242,6 +1273,7 @@ class AudioTriggerer(StateMachineProcess):
 
     multiChannelBehaviors = ['OR', 'AND']
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'chunkSize',
         'triggerHighLevel',
@@ -1721,6 +1753,7 @@ class AudioAcquirer(StateMachineProcess):
     EXITING = 6
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
         STOPPED :'STOPPED',
@@ -1733,12 +1766,13 @@ class AudioAcquirer(StateMachineProcess):
         DEAD :'DEAD'
     }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     STOP = 'msg_stop'
     EXIT = 'msg_exit'
     SETPARAMS = 'msg_setParams'
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose'
     ]
@@ -2075,6 +2109,7 @@ class AudioWriter(StateMachineProcess):
     EXITING = 6
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
         STOPPED :'STOPPED',
@@ -2087,13 +2122,14 @@ class AudioWriter(StateMachineProcess):
         DEAD :'DEAD'
     }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     STOP = 'msg_stop'
     EXIT = 'msg_exit'
     TRIGGER = 'msg_trigger'
     SETPARAMS = 'msg_setParams'
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
         'audioBaseFileName',
@@ -2565,6 +2601,7 @@ class VideoAcquirer(StateMachineProcess):
     EXITING = 6
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
         STOPPED :'STOPPED',
@@ -2577,12 +2614,13 @@ class VideoAcquirer(StateMachineProcess):
         DEAD :'DEAD'
         }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     STOP = 'msg_stop'
     EXIT = 'msg_exit'
     SETPARAMS = 'msg_setParams'
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
     ]
@@ -2697,12 +2735,14 @@ class VideoAcquirer(StateMachineProcess):
 # ********************************* INITIALIZING *********************************
                 elif state == VideoAcquirer.INITIALIZING:
                     # DO STUFF
+                    if self.verbose > 2: self.log("Initializing camera...")
                     system = PySpin.System.GetInstance()
                     camList = system.GetCameras()
                     cam = camList.GetBySerial(self.camSerial)
                     cam.Init()
                     nodemap = cam.GetNodeMap()
                     self.setCameraAttributes(nodemap, self.acquireSettings)
+                    if self.verbose > 2: self.log("...camera initialization complete")
 
                     monitorFramePeriod = 1.0/self.monitorMasterFrameRate
                     if self.verbose >= 1: self.log("Monitoring with period", monitorFramePeriod)
@@ -2988,6 +3028,7 @@ class VideoWriter(StateMachineProcess):
     EXITING = 6
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
         STOPPED :'STOPPED',
@@ -3000,13 +3041,14 @@ class VideoWriter(StateMachineProcess):
         DEAD :'DEAD'
     }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     STOP = 'msg_stop'
     EXIT = 'msg_exit'
     TRIGGER = 'msg_trigger'
     SETPARAMS = 'msg_setParams'
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
         'videoBaseFileName',
@@ -3492,6 +3534,7 @@ class ContinuousTriggerer(StateMachineProcess):
     EXITING = 6
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
         STOPPED :'STOPPED',
@@ -3503,13 +3546,14 @@ class ContinuousTriggerer(StateMachineProcess):
         DEAD :'DEAD'
     }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     STOP = 'msg_stop'
     EXIT = 'msg_exit'
     SETPARAMS = 'msg_setParams'
     TAGTRIGGER = 'tag_trigger'      # Send a trigger that indicates the videos that overlap with that trigger should be tagged with trigger's tags
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'continuousTriggerPeriod',
         'scheduleEnabled',
