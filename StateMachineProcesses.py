@@ -2597,6 +2597,8 @@ class VideoAcquirer(StateMachineProcess):
                 bufferSizeSeconds=2.2,
                 monitorFrameRate=15,
                 verbose=False,
+                videoWidth=1280,
+                videoHeight=1024,
                 ready=None,                        # Synchronization barrier to ensure everyone's ready before beginning
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
@@ -2612,8 +2614,8 @@ class VideoAcquirer(StateMachineProcess):
         self.bufferSize = int(2*bufferSizeSeconds * self.requestedFrameRate)
         print("Creating shared image sender with max buffer size:", self.bufferSize)
         self.imageQueue = SharedImageSender(
-            width=1280,
-            height=1024,
+            width=videoWidth,
+            height=videoHeight,
             verbose=False,
             outputType='PySpin',
             outputCopy=True,
@@ -2623,8 +2625,8 @@ class VideoAcquirer(StateMachineProcess):
         self.imageQueueReceiver = self.imageQueue.getReceiver()
 
         self.monitorImageSender = SharedImageSender(
-            width=1280,
-            height=1024,
+            width=videoWidth,
+            height=videoHeight,
             outputType='PIL',
             outputCopy=False,
             verbose=False,
