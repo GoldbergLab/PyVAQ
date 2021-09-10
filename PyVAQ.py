@@ -774,7 +774,7 @@ class PyVAQ:
         self.scheduleStopTimeEntry = TimeEntry(self.scheduleFrame, text="Stop time")
 
         self.triggerFrame = ttk.LabelFrame(self.controlFrame, text='Triggering')
-        self.triggerModes = ['Manual', 'Audio', 'Continuous']
+        self.triggerModes = ['Manual', 'Audio', 'Continuous', 'SimpleContinuous']
         self.triggerModeChooserFrame = ttk.Frame(self.triggerFrame)
         self.triggerModeVar = tk.StringVar(); self.triggerModeVar.set(self.triggerModes[0])
         self.triggerModeVar.trace('w', self.updateTriggerMode)
@@ -1439,28 +1439,40 @@ him know. Otherwise, I had nothing to do with it.
         self.setMergeDirectory(newMergeDirectory, updateTextField=False)
 
     def updateTriggerMode(self, *args):
+        # Handle a user selection of a new trigger mode
         newMode = self.triggerModeVar.get()
 
+        if newMode != "Continuous":
+            if self.continuousTriggerProcess is not None and self.continuousTriggerProcess.msgQueue is not None:
+                self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.STOP, None))
+        if newMode != "Audio":
+            # May as well stop analyzing audio if we're not in audio mode.
+            if self.audioTriggerProcess is not None and self.audioTriggerProcess.msgQueue is not None:
+                self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOPANALYZE, None))
+
         if self.audioAnalysisMonitorUpdateJob is not None:
+            # If there was already an audio analysis monitoring job running, cancel it
             self.master.after_cancel(self.audioAnalysisMonitorUpdateJob)
 
         if newMode == "Audio":
+            # User selected "Audio" trigger mode
             if self.audioTriggerProcess is not None:
                 self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STARTANALYZE, None))
                 self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(writeTriggerEnabled=True, tagTriggerEnabled=False)))
             self.autoUpdateAudioAnalysisMonitors()
         elif newMode == "Continuous":
+            # User selected "Continuous" trigger mode
+            self.continuousTriggerProcess.msgQueue.put((AudioTriggerer.START, None))
             if self.audioTriggerProcess is not None:
-                self.continuousTriggerProcess.msgQueue.put((AudioTriggerer.START, None))
                 if self.getParams('audioTagContinuousTrigs'):
                     self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STARTANALYZE, None))
                     self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(writeTriggerEnabled=False, tagTriggerEnabled=True)))
                 else:
                     self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOPANALYZE, None))
                     self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(writeTriggerEnabled=False, tagTriggerEnabled=False)))
-        else:
-            if self.audioTriggerProcess is not None:
-                self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOPANALYZE, None))
+        elif newMode == "SimpleContinuous":
+            # User selected "SimpleContinuous" trigger mode
+            self.restartAcquisition()
 
         self.update()
 
@@ -2266,18 +2278,32 @@ him know. Otherwise, I had nothing to do with it.
                 videoWidth=3208,  # Should not be hardcoded
                 videoHeight=2200, # Figure out how to obtain this automatically from camera
                 stdoutQueue=self.StdoutManager.queue)
-            videoWriteProcess = VideoWriter(
-                camSerial=camSerial,
-                videoDirectory=videoDirectory,
-                videoBaseFileName=videoBaseFileName,
-                imageQueue=videoAcquireProcess.imageQueueReceiver,
-                frameRate=self.actualVideoFrequency,
-                requestedFrameRate=p["videoFrequency"],
-                mergeMessageQueue=mergeMsgQueue,
-                bufferSizeSeconds=p["bufferSizeSeconds"],
-                verbose=self.videoWriteVerbose,
-                stdoutQueue=self.StdoutManager.queue
-                )
+            if p["triggerMode"] == "SimpleContinuous":
+                videoWriterProcess = SimpleVideoWriter(
+                    camSerial=camSerial,
+                    videoDirectory=videoDirectory,
+                    videoBaseFileName=videoBaseFileName,
+                    imageQueue=videoAcquireProcess.imageQueueReceiver,
+                    frameRate=self.actualVideoFrequency,
+                    requestedFrameRate=p["videoFrequency"],
+                    mergeMessageQueue=mergeMsgQueue,
+                    videoLength=p["recordTime"],
+                    verbose=self.videoWriteVerbose,
+                    stdoutQueue=self.StdoutManager.queue
+                    )
+            else:
+                videoWriteProcess = VideoWriter(
+                    camSerial=camSerial,
+                    videoDirectory=videoDirectory,
+                    videoBaseFileName=videoBaseFileName,
+                    imageQueue=videoAcquireProcess.imageQueueReceiver,
+                    frameRate=self.actualVideoFrequency,
+                    requestedFrameRate=p["videoFrequency"],
+                    mergeMessageQueue=mergeMsgQueue,
+                    bufferSizeSeconds=p["bufferSizeSeconds"],
+                    verbose=self.videoWriteVerbose,
+                    stdoutQueue=self.StdoutManager.queue
+                    )
             self.videoAcquireProcesses[camSerial] = videoAcquireProcess
             self.videoWriteProcesses[camSerial] = videoWriteProcess
 
