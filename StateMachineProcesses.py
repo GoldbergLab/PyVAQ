@@ -1033,10 +1033,10 @@ class Synchronizer(StateMachineProcess):
                     trigTask.timing.cfg_implicit_timing(sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS)
 
                     # Set shared values so other processes can get actual a/v frequencies
-                    if self.actualAudioFrequency is not None:
+                    if self.audioSyncChannel is not None and self.actualAudioFrequency is not None:
                         self.actualAudioFrequency.value = trigTask.co_channels['audioFrequency'].co_pulse_freq
                         if self.verbose > 0: self.log('Requested audio frequency: ', self.audioFrequency, ' | actual audio frequency: ', self.actualAudioFrequency.value);
-                    if self.actualVideoFrequency is not None:
+                    if self.videoSyncChannel is not None and self.actualVideoFrequency is not None:
                         self.actualVideoFrequency.value = trigTask.co_channels['videoFrequency'].co_pulse_freq
                         if self.verbose > 0: self.log('Requested video frequency: ', self.videoFrequency, ' | actual video frequency: ', self.actualVideoFrequency.value);
 
