@@ -3444,6 +3444,8 @@ class VideoWriter(StateMachineProcess):
         else:
             # Do not pop any off until it's either full or not empty, depending on fillBuffer).
             if self.verbose >= 3:
+                self.log('Fill buffer is set to: ', fillBuffer)
+                self.log('Buffer has ', len(self.buffer), ' frames of ', self.bufferSize)
                 if fillBuffer:
                     self.log("buffer not full yet, declining to pull frame from buffer")
                 else:
