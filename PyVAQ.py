@@ -1397,7 +1397,7 @@ him know. Otherwise, I had nothing to do with it.
     def videoDirectoryChangeHandler(self, *args):
         videoDirectories = {}
         for camSerial in self.cameraMonitors:
-            videoDirectories[camSerial] = self.cameraMonitors.getDirectory()
+            videoDirectories[camSerial] = self.cameraMonitors[camSerial].getDirectory()
         self.setVideoDirectories(videoDirectories, updateTextField=False)
     def audioBaseFileNameChangeHandler(self, *args):
         newAudioBaseFileName = self.audioMonitor.getBaseFileName()
