@@ -37,7 +37,7 @@ except ModuleNotFoundError:
     # pip seems to install PySpin as pyspin sometimes...
     import pyspin as PySpin
 from MonitorWidgets import AudioMonitor, CameraMonitor
-from StateMachineProcesses import Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, nodeAccessorFunctions, nodeAccessorTypes, ContinuousTriggerer, syncPrint
+from StateMachineProcesses import Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, nodeAccessorFunctions, nodeAccessorTypes, ContinuousTriggerer, syncPrint, SimpleVideoWriter
 import inspect
 
 VERSION='0.2.0'
@@ -2279,7 +2279,7 @@ him know. Otherwise, I had nothing to do with it.
                 videoHeight=2200, # Figure out how to obtain this automatically from camera
                 stdoutQueue=self.StdoutManager.queue)
             if p["triggerMode"] == "SimpleContinuous":
-                videoWriterProcess = SimpleVideoWriter(
+                videoWriteProcess = SimpleVideoWriter(
                     camSerial=camSerial,
                     videoDirectory=videoDirectory,
                     videoBaseFileName=videoBaseFileName,
