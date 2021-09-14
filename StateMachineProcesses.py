@@ -3159,7 +3159,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     if self.exitFlag:
                         nextState = SimpleVideoWriter.STOPPING
                     elif msg in ['', SimpleVideoWriter.START]:
-                        nextState = SimpleVideoWriter.WRITING
+                        nextState = SimpleVideoWriter.VIDEOINIT
                     elif msg == SimpleVideoWriter.STOP:
                         nextState = SimpleVideoWriter.STOPPING
                     elif msg == SimpleVideoWriter.EXIT:
@@ -3360,7 +3360,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     if self.exitFlag:
                         nextState = SimpleVideoWriter.STOPPED
                     elif msg == '':
-                        nextState = SimpleVideoWriter.WAITING
+                        nextState = SimpleVideoWriter.STOPPED
                     elif msg == SimpleVideoWriter.STOP:
                         nextState = SimpleVideoWriter.STOPPED
                     elif msg == SimpleVideoWriter.EXIT:
