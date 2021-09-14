@@ -94,6 +94,14 @@ class Stopwatch:
         return (self.t1 - self.t0)
 
 class Trigger():
+    # A class to represent a record trigger.
+    # It maintains a unique ID, to allow processes to ensure they don't reuse
+    #   triggers
+    # It contains information about the start, end, and arbitrary "trigger" time
+    # It also contains tags to allow processes to pass information about the
+    #   trigger, typically to be added onto the filename of the recorded audio/video
+
+    # Generator for new unique IDs
     newid = itertools.count().__next__   # Source of this clever little idea: https://stackoverflow.com/a/1045724/1460057
     # A class to represent a trigger object
     def __init__(self, startTime, triggerTime, endTime, tags=set(), idspace=None):
@@ -107,9 +115,11 @@ class Trigger():
         self.tags = tags
 
     def __str__(self):
+        # Create string representation of trigger for logging/debug purposes
         return 'Trigger id {id}: {s}-->{t}-->{e} tags: {tags}'.format(id=self.id, s=self.startTime, t=self.triggerTime, e=self.endTime, tags=self.tags)
 
     def tagFilename(self, filename, separator='_'):
+        # Add trigger tags onto filename in a standardized way
         if len(self.tags) == 0:
             return filename
         root, ext = os.path.splitext(filename)
@@ -119,6 +129,7 @@ class Trigger():
         return taggedPath
 
     def isValid(self):
+        # Sanity check the trigger values
         return self.startTime <= self.triggerTime and self.triggerTime <= self.endTime
 
     def state(self, time):
@@ -177,6 +188,8 @@ class AudioChunk():
         return 'Audio chunk {id}: {start} ---- {samples} samp x {n} ch ----> {end} @ {freq} Hz'.format(start=self.chunkStartTime, end=self.chunkEndTime, samples=self.chunkSize, n=self.channelNumber, freq=self.audioFrequency, id=self.id)
 
     def getTriggerState(self, trigger):
+        # Check the manner in which this audio chunk overlaps, or does not
+        #   overlap, with the given trigger
         chunkStartTriggerState = trigger.state(self.chunkStartTime)
         chunkEndTriggerState =   trigger.state(self.chunkEndTime)
         return chunkStartTriggerState, chunkEndTriggerState
@@ -260,8 +273,12 @@ class AudioChunk():
 DATE_FORMAT = '%Y-%m-%d'
 TIME_FORMAT = '%Y-%m-%d-%H-%M-%S-%f'
 
-def getDaySubfolder(root, trigger):
-    dateString = dt.datetime.fromtimestamp(trigger.triggerTime).strftime(DATE_FORMAT)
+def getDaySubfolder(root, trigger=None, videoTimestamp=None):
+    # Construct a standardized path for a subfolder representing the day in
+    #   which the trigger falls
+    if trigger is not None:
+        videoTimestamp = trigger.triggerTime
+    dateString = dt.datetime.fromtimestamp(videoTimestamp).strftime(DATE_FORMAT)
     return os.path.join(root, dateString)
 
 def ensureDirectoryExists(directory):
@@ -269,10 +286,15 @@ def ensureDirectoryExists(directory):
     if len(directory) > 0:
         os.makedirs(directory, exist_ok=True)
 
-def generateTimeString(trigger):
-    return dt.datetime.fromtimestamp(trigger.triggerTime).strftime(TIME_FORMAT)
+def generateTimeString(trigger=None, timestamp=None):
+    # Generate a time string from the trigger time
+    if trigger is not None:
+        timestamp = trigger.triggerTime
+    return dt.datetime.fromtimestamp(timestamp).strftime(TIME_FORMAT)
 
 def generateFileName(directory='.', baseName='unnamed', tags=[], extension=''):
+    # Construct a standardized filename based on a root directory a base name,
+    #   zero or more tags, and an extension.
     extension = '.' + slugify(extension)
     fileName = baseName
     for tag in tags:
@@ -283,6 +305,7 @@ def generateFileName(directory='.', baseName='unnamed', tags=[], extension=''):
     return os.path.join(directory, fileName)
 
 def generateButterBandpassCoeffs(lowcut, highcut, fs, order=5):
+    # Set up audio bandpass filter coefficients
     nyq = 0.5 * fs
     low = lowcut / nyq
     high = highcut / nyq
@@ -349,20 +372,25 @@ class StdoutManager(mp.Process):
                 print('Failed to close log file')
 
 class StateMachineProcess(mp.Process):
+    # The base process that all other state machine processes inherit from.
+    # It contains functionality for receiving messages from other processes,
+    # and other conveniences.
     def __init__(self, *args, stdoutQueue=None, daemon=True, **kwargs):
         mp.Process.__init__(self, *args, daemon=daemon, **kwargs)
-        self.ID = "X"
-        self.msgQueue = mp.Queue()
+        self.ID = "X"                                # An ID for logging purposes to identify the source of log messages
+        self.msgQueue = mp.Queue()                   # Queue for receiving messages/requests from other processes
         self.stdoutQueue = stdoutQueue               # Queue for pushing output message groups to for printing
-        self.publishedStateVar = mp.Value('i', -1)
-        self.PID = mp.Value('i', -1)
-        self.exitFlag = False
-        self.stdoutBuffer = []
+        self.publishedStateVar = mp.Value('i', -1)   # A thread-safe variable so other processes can query this process's state
+        self.PID = mp.Value('i', -1)                 # A thread-safe variable so other processes can query this process's PID
+        self.exitFlag = False                        # A flag to set to ensure the process exits ASAP
+        self.stdoutBuffer = []                       # A buffer to accumulate log messages before sending out
 
     def run(self):
+        # Start run by recording this process's PID
         self.PID.value = os.getpid()
 
     def updatePublishedState(self, state):
+        # Update the thread-safe variable holding the current state info
         if self.publishedStateVar is not None:
             L = self.publishedStateVar.get_lock()
             locked = L.acquire(block=False)
@@ -371,15 +399,17 @@ class StateMachineProcess(mp.Process):
                 L.release()
 
     def log(self, msg, *args, **kwargs):
+        # Queue up another ID-tagged log message
         syncPrint('|| {ID} - {msg}'.format(ID=self.ID, msg=msg), *args, buffer=self.stdoutBuffer, **kwargs)
 
     def flushStdout(self):
+        # Send current accumulated log buffer out, clear buffer.
         if len(self.stdoutBuffer) > 0:
             self.stdoutQueue.put(self.stdoutBuffer)
         self.stdoutBuffer = []
 
 class AVMerger(StateMachineProcess):
-# Class for merging audio and video files using ffmpeg
+    # Class for merging audio and video files using ffmpeg
 
     # States:
     STOPPED = 0
@@ -392,6 +422,7 @@ class AVMerger(StateMachineProcess):
     EXITING = 7
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
         STOPPED :'STOPPED',
@@ -405,7 +436,7 @@ class AVMerger(StateMachineProcess):
         DEAD :'DEAD'
     }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     MERGE = 'msg_merge'
     STOP = 'msg_stop'
@@ -413,10 +444,11 @@ class AVMerger(StateMachineProcess):
     CHILL = 'msg_chill'
     SETPARAMS = 'msg_setParams'
 
-    #Stream types
+    # Stream types
     VIDEO = 'video'
     AUDIO = 'audio'
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
         'directory',
@@ -431,14 +463,14 @@ class AVMerger(StateMachineProcess):
 
     def __init__(self,
         verbose=False,
-        numFilesPerTrigger=2,       # Number of files expected per trigger event (audio + video)
-        directory='.',              # Directory for writing merged files
-        baseFileName='',            # Base filename (sans extension) for writing merged files
-        deleteMergedAudioFiles=False,    # After merging, delete unmerged audio originals
-        deleteMergedVideoFiles=False,    # After merging, delete unmerged video originals
-        montage=False,              # Combine videos side by side
-        compression='0',            # CRF factor for libx264 compression. '0'=lossless '23'=default '51'=terrible
-        daySubfolders=True,
+        numFilesPerTrigger=2,           # Number of files expected per trigger event (audio + video)
+        directory='.',                  # Directory for writing merged files
+        baseFileName='',                # Base filename (sans extension) for writing merged files
+        deleteMergedAudioFiles=False,   # After merging, delete unmerged audio originals
+        deleteMergedVideoFiles=False,   # After merging, delete unmerged video originals
+        montage=False,                  # Combine videos side by side
+        compression='0',                # CRF factor for libx264 compression. '0'=lossless '23'=default '51'=terrible
+        daySubfolders=True,             # Put output files into separate day folders?
         **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
@@ -860,6 +892,7 @@ class Synchronizer(StateMachineProcess):
     EXITING = 6
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
          STOPPED:'STOPPED',
@@ -872,12 +905,13 @@ class Synchronizer(StateMachineProcess):
          DEAD:'DEAD'
     }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     STOP = 'msg_stop'
     EXIT = 'msg_exit'
     SETPARAMS = 'msg_setParams'
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
     ]
@@ -1206,6 +1240,10 @@ class Synchronizer(StateMachineProcess):
         self.updatePublishedState(self.DEAD)
 
 class AudioTriggerer(StateMachineProcess):
+    '''
+    AudioTriggerer: A state machine class to generate audio-based for both audio
+        and video writer processes.
+    '''
     # States:
     STOPPED = 0
     INITIALIZING = 1
@@ -1216,6 +1254,7 @@ class AudioTriggerer(StateMachineProcess):
     EXITING = 6
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
         STOPPED :'STOPPED',
@@ -1228,7 +1267,7 @@ class AudioTriggerer(StateMachineProcess):
         DEAD :'DEAD'
     }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     STARTANALYZE = "msg_startanalyze"
     STOPANALYZE = "msg_stopanalyze"
@@ -1238,6 +1277,7 @@ class AudioTriggerer(StateMachineProcess):
 
     multiChannelBehaviors = ['OR', 'AND']
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'chunkSize',
         'triggerHighLevel',
@@ -1717,6 +1757,7 @@ class AudioAcquirer(StateMachineProcess):
     EXITING = 6
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
         STOPPED :'STOPPED',
@@ -1729,12 +1770,13 @@ class AudioAcquirer(StateMachineProcess):
         DEAD :'DEAD'
     }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     STOP = 'msg_stop'
     EXIT = 'msg_exit'
     SETPARAMS = 'msg_setParams'
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose'
     ]
@@ -2071,6 +2113,7 @@ class AudioWriter(StateMachineProcess):
     EXITING = 6
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
         STOPPED :'STOPPED',
@@ -2083,13 +2126,14 @@ class AudioWriter(StateMachineProcess):
         DEAD :'DEAD'
     }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     STOP = 'msg_stop'
     EXIT = 'msg_exit'
     TRIGGER = 'msg_trigger'
     SETPARAMS = 'msg_setParams'
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
         'audioBaseFileName',
@@ -2547,6 +2591,10 @@ class AudioWriter(StateMachineProcess):
             triggers.append(newTrigger)
 
 class VideoAcquirer(StateMachineProcess):
+    '''
+    VideoAcquirer: A state machine class to pull frames from a camera and pass
+        to a VideoWriter process, when a received trigger becomes active.
+    '''
     # States:
     STOPPED = 0
     INITIALIZING = 1
@@ -2557,6 +2605,7 @@ class VideoAcquirer(StateMachineProcess):
     EXITING = 6
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
         STOPPED :'STOPPED',
@@ -2569,12 +2618,13 @@ class VideoAcquirer(StateMachineProcess):
         DEAD :'DEAD'
         }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     STOP = 'msg_stop'
     EXIT = 'msg_exit'
     SETPARAMS = 'msg_setParams'
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
     ]
@@ -2689,12 +2739,14 @@ class VideoAcquirer(StateMachineProcess):
 # ********************************* INITIALIZING *********************************
                 elif state == VideoAcquirer.INITIALIZING:
                     # DO STUFF
+                    if self.verbose > 2: self.log("Initializing camera...")
                     system = PySpin.System.GetInstance()
                     camList = system.GetCameras()
                     cam = camList.GetBySerial(self.camSerial)
                     cam.Init()
                     nodemap = cam.GetNodeMap()
                     self.setCameraAttributes(nodemap, self.acquireSettings)
+                    if self.verbose > 2: self.log("...camera initialization complete")
 
                     monitorFramePeriod = 1.0/self.monitorMasterFrameRate
                     if self.verbose >= 1: self.log("Monitoring with period", monitorFramePeriod)
@@ -2969,6 +3021,443 @@ class VideoAcquirer(StateMachineProcess):
             if not result:
                 self.log("Failed to set", str(attribute), " to ", str(value))
 
+class SimpleVideoWriter(StateMachineProcess):
+    # States:
+    STOPPED = 0
+    INITIALIZING = 1
+    WRITING = 2
+    VIDEOINIT = 3
+    STOPPING = 4
+    ERROR = 5
+    EXITING = 6
+    DEAD = 100
+
+    # Human-readable states
+    stateList = {
+        -1:'UNKNOWN',
+        STOPPED :'STOPPED',
+        INITIALIZING :'INITIALIZING',
+        WRITING :'WRITING',
+        VIDEOINIT : 'VIDEOINIT',
+        STOPPING :'STOPPING',
+        ERROR :'ERROR',
+        EXITING :'EXITING',
+        DEAD :'DEAD'
+    }
+
+    # Recognized message types:
+    START = 'msg_start'
+    STOP = 'msg_stop'
+    EXIT = 'msg_exit'
+    SETPARAMS = 'msg_setParams'
+
+    # List of params that can be set externally with the 'msg_setParams' message
+    settableParams = [
+        'verbose',
+        'videoBaseFileName',
+        'videoDirectory',
+        'daySubfolders'
+        ]
+
+    def __init__(self,
+                videoDirectory='.',
+                videoBaseFileName='videoFile',
+                imageQueue=None,
+                requestedFrameRate=None,
+                frameRate=None,
+                mergeMessageQueue=None,            # Queue to put (filename, trigger) in for merging
+                camSerial='',
+                verbose=False,
+                daySubfolders=True,
+                videoLength=2,   # Video length in seconds
+                **kwargs):
+        StateMachineProcess.__init__(self, **kwargs)
+        self.camSerial = camSerial
+        self.ID = 'VW_' + self.camSerial
+        self.videoDirectory=videoDirectory
+        self.videoBaseFileName = videoBaseFileName
+        self.imageQueue = imageQueue
+        # if self.imageQueue is not None:
+        #     self.imageQueue.cancel_join_thread()
+        self.requestedFrameRate = requestedFrameRate
+        self.frameRateVar = frameRate
+        self.frameRate = None
+        self.mergeMessageQueue = mergeMessageQueue
+        self.errorMessages = []
+        self.verbose = verbose
+        self.videoWriteMethod = 'ffmpeg'   # options are ffmpeg, PySpin, OpenCV
+        self.daySubfolders = daySubfolders
+        self.videoLength = videoLength
+        self.videoFrameCount = None   # Number of frames to save to each video. Wait until we get actual framerate from synchronizer
+
+    def setParams(self, **params):
+        for key in params:
+            if key in SimpleVideoWriter.settableParams:
+                setattr(self, key, params[key])
+                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
+            else:
+                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
+
+    def run(self):
+        self.PID.value = os.getpid()
+#        if self.verbose >= 1: profiler = cProfile.Profile()
+        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
+
+        state = SimpleVideoWriter.STOPPED
+        nextState = SimpleVideoWriter.STOPPED
+        lastState = SimpleVideoWriter.STOPPED
+        msg = ''; arg = None
+
+        while True:
+            # Publish updated state
+            if state != lastState:
+                self.updatePublishedState(state)
+
+            try:
+# ********************************* STOPPPED *********************************
+                if state == SimpleVideoWriter.STOPPED:
+                    # DO STUFF
+
+                    # CHECK FOR MESSAGES
+                    try:
+                        msg, arg = self.msgQueue.get(block=True)
+                        if msg == SimpleVideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                    except queue.Empty: msg = ''; arg = None
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        nextState = SimpleVideoWriter.EXITING
+                    elif msg == '':
+                        nextState = SimpleVideoWriter.STOPPED
+                    elif msg == SimpleVideoWriter.STOP:
+                        nextState = SimpleVideoWriter.STOPPED
+                    elif msg == SimpleVideoWriter.START:
+                        nextState = SimpleVideoWriter.INITIALIZING
+                    elif msg == SimpleVideoWriter.EXIT:
+                        self.exitFlag = True
+                        nextState = SimpleVideoWriter.EXITING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+# ********************************* INITIALIZING *********************************
+                elif state == SimpleVideoWriter.INITIALIZING:
+                    # DO STUFF
+                    videoFileInterface = None
+
+                    while self.frameRateVar.value == -1:
+                        # Wait for shared value frameRate to be set by the Synchronizer process
+                        time.sleep(0.1)
+                    self.frameRate = self.frameRateVar.value
+                    self.videoFrameCount = round(self.videoLength / self.frameRate)
+
+                    # CHECK FOR MESSAGES
+                    try:
+                        msg, arg = self.msgQueue.get(block=False)
+                        if msg == SimpleVideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                    except queue.Empty: msg = ''; arg = None
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        nextState = SimpleVideoWriter.STOPPING
+                    elif msg in ['', SimpleVideoWriter.START]:
+                        nextState = SimpleVideoWriter.WRITING
+                    elif msg == SimpleVideoWriter.STOP:
+                        nextState = SimpleVideoWriter.STOPPING
+                    elif msg == SimpleVideoWriter.EXIT:
+                        self.exitFlag = True
+                        nextState = SimpleVideoWriter.STOPPING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+# ********************************* VIDEOINIT *********************************
+                elif state == SimpleVideoWriter.VIDEOINIT:
+                    # if self.verbose >= 1: profiler.enable()
+                    # DO STUFF
+                    im = None
+                    videoFileStartTime = 0
+                    numFramesInCurrentVideo = 0
+
+                    if videoFileInterface is not None:
+                        # Close file
+                        if self.videoWriteMethod == "PySpin":
+                            videoFileInterface.Close()
+                        elif self.videoWriteMethod == "ffmpeg":
+                            videoFileInterface.close()
+                        videoFileInterface = None
+
+                    # Generate new video file path
+                    videoFileStartTime = frameTime
+                    videoFileNameTags = [self.camSerial, generateTimeString(timestamp=frameTime)]
+                    if self.daySubfolders:
+                        videoDirectory = getDaySubfolder(self.videoDirectory, timestamp=frameTime)
+                    else:
+                        videoDirectory = self.videoDirectory
+                    videoFileName = generateFileName(directory=videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
+                    ensureDirectoryExists(videoDirectory)
+
+                    # Initialize video writer interface
+                    if self.videoWriteMethod == "PySpin":
+                        if videoFileInterface is not None:
+                            videoFileInterface.Close()
+
+                        videoFileInterface = PySpin.SpinVideo()
+                        option = PySpin.AVIOption()
+                        option.frameRate = self.frameRate
+                        if self.verbose >= 2: self.log("Opening file to save video with frameRate ", option.frameRate)
+                        videoFileInterface.Open(videoFileName, option)
+                        stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
+                        videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
+                    elif self.videoWriteMethod == "ffmpeg":
+                        if videoFileInterface is not None:
+                            videoFileInterface.close()
+                        videoFileInterface = fw.ffmpegWriter(videoFileName+'.avi', fps=self.frameRate)
+
+                    # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
+                    try:
+                        msg, arg = self.msgQueue.get(block=False)
+                        if msg == SimpleVideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                    except queue.Empty: msg = ''; arg = None
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        nextState = SimpleVideoWriter.STOPPING
+                    elif msg == SimpleVideoWriter.STOP:
+                        nextState = SimpleVideoWriter.STOPPING
+                    elif msg == SimpleVideoWriter.EXIT:
+                        self.exitFlag = True
+                        nextState = SimpleVideoWriter.STOPPING
+                    elif msg in ['', SimpleVideoWriter.START]:
+                        nextState = SimpleVideoWriter.WRITING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                    # if self.verbose >= 1: profiler.disable()
+# ********************************* WRITING *********************************
+                elif state == SimpleVideoWriter.WRITING:
+                    # if self.verbose >= 1: profiler.enable()
+                    # DO STUFF
+                    if self.verbose >= 3:
+                        self.log("Image queue size: ", self.imageQueue.qsize())
+
+                    im, frameTime, imageID = self.getNextimage()
+
+                    if im is None:
+                        # No images available. To avoid hosing the processor, sleep a bit before continuing
+                        time.sleep(0.5/self.requestedFrameRate)
+                    else:
+                        if videoFileInterface is None:
+                            raise IOError('Attempted to write but writer interface does not exist')
+
+                        # Write video frame from queue to file
+                        if self.videoWriteMethod == "PySpin":
+                            # Reconstitute PySpin image from PickleableImage
+                            # im = PySpin.Image.Create(imp.width, imp.height, imp.offsetX, imp.offsetY, imp.pixelFormat, imp.data)
+                            # Convert image to desired format
+                            videoFileInterface.Append(im.Convert(PySpin.PixelFormat_RGB8, PySpin.HQ_LINEAR))
+                            if self.verbose >= 2: self.log("wrote frame using PySpin!")
+                            # try:
+                            #     im.Release()
+                            # except PySpin.SpinnakerException:
+                            #     if self.verbose >= 0:
+                            #         self.log("Error releasing unconverted PySpin image after appending to AVI.")
+                            #         self.log(traceback.format_exc())
+                            del im
+                        elif self.videoWriteMethod == "ffmpeg":
+                            videoFileInterface.write(imp.data, shape=(imp.width, imp.height))
+                            if self.verbose >= 2: self.log("wrote frame using ffmpeg!")
+
+                        numFramesInCurrentVideo += 1
+
+                        if self.verbose >= 3:
+                            self.log("Wrote image ID " + str(imageID))
+
+                    # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
+                    try:
+                        msg, arg = self.msgQueue.get(block=False)
+                        if msg == SimpleVideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                    except queue.Empty: msg = ''; arg = None
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        nextState = SimpleVideoWriter.STOPPING
+                    elif msg == SimpleVideoWriter.STOP:
+                        nextState = SimpleVideoWriter.STOPPING
+                    elif msg == SimpleVideoWriter.EXIT:
+                        self.exitFlag = True
+                        nextState = SimpleVideoWriter.STOPPING
+                    elif msg in ['', SimpleVideoWriter.START]:
+                        if numFramesInCurrentVideo == self.videoFrameCount:
+                            # We've reached desired video frame count. Start a new video.
+                            nextState = SimpleVideoWriter.VIDEOINIT
+                            # If requested, merge with audio.
+                            #   This doesn't really work with SimpleVideoWriter right now. For potential future use.
+                            if self.mergeMessageQueue is not None:
+                                if verbose >= 0:
+                                    self.log("Sorry, SimpleVideoWriter can't merge with audio yet. Try again without providing a merge message queue.")
+                                # Send file for AV merging:
+                                if self.videoWriteMethod == "PySpin":
+                                    fileEvent = dict(
+                                        filePath=videoFileInterface.videoFileName,
+                                        streamType=AVMerger.VIDEO,
+                                        trigger=None, #triggers[0],
+                                        streamID=self.camSerial,
+                                        startTime=videoFileStartTime
+                                    )
+                                else:
+                                    fileEvent = dict(
+                                        filePath=videoFileName+'.avi',
+                                        streamType=AVMerger.VIDEO,
+                                        trigger=None, #triggers[0],
+                                        streamID=self.camSerial,
+                                        startTime=videoFileStartTime
+                                    )
+                                if self.verbose >= 2: self.log("Sending video filename to merger")
+                                self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                        elif numFramesInCurrentVideo < self.videoFrameCount:
+                            # Not enough frames yet. Keep writing.
+                            nextState = SimpleVideoWriter.WRITING
+                        else:
+                            # Uh oh, too many frames? Something went wrong.
+                            raise IOError('More frames ({k}) than requested ({n}) in video!'.format(k=numFramesInCurrentVideo, n=self.videoFrameCount))
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                    # if self.verbose >= 1: profiler.disable()
+# ********************************* STOPPING *********************************
+                elif state == SimpleVideoWriter.STOPPING:
+                    # DO STUFF
+                    if videoFileInterface is not None:
+                        if self.videoWriteMethod == "PySpin":
+                            videoFileInterface.Close()
+                        elif self.videoWriteMethod == "ffmpeg":
+                            videoFileInterface.close()
+                        if self.mergeMessageQueue is not None:
+                            if verbose >= 0:
+                                self.log("Sorry, SimpleVideoWriter can't merge with audio yet. Try again without providing a merge message queue.")
+                            # Send file for AV merging:
+                            if self.videoWriteMethod == "PySpin":
+                                fileEvent = dict(
+                                    filePath=videoFileInterface.videoFileName,
+                                    streamType=AVMerger.VIDEO,
+                                    trigger=None, #triggers[0],
+                                    streamID=self.camSerial,
+                                    startTime=videoFileStartTime
+                                )
+                            else:
+                                fileEvent = dict(
+                                    filePath=videoFileName+'.avi',
+                                    streamType=AVMerger.VIDEO,
+                                    trigger=None, #triggers[0],
+                                    streamID=self.camSerial,
+                                    startTime=videoFileStartTime
+                                )
+                            self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                        videoFileInterface = None
+
+                    # CHECK FOR MESSAGES
+                    try:
+                        msg, arg = self.msgQueue.get(block=False)
+                        if msg == SimpleVideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                    except queue.Empty: msg = ''; arg = None
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        nextState = SimpleVideoWriter.STOPPED
+                    elif msg == '':
+                        nextState = SimpleVideoWriter.WAITING
+                    elif msg == SimpleVideoWriter.STOP:
+                        nextState = SimpleVideoWriter.STOPPED
+                    elif msg == SimpleVideoWriter.EXIT:
+                        self.exitFlag = True
+                        nextState = SimpleVideoWriter.STOPPED
+                    elif msg == SimpleVideoWriter.START:
+                        nextState = SimpleVideoWriter.INITIALIZING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+# ********************************* ERROR *********************************
+                elif state == SimpleVideoWriter.ERROR:
+                    # DO STUFF
+                    if self.verbose >= 0:
+                        self.log("ERROR STATE. Error messages:\n\n")
+                        self.log("\n\n".join(self.errorMessages))
+                    self.errorMessages = []
+
+                    # CHECK FOR MESSAGES
+                    try:
+                        msg, arg = self.msgQueue.get(block=False)
+                        if msg == SimpleVideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                    except queue.Empty: msg = ''; arg = None
+
+                    # CHOOSE NEXT STATE
+                    if lastState == SimpleVideoWriter.ERROR:
+                        # Error ==> Error, let's just exit
+                        nextState = SimpleVideoWriter.EXITING
+                    elif msg == '':
+                        if lastState == SimpleVideoWriter.STOPPING:
+                            # We got an error in stopping state? Better just stop.
+                            nextState = SimpleVideoWriter.STOPPED
+                        elif lastState ==SimpleVideoWriter.STOPPED:
+                            # We got an error in the stopped state? Better just exit.
+                            nextState = SimpleVideoWriter.EXITING
+                        else:
+                            nextState = SimpleVideoWriter.STOPPING
+                    elif msg == SimpleVideoWriter.STOP:
+                        nextState = SimpleVideoWriter.STOPPED
+                    elif msg == SimpleVideoWriter.EXIT:
+                        self.exitFlag = True
+                        if lastState == SimpleVideoWriter.STOPPING:
+                            nextState = SimpleVideoWriter.EXITING
+                        else:
+                            nextState = SimpleVideoWriter.STOPPING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+# ********************************* EXIT *********************************
+                elif state == SimpleVideoWriter.EXITING:
+                    break
+                else:
+                    raise KeyError("Unknown state: "+self.stateList[state])
+            except KeyboardInterrupt:
+                # Handle user using keyboard interrupt
+                if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
+                self.exitFlag = True
+                nextState = SimpleVideoWriter.STOPPING
+            except:
+                # HANDLE UNKNOWN ERROR
+                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
+                nextState = SimpleVideoWriter.ERROR
+
+            if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
+                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
+
+            self.flushStdout()
+
+            # Prepare to advance to next state
+            lastState = state
+            state = nextState
+
+        if self.verbose >= 1: self.log("Video write process STOPPED")
+        # if self.verbose > 1:
+        #     s = io.StringIO()
+        #     ps = pstats.Stats(profiler, stream=s)
+        #     ps.print_stats()
+        #     self.log(s.getvalue())
+        self.flushStdout()
+        self.updatePublishedState(self.DEAD)
+
+    def getNextimage(self):
+        # Pull image and metadata from acquirer queue
+        try:
+            # Get new video frame from acquirer and push it into the buffer
+            im, metadata = self.imageQueue.get(includeMetadata=True) #block=True, timeout=0.1)
+            frameTime = metadata['frameTime']
+            imageID = metadata['imageID']
+
+            if self.verbose >= 3: self.log("Got video frame from acquirer. ID={ID}, t={t}".format(t=metadata['frameTime'], ID=imageID))
+        except queue.Empty:
+            # No frames available from acquirer
+            if self.verbose >= 3: self.log("No images available from acquirer")
+            im = None
+            frameTime = None
+            imageID = None
+        return im, frameTime, imageID
+
 class VideoWriter(StateMachineProcess):
     # States:
     STOPPED = 0
@@ -2980,6 +3469,7 @@ class VideoWriter(StateMachineProcess):
     EXITING = 6
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
         STOPPED :'STOPPED',
@@ -2992,13 +3482,14 @@ class VideoWriter(StateMachineProcess):
         DEAD :'DEAD'
     }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     STOP = 'msg_stop'
     EXIT = 'msg_exit'
     TRIGGER = 'msg_trigger'
     SETPARAMS = 'msg_setParams'
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
         'videoBaseFileName',
@@ -3486,6 +3977,7 @@ class ContinuousTriggerer(StateMachineProcess):
     EXITING = 6
     DEAD = 100
 
+    # Human-readable states
     stateList = {
         -1:'UNKNOWN',
         STOPPED :'STOPPED',
@@ -3497,13 +3989,14 @@ class ContinuousTriggerer(StateMachineProcess):
         DEAD :'DEAD'
     }
 
-    #messages:
+    # Recognized message types:
     START = 'msg_start'
     STOP = 'msg_stop'
     EXIT = 'msg_exit'
     SETPARAMS = 'msg_setParams'
     TAGTRIGGER = 'tag_trigger'      # Send a trigger that indicates the videos that overlap with that trigger should be tagged with trigger's tags
 
+    # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'continuousTriggerPeriod',
         'scheduleEnabled',

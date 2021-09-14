@@ -774,7 +774,7 @@ class PyVAQ:
         self.scheduleStopTimeEntry = TimeEntry(self.scheduleFrame, text="Stop time")
 
         self.triggerFrame = ttk.LabelFrame(self.controlFrame, text='Triggering')
-        self.triggerModes = ['Manual', 'Audio', 'Continuous']
+        self.triggerModes = ['Manual', 'Audio', 'Continuous', 'SimpleContinuous']
         self.triggerModeChooserFrame = ttk.Frame(self.triggerFrame)
         self.triggerModeVar = tk.StringVar(); self.triggerModeVar.set(self.triggerModes[0])
         self.triggerModeVar.trace('w', self.updateTriggerMode)
@@ -976,14 +976,17 @@ class PyVAQ:
     #     setattr(self, settingName+"Var")
 
     def log(self, msg, *args, **kwargs):
+        # Add another message to the currently accumulating log entry
         syncPrint('|| {ID} - {msg}'.format(ID=self.ID, msg=msg), *args, buffer=self.stdoutBuffer, **kwargs)
 
     def endLog(self, state):
+        # Output accumulated log entry and output it
         if len(self.stdoutBuffer) > 0:
             self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=state))
             self.flushStdout()
 
     def flushStdout(self):
+        # Output currently accumulated log entry and clear buffer
         if len(self.stdoutBuffer) > 0:
             if self.StdoutManager is not None:
                 self.StdoutManager.queue.put(self.stdoutBuffer)
@@ -995,6 +998,7 @@ class PyVAQ:
         self.stdoutBuffer = []
 
     def cleanupAndExit(self):
+        # Attempt to gracefully shut everything down and exit
         # Cancel automatic update jobs
         self.stopMonitors()
         self.log("Stopping acquisition")
@@ -1006,6 +1010,8 @@ class PyVAQ:
         self.endLog(inspect.currentframe().f_code.co_name)
 
     def setVerbosity(self):
+        # Produce popup for setting logging verbosity, then update all process
+        #   verbosity based on user selections.
         verbosityOptions = ['0', '1', '2', '3']
         names = [
             'AudioAcquirer verbosity',
@@ -1046,6 +1052,7 @@ class PyVAQ:
         self.updateChildProcessVerbosity()
 
     def updateChildProcessVerbosity(self):
+        # Update child process logging verbosity based on currently stored settings
         if self.audioAcquireProcess is not None:
             self.audioAcquireProcess.msgQueue.put((AudioAcquirer.SETPARAMS, {'verbose':self.audioAcquireVerbose}))
         if self.audioWriteProcess is not None:
@@ -1073,6 +1080,8 @@ class PyVAQ:
             self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.SETPARAMS, {'daySubfolders':daySubfolders}))
 
     def validateExposure(self, *args):
+        # Sanitize current exposure settings (make sure it's an integer in a
+        #   reasonable range)
         exposureTime = self.getParams('exposureTime')
         videoFrequency = self.getParams('videoFrequency')
         maxExposureTime = 1000000 * 0.95 / videoFrequency
@@ -1082,6 +1091,7 @@ class PyVAQ:
         self.setParams(exposureTime=exposureTime)
 
     def validateGain(self, *args):
+        # Sanitize current gain settings (make sure it's >= 0)
         gain = self.getParams('gain')
         if gain < 0:
             gain = 0
@@ -1107,6 +1117,7 @@ him know. Otherwise, I had nothing to do with it.
         showinfo('About PyVAQ', msg)
 
     def configureAudioMonitoring(self):
+        # Show popup for user to select audio monitoring options
         if self.audioMonitor is None:
             showinfo('Please start acquisition before configuring audio monitor')
             return
@@ -1141,6 +1152,8 @@ him know. Otherwise, I had nothing to do with it.
                     pass
 
     def selectInputs(self, *args):
+        # Create a popup for the user to select acquisition options
+
         # debug = False
         # if debug:
         #     self.log("GUI DEBUG MODE - using fake cameras and DAQ channels")
@@ -1150,6 +1163,7 @@ him know. Otherwise, I had nothing to do with it.
         #     self.setupInputMonitoringWidgets(camSerials=camSerials, audioDAQChannels=audioDAQChannels)
         #     return
 
+        # Get current settings to use as defaults
         p = self.getParams(
             "audioDAQChannels",
             "camSerials",
@@ -1170,6 +1184,8 @@ him know. Otherwise, I had nothing to do with it.
         defaultAcquisitionStartTriggerSource = p["acquisitionStartTriggerSource"]
         defaultAudioChannelConfiguration = p["audioChannelConfiguration"]
 
+        # Query the system to determine what DAQ channels and cameras are
+        #   currently available
         availableAudioChannels = flattenList(discoverDAQAudioChannels().values())
         availableClockChannels = flattenList(discoverDAQClockChannels().values()) + ['None']
         availableDigitalChannels = ['None'] + flattenList(discoverDAQTerminals().values())
@@ -1182,6 +1198,7 @@ him know. Otherwise, I had nothing to do with it.
             "RSE"
         ]
 
+        # Define and create GUI elements
         params = []
         if len(availableAudioChannels) > 0:
             params.append(Param(name='Audio Channels', widgetType=Param.MULTICHOICE, options=availableAudioChannels, default=defaultAudioDAQChannels))
@@ -1201,10 +1218,12 @@ him know. Otherwise, I had nothing to do with it.
             pd = ParamDialog(self.master, params=params, title="Choose audio/video inputs to use", maxHeight=24)
             choices = pd.results
             if choices is not None:
+                # We're changing acquisition settings, so stop everything
                 self.stopMonitors()
                 self.updateAcquisitionButton()
                 self.destroyChildProcesses()
 
+                # Extract chosen parameters from GUI
                 if 'Audio Channels' in choices:
                     audioDAQChannels = choices['Audio Channels']
                 else:
@@ -1239,6 +1258,7 @@ him know. Otherwise, I had nothing to do with it.
                 if 'Audio channel configuration' in choices and len(choices['Audio channel configuration']) > 0:
                     audioChannelConfiguration = choices['Audio channel configuration']
 
+                # Set chosen parameters
                 self.setParams(
                     audioDAQChannels=audioDAQChannels,
                     camSerials=camSerials,
@@ -1253,8 +1273,10 @@ him know. Otherwise, I had nothing to do with it.
                 self.log('Got audioDAQChannels:', audioDAQChannels)
                 self.log('Got camSerials:', camSerials)
 
+                # Create GUI elements for monitoring the chosen inputs
                 self.setupInputMonitoringWidgets()
 
+                # Restart child processes with new acquisition values
                 self.createChildProcesses()
                 if 'Start acquisition immediately' in choices and choices['Start acquisition immediately'] == 'Yes':
                     self.startChildProcesses()
@@ -1332,6 +1354,8 @@ him know. Otherwise, I had nothing to do with it.
         self.update()
 
     def updateAudioTriggerSettings(self, *args):
+        # Update settings that determine for what audio values the GUI will
+        #   send a record trigger.
         if self.audioTriggerProcess is not None:
             paramList = [
                 'triggerHighLevel',
@@ -1348,6 +1372,8 @@ him know. Otherwise, I had nothing to do with it.
             self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, params))
 
     def updateContinuousTriggerSettings(self, *args):
+        # Update settings for continuous triggering (sending consecutive
+        #   triggers, one after another)
         if self.continuousTriggerProcess is not None:
             paramList = [
                 'continuousTriggerPeriod',
@@ -1413,28 +1439,40 @@ him know. Otherwise, I had nothing to do with it.
         self.setMergeDirectory(newMergeDirectory, updateTextField=False)
 
     def updateTriggerMode(self, *args):
+        # Handle a user selection of a new trigger mode
         newMode = self.triggerModeVar.get()
 
+        if newMode != "Continuous":
+            if self.continuousTriggerProcess is not None and self.continuousTriggerProcess.msgQueue is not None:
+                self.continuousTriggerProcess.msgQueue.put((ContinuousTriggerer.STOP, None))
+        if newMode != "Audio":
+            # May as well stop analyzing audio if we're not in audio mode.
+            if self.audioTriggerProcess is not None and self.audioTriggerProcess.msgQueue is not None:
+                self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOPANALYZE, None))
+
         if self.audioAnalysisMonitorUpdateJob is not None:
+            # If there was already an audio analysis monitoring job running, cancel it
             self.master.after_cancel(self.audioAnalysisMonitorUpdateJob)
 
         if newMode == "Audio":
+            # User selected "Audio" trigger mode
             if self.audioTriggerProcess is not None:
                 self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STARTANALYZE, None))
                 self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(writeTriggerEnabled=True, tagTriggerEnabled=False)))
             self.autoUpdateAudioAnalysisMonitors()
         elif newMode == "Continuous":
+            # User selected "Continuous" trigger mode
+            self.continuousTriggerProcess.msgQueue.put((AudioTriggerer.START, None))
             if self.audioTriggerProcess is not None:
-                self.continuousTriggerProcess.msgQueue.put((AudioTriggerer.START, None))
                 if self.getParams('audioTagContinuousTrigs'):
                     self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STARTANALYZE, None))
                     self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(writeTriggerEnabled=False, tagTriggerEnabled=True)))
                 else:
                     self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOPANALYZE, None))
                     self.audioTriggerProcess.msgQueue.put((AudioTriggerer.SETPARAMS, dict(writeTriggerEnabled=False, tagTriggerEnabled=False)))
-        else:
-            if self.audioTriggerProcess is not None:
-                self.audioTriggerProcess.msgQueue.put((AudioTriggerer.STOPANALYZE, None))
+        elif newMode == "SimpleContinuous":
+            # User selected "SimpleContinuous" trigger mode
+            self.restartAcquisition()
 
         self.update()
 
@@ -2240,21 +2278,38 @@ him know. Otherwise, I had nothing to do with it.
                 videoWidth=3208,  # Should not be hardcoded
                 videoHeight=2200, # Figure out how to obtain this automatically from camera
                 stdoutQueue=self.StdoutManager.queue)
-            videoWriteProcess = VideoWriter(
-                camSerial=camSerial,
-                videoDirectory=videoDirectory,
-                videoBaseFileName=videoBaseFileName,
-                imageQueue=videoAcquireProcess.imageQueueReceiver,
-                frameRate=self.actualVideoFrequency,
-                requestedFrameRate=p["videoFrequency"],
-                mergeMessageQueue=mergeMsgQueue,
-                bufferSizeSeconds=p["bufferSizeSeconds"],
-                verbose=self.videoWriteVerbose,
-                stdoutQueue=self.StdoutManager.queue
-                )
+            if p["triggerMode"] == "SimpleContinuous":
+                videoWriterProcess = SimpleVideoWriter(
+                    camSerial=camSerial,
+                    videoDirectory=videoDirectory,
+                    videoBaseFileName=videoBaseFileName,
+                    imageQueue=videoAcquireProcess.imageQueueReceiver,
+                    frameRate=self.actualVideoFrequency,
+                    requestedFrameRate=p["videoFrequency"],
+                    mergeMessageQueue=mergeMsgQueue,
+                    videoLength=p["recordTime"],
+                    verbose=self.videoWriteVerbose,
+                    stdoutQueue=self.StdoutManager.queue
+                    )
+            else:
+                videoWriteProcess = VideoWriter(
+                    camSerial=camSerial,
+                    videoDirectory=videoDirectory,
+                    videoBaseFileName=videoBaseFileName,
+                    imageQueue=videoAcquireProcess.imageQueueReceiver,
+                    frameRate=self.actualVideoFrequency,
+                    requestedFrameRate=p["videoFrequency"],
+                    mergeMessageQueue=mergeMsgQueue,
+                    bufferSizeSeconds=p["bufferSizeSeconds"],
+                    verbose=self.videoWriteVerbose,
+                    stdoutQueue=self.StdoutManager.queue
+                    )
             self.videoAcquireProcesses[camSerial] = videoAcquireProcess
             self.videoWriteProcesses[camSerial] = videoWriteProcess
 
+        # Create (but don't start) continuous trigger process for sending
+        #   automatic, continuous, and consecutive triggers to audio and video
+        #   writers
         self.continuousTriggerProcess = ContinuousTriggerer(
             startTime=startTime,
             recordPeriod=p['continuousTriggerPeriod'],
@@ -2264,6 +2319,8 @@ him know. Otherwise, I had nothing to do with it.
             stdoutQueue=self.StdoutManager.queue
         )
 
+        # If we have an audioAcquireProcess, create (but don't start) an
+        #   audioTriggerProcess to generate audio-based triggers
         if self.audioAcquireProcess is not None:
             self.audioTriggerProcess = AudioTriggerer(
                 audioQueue=self.audioAcquireProcess.analysisQueue,
@@ -2287,6 +2344,7 @@ him know. Otherwise, I had nothing to do with it.
                 stdoutQueue=self.StdoutManager.queue
                 )
 
+        # Start all audio-related processes
         if len(p["audioDAQChannels"]) > 0:
             self.audioTriggerProcess.start()
             if self.getParams('triggerMode') == "Audio":
@@ -2294,9 +2352,12 @@ him know. Otherwise, I had nothing to do with it.
             self.audioWriteProcess.start()
             self.audioAcquireProcess.start()
 
+        # Start all video-related processes
         for camSerial in p["camSerials"]:
             self.videoWriteProcesses[camSerial].start()
             self.videoAcquireProcesses[camSerial].start()
+
+        # Start other processes
         if self.syncProcess is not None: self.syncProcess.start()
         if self.mergeProcess is not None: self.mergeProcess.start()
         if self.continuousTriggerProcess is not None: self.continuousTriggerProcess.start()
