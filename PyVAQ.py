@@ -644,8 +644,8 @@ class PyVAQ:
         self.camSerials = GeneralVar(); self.camSerials.set([])  # Cam serials selected for acquisition
         self.audioSyncTerminal = GeneralVar(); self.audioSyncTerminal.set(None)
         self.videoSyncTerminal = GeneralVar(); self.videoSyncTerminal.set(None)
-        self.audioSyncSource = GeneralVar(); self.audioSyncSource.set(None)
-        self.videoSyncSource = GeneralVar(); self.videoSyncSource.set(None)
+        self.audioSyncSource = GeneralVar(); self.audioSyncSource.set("PFI5")
+        self.videoSyncSource = GeneralVar(); self.videoSyncSource.set("PFI4")
         self.acquisitionStartTriggerSource = GeneralVar(); self.acquisitionStartTriggerSource.set(None)
         self.audioChannelConfiguration = GeneralVar(); self.audioChannelConfiguration.set(None)
 
@@ -2194,7 +2194,7 @@ him know. Otherwise, I had nothing to do with it.
 
         startTime = mp.Value('d', -1)
 
-        if p["numStreams"] >= 2:
+        if p["mergeFiles"] and p["numStreams"] >= 2:
             # Create merge process
             self.mergeProcess = AVMerger(
                 directory=p["mergeDirectory"],
@@ -2280,6 +2280,8 @@ him know. Otherwise, I had nothing to do with it.
                 videoHeight=2200, # Figure out how to obtain this automatically from camera
                 stdoutQueue=self.StdoutManager.queue)
             if p["triggerMode"] == "SimpleContinuous":
+                if mergeMsgQueue is not None:
+                    self.log('Warning: SimpleVideoWriter does not support A/V merging yet.')
                 videoWriteProcess = SimpleVideoWriter(
                     camSerial=camSerial,
                     videoDirectory=videoDirectory,
@@ -2287,7 +2289,7 @@ him know. Otherwise, I had nothing to do with it.
                     imageQueue=videoAcquireProcess.imageQueueReceiver,
                     frameRate=self.actualVideoFrequency,
                     requestedFrameRate=p["videoFrequency"],
-                    mergeMessageQueue=mergeMsgQueue,
+#                    mergeMessageQueue=mergeMsgQueue,   # Merging not supported for SimpleVideoWriter
                     videoLength=p["recordTime"],
                     verbose=self.videoWriteVerbose,
                     stdoutQueue=self.StdoutManager.queue

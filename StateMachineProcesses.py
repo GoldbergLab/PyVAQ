@@ -273,12 +273,12 @@ class AudioChunk():
 DATE_FORMAT = '%Y-%m-%d'
 TIME_FORMAT = '%Y-%m-%d-%H-%M-%S-%f'
 
-def getDaySubfolder(root, trigger=None, videoTimestamp=None):
+def getDaySubfolder(root, trigger=None, timestamp=None):
     # Construct a standardized path for a subfolder representing the day in
-    #   which the trigger falls
+    #   which the trigger falls. If a trigger is not provided, use the timestamp argument instead.
     if trigger is not None:
-        videoTimestamp = trigger.triggerTime
-    dateString = dt.datetime.fromtimestamp(videoTimestamp).strftime(DATE_FORMAT)
+        timestamp = trigger.triggerTime
+    dateString = dt.datetime.fromtimestamp(timestamp).strftime(DATE_FORMAT)
     return os.path.join(root, dateString)
 
 def ensureDirectoryExists(directory):
@@ -2682,6 +2682,7 @@ class VideoAcquirer(StateMachineProcess):
         self.ready = ready
         self.frameStopwatch = Stopwatch()
         self.monitorStopwatch = Stopwatch()
+        self.acquireStopwatch = Stopwatch()
         self.exitFlag = False
         self.errorMessages = []
         self.verbose = verbose
@@ -2757,6 +2758,8 @@ class VideoAcquirer(StateMachineProcess):
                     im = imp = imageResult = None
                     startTime = None
                     frameTime = None
+                    lastImageID = None
+                    droppedFrameCount = 0
 
                     while self.frameRateVar.value == -1:
                         # Wait for shared value frameRate to be set by the Synchronizer process
@@ -2817,7 +2820,13 @@ class VideoAcquirer(StateMachineProcess):
                     # DO STUFF
                     try:
                         #  Retrieve next received image
+                        if self.verbose >= 3:
+                            self.acquireStopwatch.click()
                         imageResult = cam.GetNextImage()
+                        if self.verbose >= 3:
+                            self.acquireStopwatch.click()
+                            self.log("Get image from camera time: {t}".format(t=self.acquireStopwatch.period()))
+
                         # Get timestamp of first image acquisition
                         if startTime is None:
                             if self.verbose >= 1: self.log("Getting start time from sync process...")
@@ -2837,9 +2846,12 @@ class VideoAcquirer(StateMachineProcess):
 #                            imageConverted = imageResult.Convert(PySpin.PixelFormat_BGR8)
                             imageCount += 1
                             imageID = imageResult.GetFrameID()
+                            if lastImageID is not None and imageID != lastImageID + 1 and self.verbose >= 0:
+                                droppedFrameCount += 1
+                                self.log('WARNING - DROPPED FRAMES! Image ID {a} was followed by image ID {b}. {k} dropped frames total'.format(a=lastImageID, b=imageID, k=droppedFrameCount))
                             if self.verbose >= 3:
                                 self.log('# frames:'+str(imageCount))
-                                self.log('Image ID:'+str(imageID))
+                                self.log('Frame ID:'+str(imageID))
                             frameTime = startTime + imageCount / self.frameRate
 
                             if self.verbose >= 3: self.log("Got image from camera, t="+str(frameTime))
@@ -3151,7 +3163,10 @@ class SimpleVideoWriter(StateMachineProcess):
                         # Wait for shared value frameRate to be set by the Synchronizer process
                         time.sleep(0.1)
                     self.frameRate = self.frameRateVar.value
-                    self.videoFrameCount = round(self.videoLength / self.frameRate)
+                    self.videoFrameCount = round(self.videoLength * self.frameRate)
+                    self.log("Video framerate = {f}".format(f=self.frameRate))
+                    self.log("Video length = {L}".format(L=self.videoLength))
+                    self.log("Video frame count = {n}".format(n=self.videoFrameCount))
 
                     # CHECK FOR MESSAGES
                     try:
@@ -3188,10 +3203,9 @@ class SimpleVideoWriter(StateMachineProcess):
                         videoFileInterface = None
 
                     # Generate new video file path
-                    videoFileStartTime = frameTime
                     videoFileNameTags = [self.camSerial, generateTimeString(timestamp=seriesStartTime), '{videoCount:03d}'.format(videoCount=videoCount)]
                     if self.daySubfolders:
-                        videoDirectory = getDaySubfolder(self.videoDirectory, timestamp=frameTime)
+                        videoDirectory = getDaySubfolder(self.videoDirectory, timestamp=videoFileStartTime)
                     else:
                         videoDirectory = self.videoDirectory
                     videoFileName = generateFileName(directory=videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
@@ -3212,7 +3226,9 @@ class SimpleVideoWriter(StateMachineProcess):
                     elif self.videoWriteMethod == "ffmpeg":
                         if videoFileInterface is not None:
                             videoFileInterface.close()
-                        videoFileInterface = fw.ffmpegWriter(videoFileName+'.avi', fps=self.frameRate)
+                        videoFileInterface = fw.ffmpegWriter(videoFileName, "numpy", fps=self.frameRate)
+
+                    videoCount += 1
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
@@ -3264,7 +3280,7 @@ class SimpleVideoWriter(StateMachineProcess):
                             #         self.log(traceback.format_exc())
                             del im
                         elif self.videoWriteMethod == "ffmpeg":
-                            videoFileInterface.write(imp.data, shape=(imp.width, imp.height))
+                            videoFileInterface.write(im.GetNDArray(), shape=(im.GetWidth(), im.GetHeight()))
                             if self.verbose >= 2: self.log("wrote frame using ffmpeg!")
 
                         numFramesInCurrentVideo += 1
@@ -3294,7 +3310,7 @@ class SimpleVideoWriter(StateMachineProcess):
                             # If requested, merge with audio.
                             #   This doesn't really work with SimpleVideoWriter right now. For potential future use.
                             if self.mergeMessageQueue is not None:
-                                if verbose >= 0:
+                                if self.verbose >= 0:
                                     self.log("Sorry, SimpleVideoWriter can't merge with audio yet. Try again without providing a merge message queue.")
                                 # Send file for AV merging:
                                 if self.videoWriteMethod == "PySpin":
@@ -3333,7 +3349,7 @@ class SimpleVideoWriter(StateMachineProcess):
                         elif self.videoWriteMethod == "ffmpeg":
                             videoFileInterface.close()
                         if self.mergeMessageQueue is not None:
-                            if verbose >= 0:
+                            if self.verbose >= 0:
                                 self.log("Sorry, SimpleVideoWriter can't merge with audio yet. Try again without providing a merge message queue.")
                             # Send file for AV merging:
                             if self.videoWriteMethod == "PySpin":

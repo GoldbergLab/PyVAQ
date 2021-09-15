@@ -36,7 +36,7 @@ class ffmpegWriter():
                     shape = self.shape
                 w, h = shape
             shapeArg = '{w}x{h}'.format(w=w, h=h)
-            self.ffmpegProc = subprocess.Popen(['ffmpeg', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', shapeArg, '-r', str(self.fps), '-i', 'pipe:', '-c:v', 'libx264', '-an', self.filename], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            self.ffmpegProc = subprocess.Popen(['ffmpeg', '-hide_banner', '-y', '-f', '-v', 'error', 'rawvideo', '-pix_fmt', 'rgb24', '-s', shapeArg, '-r', str(self.fps), '-i', 'pipe:', '-c:v', 'libx264', '-an', self.filename], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         if self.frameType == 'image':
             bytes = frame.tobytes()
         elif self.frameType == 'numpy':
