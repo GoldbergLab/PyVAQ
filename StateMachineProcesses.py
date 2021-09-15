@@ -287,7 +287,8 @@ def ensureDirectoryExists(directory):
         os.makedirs(directory, exist_ok=True)
 
 def generateTimeString(trigger=None, timestamp=None):
-    # Generate a time string from the trigger time
+    # Generate a time string from the trigger time.
+    # If no trigger is given, the timestamp argument is used instead.
     if trigger is not None:
         timestamp = trigger.triggerTime
     return dt.datetime.fromtimestamp(timestamp).strftime(TIME_FORMAT)
@@ -3142,6 +3143,9 @@ class SimpleVideoWriter(StateMachineProcess):
                 elif state == SimpleVideoWriter.INITIALIZING:
                     # DO STUFF
                     videoFileInterface = None
+                    seriesStartTime = time.time()   # Record approximate start time (in seconds since epoch) of series for filenaming purposes
+                    videoCount = 0                  # Initialize video count, used to number video files
+                    numFramesInCurrentSeries = 0    # Initialize series-wide frame count, for estimating subsequent video times
 
                     while self.frameRateVar.value == -1:
                         # Wait for shared value frameRate to be set by the Synchronizer process
@@ -3172,7 +3176,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     # if self.verbose >= 1: profiler.enable()
                     # DO STUFF
                     im = None
-                    videoFileStartTime = 0
+                    videoFileStartTime = seriesStartTime + self.frameRate * numFramesInCurrentSeries
                     numFramesInCurrentVideo = 0
 
                     if videoFileInterface is not None:
@@ -3185,7 +3189,7 @@ class SimpleVideoWriter(StateMachineProcess):
 
                     # Generate new video file path
                     videoFileStartTime = frameTime
-                    videoFileNameTags = [self.camSerial, generateTimeString(timestamp=frameTime)]
+                    videoFileNameTags = [self.camSerial, generateTimeString(timestamp=seriesStartTime), '{videoCount:03d}'.format(videoCount=videoCount)]
                     if self.daySubfolders:
                         videoDirectory = getDaySubfolder(self.videoDirectory, timestamp=frameTime)
                     else:
@@ -3264,6 +3268,7 @@ class SimpleVideoWriter(StateMachineProcess):
                             if self.verbose >= 2: self.log("wrote frame using ffmpeg!")
 
                         numFramesInCurrentVideo += 1
+                        numFramesInCurrentSeries += 1
 
                         if self.verbose >= 3:
                             self.log("Wrote image ID " + str(imageID))
