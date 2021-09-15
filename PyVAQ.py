@@ -737,7 +737,7 @@ class PyVAQ:
         self.mergeFileWidget.setDirectoryChangeHandler(self.mergeDirectoryChangeHandler)
         self.mergeFileWidget.setBaseFileNameChangeHandler(self.mergeBaseFileNameChangeHandler)
 
-        self.mergeFilesVar =        tk.BooleanVar(); self.mergeFilesVar.set(True)
+        self.mergeFilesVar =        tk.BooleanVar(); self.mergeFilesVar.set(False)
         self.mergeFilesCheckbutton = ttk.Checkbutton(self.mergeFrame, text="Merge audio/video", variable=self.mergeFilesVar, offvalue=False, onvalue=True)
         self.mergeFilesVar.trace('w', self.updateAVMergerState)
 
@@ -777,6 +777,7 @@ class PyVAQ:
         self.triggerModes = ['Manual', 'Audio', 'Continuous', 'SimpleContinuous']
         self.triggerModeChooserFrame = ttk.Frame(self.triggerFrame)
         self.triggerModeVar = tk.StringVar(); self.triggerModeVar.set(self.triggerModes[0])
+        self.triggerModeVar.set('SimpleContinuous')
         self.triggerModeVar.trace('w', self.updateTriggerMode)
         self.triggerModeLabel = ttk.Label(self.triggerModeChooserFrame, text='Trigger mode:')
         self.triggerModeRadioButtons = {}
