@@ -2179,6 +2179,7 @@ him know. Otherwise, I had nothing to do with it.
         self.log("Creating child processes")
         p = self.getParams()
 
+        self.log('Number of synced processes = {k}'.format(k=p["numSyncedProcesses"]))
         ready = mp.Barrier(p["numSyncedProcesses"])
 
         if self.StdoutManager is None:
