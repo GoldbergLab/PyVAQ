@@ -18,7 +18,7 @@ class ffmpegWriter():
         # All frames should be the same size and format
         # If shape is given (as a (width, height) tuple), it will be used. If not, we will try to figure out the image shape.
         if self.ffmpegProc is None:
-            print("STARTING NEW FFMPEG PROCESS!")
+            # print("STARTING NEW FFMPEG PROCESS!")
             if shape is None and self.shape is None:
                 if self.frameType == 'image':
                     w, h = frame.size
@@ -36,7 +36,7 @@ class ffmpegWriter():
                     shape = self.shape
                 w, h = shape
             shapeArg = '{w}x{h}'.format(w=w, h=h)
-            self.ffmpegProc = subprocess.Popen(['ffmpeg', '-hide_banner', '-y', '-f', '-v', 'error', 'rawvideo', '-pix_fmt', 'rgb24', '-s', shapeArg, '-r', str(self.fps), '-i', 'pipe:', '-c:v', 'libx264', '-an', self.filename], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            self.ffmpegProc = subprocess.Popen(['ffmpeg', '-hide_banner', '-y', '-v', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', shapeArg, '-r', str(self.fps), '-i', 'pipe:', '-c:v', 'libx264', '-an', self.filename], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         if self.frameType == 'image':
             bytes = frame.tobytes()
         elif self.frameType == 'numpy':
