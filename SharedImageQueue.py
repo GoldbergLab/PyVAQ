@@ -94,12 +94,16 @@ class SharedImageSender():
         self.nextID += 1
         return nextID
 
-    def put(self, image, metadata=None):
+    def put(self, image=None, imarray=None, metadata=None):
+        # Puts an image in the shared memory queue.
+        # Either pass a PySpin Image in the "image" argument
+        #   or pass a numpy array in the "imarray" argument
         if not self.buffersReady:
             raise IOError("setupBuffers must be called in the process where putting will happen before putting any images")
         # image is a PySpin ImagePtr that must match the characteristics passed to the SharedImageSender constructor
         #   image = cam.GetNextImage()
-        imarray = image.GetNDArray()
+        if image is not None:
+            imarray = image.GetNDArray()
         # Use the numpy array view of the shared memory buffer to copy the image data into shared memory
         with self.readLag.get_lock():
             readLag = self.readLag.value
