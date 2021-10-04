@@ -4,17 +4,36 @@ import numpy as np
 import traceback
 from SharedImageQueue import SharedImageSender
 from queue import Empty as qEmpty
+import ffmpegWriter as fw
+import time
 try:
     import PySpin
 except ModuleNotFoundError:
     # pip seems to install PySpin as pyspin sometimes...
     import pyspin as PySpin
 
+def generateImageMap(width, height, maxVal=18):
+    xVals = ((np.array(range(width))-width/2)*(maxVal*2/width)).astype('int16')
+    yVals = ((np.array(range(height))-height/2)*(maxVal*2/height)).astype('int16')
+    [xGrid, yGrid] = np.meshgrid(xVals, yVals)
+    x = (np.sqrt(np.power(xGrid, 2) + np.power(yGrid, 2))).astype('uint8')
+    return x
+
+def generateNumberedImage(imMap, index):
+    binIndex = [int(i) for i in list('{0:0b}'.format(index))]
+    binIndex.reverse()
+    y = np.zeros(imMap.shape, dtype='uint8')
+    for k, d in enumerate(binIndex):
+        if d:
+            y[imMap==k]=255
+    return np.dstack((y, y, y))
+
 class ImageProcessor(mp.Process):
-    def __init__(self, receiver):
+    def __init__(self, receiver, ready):
         super().__init__()
         self.receiver = receiver
         self.logBuffer = []
+        self.ready = ready
 
     def print(self, msg):
         self.logBuffer.append(msg)
@@ -25,59 +44,140 @@ class ImageProcessor(mp.Process):
         self.logBuffer = []
 
     def run(self):
+        maxFrames = 100
+        videoCount = 0
+        framesDropped = 0
+        lastID = None
+        self.ready.wait()
+        print('\t\t\t\tRECEIVE: Passed barrier')
         while True:
-            print("RECEIVE: waiting for image")
+            frameCount = 0
+            videoPath = r"C:\Users\Goldberg\Documents\PyVAQ\testVideos\videoWriteTest_{k:03d}.avi".format(k=videoCount)
+            print("\t\t\t\tRECEIVE: Starting new video")
+            videoFileInterface = fw.ffmpegWriter(videoPath, "numpy", fps=30)
             while True:
-                try:
-                    im, metadata = self.receiver.get(includeMetadata=True)
+                if frameCount >= maxFrames:
+                    print('\t\t\t\tRECEIVE: Reached max frames={fc}!').format(fc=frameCount)
+                    print('\t\t\t\tRECEIVE: Closing video {k}, starting new one.').format(k=videoCount)
                     break
-                except qEmpty:
-                    pass
-            print("RECEIVE: got image at address {addr}!".format(addr=im.data))
-            print("RECEIVE: image ID = {id}".format(id=metadata["ID"]))
-            print("RECEIVE: {m}".format(m=im.mean()))
+                print("\t\t\t\tRECEIVE: waiting for image")
+                while True:
+                    try:
+                        im, metadata = self.receiver.get(includeMetadata=True)
+                        frameCount += 1
+                        break
+                    except qEmpty:
+                        pass
+                if lastID is not None:
+                    frameChange = metadata["ID"] - lastID
+                    lastID = metadata["ID"]
+                    if frameChange != 1:
+                        framesDropped += (frameChange - 1)
+                width, height, channels = im.shape
+                videoFileInterface.write(im, shape=(height, width))
+                print("\t\t\t\tRECEIVE: got image at address {addr}!".format(addr=im.data))
+                print("\t\t\t\tRECEIVE: image size = {w}x{h}!".format(w=width, h=height))
+                print("\t\t\t\tRECEIVE: image ID = {id}".format(id=metadata["ID"]))
+                print("\t\t\t\tRECEIVE: frames dropped = {fd}".format(fd=framesDropped))
+                print("\t\t\t\tRECEIVE: processing backlog = {qs}".format(qs=self.receiver.qsize()))
+                print("\t\t\t\tRECEIVE: wrote {k} of {n} to video".format(k=frameCount, n=maxFrames))
+                print("\t\t\t\tRECEIVE: {m}".format(m=im.mean()))
+            videoFileInterface.close()
+            videoCount += 1
 
 if __name__ == "__main__":
     acquireStopwatch = Stopwatch()
+    useCamera = False
+
+    if useCamera:
+        print('SEND:    Initializing camera')
+        system = PySpin.System.GetInstance()
+        camList = system.GetCameras()
+        cam = camList.GetBySerial("19281923")
+        cam.Init()
+        width = cam.Width.GetValue()
+        height = cam.Height.GetValue()
+    else:
+        print('SEND:    Using synthetic images - no cameras')
+        width=3208
+        height=2200
+        imMap = generateImageMap(width, height)
+
     sis = SharedImageSender(
-        width=160,
-        height=160,
+        width=width,
+        height=height,
         verbose=False,
         outputType='numpy',
         outputCopy=False,
         lockForOutput=False,
-        maxBufferSize=10
+        maxBufferSize=50
     )
     sis.setupBuffers()
     sir = sis.getReceiver()
 
-    ip = ImageProcessor(receiver=sir)
+    ready = mp.Barrier(2)
+    ip = ImageProcessor(receiver=sir, ready=ready)
     ip.start()
-    print('SEND:    Initializing camera')
-    system = PySpin.System.GetInstance()
-    camList = system.GetCameras()
-    cam = camList.GetBySerial("19281923")
-    cam.Init()
 #    nodemap = cam.GetNodeMap()
 #    self.setCameraAttributes(nodemap, self.acquireSettings)
-    print('SEND:    Beginning acquisition')
-    cam.BeginAcquisition()
-    while True:
-        try:
+    if useCamera:
+        print('SEND:    Beginning acquisition')
+        cam.BeginAcquisition()
+    else:
+        print('SEND:    Begin synthetic generation')
+    imID = 0
+    lastImID = 0
+    framesDropped = 0
+    framesGrabbed = 0
+    ready.wait()
+    print('SEND:    Passed barrier')
+    try:
+        while True:
             print('SEND: ***************************************************')
-            print('SEND:    Fetching image...')
-            im = cam.GetNextImage()
-            imArr = im.GetNDArray()
-            imID = im.GetFrameID()
+            if useCamera:
+                print('SEND:    Fetching image...')
+                while True:
+                    try:
+                        im = cam.GetNextImage(3000)
+                        break
+                    except PySpin.SpinnakerException:
+                        print('SEND:    Image grab timeout. Trying again.')
+                        framesGrabbed = 0
+                imArr = im.GetNDArray()
+                lastImID = imID
+                imID = im.GetFrameID()
+                im.Release()
+                del im
+            else:
+                print('SEND:    Generating synthetic image...')
+                lastImID = imID
+                imID += 1
+                imArr = generateNumberedImage(imMap, imID)
+                time.sleep(1/30)
+            framesGrabbed += 1
+            if lastImID is not None:
+                if imID != lastImID + 1:
+                    print('SEND:    DROPPED FRAMES')
+                    framesDropped += (imID - lastImID - 1)
             print('SEND:    fetched image!')
-            print('SEND:    ', imArr.mean())
-            print('SEND:    sending data at address {addr}'.format(addr=imArr.data))
-            print('SEND:    sending image...')
+            # print('SEND:    ', imArr.mean())
+#            print('SEND:    sending data at address {addr}'.format(addr=imArr.data))
+            print('SEND:    sending image id {id}...'.format(id=imID))
             sis.put(imarray=imArr, metadata={"ID":imID})
             print('SEND:    sent image!')
             acquireStopwatch.click()
             print('SEND:    Acquire frequency = {f}'.format(f=acquireStopwatch.frequency()))
-        except:
-            print('SEND:    error!')
-            print(traceback.format_exc())
-            break
+            print('SEND:    Frames dropped = {f}'.format(f=framesDropped))
+            print('SEND:    Frames grabbed in this burst = {f}'.format(f=framesGrabbed))
+    except:
+        print('SEND:    error!')
+        print(traceback.format_exc())
+        print('SEND:    Closing down...')
+        if useCamera:
+            cam.EndAcquisition()
+            cam.DeInit()
+            del cam
+            camList.Clear()
+            del camList
+            system.ReleaseInstance()
+        print('SEND:    EXITING')
