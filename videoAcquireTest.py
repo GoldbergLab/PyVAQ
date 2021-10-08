@@ -5,6 +5,7 @@ import traceback
 from SharedImageQueue import SharedImageSender
 from queue import Empty as qEmpty
 import ffmpegWriter as fw
+import rawWriter as rw
 import time
 try:
     import PySpin
@@ -19,7 +20,7 @@ def generateImageMap(width, height, maxVal=18):
     x = (np.sqrt(np.power(xGrid, 2) + np.power(yGrid, 2))).astype('uint8')
     return x
 
-def generateNumberedImage(imMap, index):
+def generateNumberedImage_ring(imMap, index):
     binIndex = [int(i) for i in list('{0:0b}'.format(index))]
     binIndex.reverse()
     y = np.zeros(imMap.shape, dtype='uint8')
@@ -27,6 +28,19 @@ def generateNumberedImage(imMap, index):
         if d:
             y[imMap==k]=255
     return np.dstack((y, y, y))
+
+def generateNumberedImage(arr, size, index):
+    binIndex = [int(i) for i in list('{0:0b}'.format(index))]
+    binIndex.reverse()
+    w = 100
+    for k, d in enumerate(binIndex):
+        color = [d*255*int(i) for i in list('{0:03b}'.format((k % 7)+1))]
+        arr[k*w:(k+1)*w, :, 0] = color[0];
+        arr[k*w:(k+1)*w, :, 1] = color[1];
+        arr[k*w:(k+1)*w, :, 2] = color[2];
+
+def generateRandomImage(size):
+    pass
 
 class ImageProcessor(mp.Process):
     def __init__(self, receiver, ready):
@@ -52,15 +66,16 @@ class ImageProcessor(mp.Process):
         print('\t\t\t\tRECEIVE: Passed barrier')
         while True:
             frameCount = 0
-            videoPath = r"C:\Users\Goldberg\Documents\PyVAQ\testVideos\videoWriteTest_{k:03d}.avi".format(k=videoCount)
+            videoPath = r"G:\testVideos\videoWriteTest_{k:03d}.raw".format(k=videoCount)
             print("\t\t\t\tRECEIVE: Starting new video")
-            videoFileInterface = fw.ffmpegWriter(videoPath, "numpy", fps=30)
+#            videoFileInterface = fw.ffmpegWriter(videoPath, "numpy", fps=30)
+            videoFileInterface = rw.rawWriter(videoPath, "numpy", fps=30)
             while True:
                 if frameCount >= maxFrames:
-                    print('\t\t\t\tRECEIVE: Reached max frames={fc}!').format(fc=frameCount)
-                    print('\t\t\t\tRECEIVE: Closing video {k}, starting new one.').format(k=videoCount)
+                    print('\t\t\t\tRECEIVE: Reached max frames={fc}!'.format(fc=frameCount))
+                    print('\t\t\t\tRECEIVE: Closing video {k}, starting new one.'.format(k=videoCount))
                     break
-                print("\t\t\t\tRECEIVE: waiting for image")
+#                print("\t\t\t\tRECEIVE: waiting for image")
                 while True:
                     try:
                         im, metadata = self.receiver.get(includeMetadata=True)
@@ -68,26 +83,26 @@ class ImageProcessor(mp.Process):
                         break
                     except qEmpty:
                         pass
-                if lastID is not None:
-                    frameChange = metadata["ID"] - lastID
-                    lastID = metadata["ID"]
-                    if frameChange != 1:
-                        framesDropped += (frameChange - 1)
+                # if lastID is not None:
+                #     frameChange = metadata["ID"] - lastID
+                #     lastID = metadata["ID"]
+                #     if frameChange != 1:
+                #         framesDropped += (frameChange - 1)
                 width, height, channels = im.shape
                 videoFileInterface.write(im, shape=(height, width))
-                print("\t\t\t\tRECEIVE: got image at address {addr}!".format(addr=im.data))
-                print("\t\t\t\tRECEIVE: image size = {w}x{h}!".format(w=width, h=height))
+#                print("\t\t\t\tRECEIVE: got image at address {addr}!".format(addr=im.data))
+#                print("\t\t\t\tRECEIVE: image size = {w}x{h}!".format(w=width, h=height))
                 print("\t\t\t\tRECEIVE: image ID = {id}".format(id=metadata["ID"]))
                 print("\t\t\t\tRECEIVE: frames dropped = {fd}".format(fd=framesDropped))
                 print("\t\t\t\tRECEIVE: processing backlog = {qs}".format(qs=self.receiver.qsize()))
                 print("\t\t\t\tRECEIVE: wrote {k} of {n} to video".format(k=frameCount, n=maxFrames))
-                print("\t\t\t\tRECEIVE: {m}".format(m=im.mean()))
+#                print("\t\t\t\tRECEIVE: {m}".format(m=im.mean()))
             videoFileInterface.close()
             videoCount += 1
 
 if __name__ == "__main__":
     acquireStopwatch = Stopwatch()
-    useCamera = False
+    useCamera = True
 
     if useCamera:
         print('SEND:    Initializing camera')
@@ -101,7 +116,7 @@ if __name__ == "__main__":
         print('SEND:    Using synthetic images - no cameras')
         width=3208
         height=2200
-        imMap = generateImageMap(width, height)
+        imArr = np.zeros([height, width, 3], dtype='uint8')
 
     sis = SharedImageSender(
         width=width,
@@ -110,7 +125,7 @@ if __name__ == "__main__":
         outputType='numpy',
         outputCopy=False,
         lockForOutput=False,
-        maxBufferSize=50
+        maxBufferSize=80
     )
     sis.setupBuffers()
     sir = sis.getReceiver()
@@ -131,6 +146,7 @@ if __name__ == "__main__":
     framesGrabbed = 0
     ready.wait()
     print('SEND:    Passed barrier')
+    startTime = time.time()
     try:
         while True:
             print('SEND: ***************************************************')
@@ -152,8 +168,11 @@ if __name__ == "__main__":
                 print('SEND:    Generating synthetic image...')
                 lastImID = imID
                 imID += 1
-                imArr = generateNumberedImage(imMap, imID)
-                time.sleep(1/30)
+                generateNumberedImage(imArr, [height, width], imID)
+                for k in range(300000):
+                    # Wait a bit
+                    x = 1000*1000;
+#                time.sleep(1/1000)
             framesGrabbed += 1
             if lastImID is not None:
                 if imID != lastImID + 1:
@@ -181,3 +200,4 @@ if __name__ == "__main__":
             del camList
             system.ReleaseInstance()
         print('SEND:    EXITING')
+    print('Total time: {t}'.format(t=time.time() - startTime))
