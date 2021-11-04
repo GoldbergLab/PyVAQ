@@ -559,6 +559,14 @@ def defaultSerializer(obj):
     else:
         raise TypeError("Object is not serializable")
 
+def convertExposureTimeToDutyCycle(exposureTime, frameRate):
+    # Exposure time in s, frameRate in Hz
+    return exposureTime * frameRate
+
+def convertDutyCycleToExposureTime(dutyCycle, frameRate):
+    # framerate in Hz, exposure time in s
+    return dutyCycle / frameRate
+
 def format_diff(diff):
     # Diff is a list of the form output by pympler.summary.diff()
     output = '\n'.join(str(d) for d in sorted(diff, key=lambda dd:-dd[2]))
@@ -703,10 +711,10 @@ class PyVAQ:
         self.videoFrequencyVar =    tk.StringVar(); self.videoFrequencyVar.set("30")
         self.videoFrequencyEntry =  ttk.Entry(self.videoFrequencyFrame, width=15, textvariable=self.videoFrequencyVar)
 
-        self.exposureTimeFrame =    ttk.LabelFrame(self.acquisitionFrame, text="Exposure time (us):", style='SingleContainer.TLabelframe')
-        self.exposureTimeVar =      tk.StringVar(); self.exposureTimeVar.set("8000")
-        self.exposureTimeEntry =    ttk.Entry(self.exposureTimeFrame, width=18, textvariable=self.exposureTimeVar)
-        self.exposureTimeEntry.bind('<FocusOut>', self.validateExposure)
+        self.videoExposureTimeFrame =    ttk.LabelFrame(self.acquisitionFrame, text="Video exposure time (ms):", style='SingleContainer.TLabelframe')
+        self.videoExposureTimeVar =      tk.StringVar(); self.videoExposureTimeVar.set("3")
+        self.videoExposureTimeEntry =    ttk.Entry(self.videoExposureTimeFrame, width=18, textvariable=self.videoExposureTimeVar)
+        self.videoExposureTimeEntry.bind('<FocusOut>', self.validateVideoExposureTime)
 
         self.gainFrame =    ttk.LabelFrame(self.acquisitionFrame, text="Gain", style='SingleContainer.TLabelframe')
         self.gainVar =      tk.StringVar(); self.gainVar.set("10")
@@ -718,7 +726,7 @@ class PyVAQ:
         self.preTriggerTimeEntry =  ttk.Entry(self.preTriggerTimeFrame, width=26, textvariable=self.preTriggerTimeVar)
 
         self.recordTimeFrame =      ttk.LabelFrame(self.acquisitionFrame, text="Record time (s)", style='SingleContainer.TLabelframe')
-        self.recordTimeVar =        tk.StringVar(); self.recordTimeVar.set("4.0")
+        self.recordTimeVar =        tk.StringVar(); self.recordTimeVar.set("10.0")
         self.recordTimeEntry =      ttk.Entry(self.recordTimeFrame, width=14, textvariable=self.recordTimeVar)
 
         self.chunkSizeVar =         tk.StringVar(); self.chunkSizeVar.set(1000)
@@ -855,6 +863,9 @@ class PyVAQ:
         self.audioTagContinuousTrigsCheckbutton = ttk.Checkbutton(self.triggerModeControlGroupFrames['Continuous'], text="Tag files with high audio", variable=self.audioTagContinuousTrigsVar, offvalue=False, onvalue=True)
         self.audioTagContinuousTrigsVar.trace('w', self.updateContinuousTriggerSettings)
 
+        # Simple continuous trigger controls
+        self.manualSyncStartButton = ttk.Button(self.triggerModeControlGroupFrames['SimpleContinuous'], text="Sync start", command=self.startSyncProcess)
+
         # Audio analysis monitoring widgets
         self.audioAnalysisMonitorFrame = ttk.LabelFrame(self.triggerModeControlGroupFrames['Audio'], text="Audio analysis")
         self.audioAnalysisWidgets = {}
@@ -900,7 +911,7 @@ class PyVAQ:
             'audioFrequency':                   dict(get=lambda:int(self.audioFrequencyVar.get()),              set=self.audioFrequencyVar.set),
             'videoFrequency':                   dict(get=lambda:int(self.videoFrequencyVar.get()),              set=self.videoFrequencyVar.set),
             'chunkSize':                        dict(get=lambda:int(self.chunkSizeVar.get()),                   set=self.chunkSizeVar.set),
-            'exposureTime':                     dict(get=lambda:int(self.exposureTimeVar.get()),                set=self.exposureTimeVar.set),
+            # 'exposureTime':                     dict(get=lambda:int(self.exposureTimeVar.get()),                set=self.exposureTimeVar.set),
             'gain':                             dict(get=lambda:float(self.gainVar.get()),                      set=self.gainVar.set),
             'preTriggerTime':                   dict(get=lambda:float(self.preTriggerTimeVar.get()),            set=self.preTriggerTimeVar.set),
             'recordTime':                       dict(get=lambda:float(self.recordTimeVar.get()),                set=self.recordTimeVar.set),
@@ -913,6 +924,7 @@ class PyVAQ:
             'triggerHighBandpass':              dict(get=lambda:float(self.triggerHighBandpassVar.get()),       set=self.triggerHighBandpassVar.set),
             'triggerLowBandpass':               dict(get=lambda:float(self.triggerLowBandpassVar.get()),        set=self.triggerLowBandpassVar.set),
             'maxAudioTriggerTime':              dict(get=lambda:float(self.maxAudioTriggerTimeVar.get()),       set=self.maxAudioTriggerTimeVar.set),
+            "videoExposureTime":                dict(get=lambda:float(self.videoExposureTimeVar.get()),            set=self.videoExposureTimeVar.set),
             'videoBaseFileNames':               dict(get=self.videoBaseFileNames.get,                            set=self.setVideoBaseFileNames),
             'videoDirectories':                 dict(get=self.videoDirectories.get,                              set=self.setVideoDirectories),
             'audioBaseFileName':                dict(get=self.audioBaseFileName.get,                             set=self.setAudioBaseFileName),
@@ -1080,16 +1092,24 @@ class PyVAQ:
         for camSerial in self.videoWriteProcesses:
             self.videoWriteProcesses[camSerial].msgQueue.put((VideoWriter.SETPARAMS, {'daySubfolders':daySubfolders}))
 
-    def validateExposure(self, *args):
-        # Sanitize current exposure settings (make sure it's an integer in a
-        #   reasonable range)
-        exposureTime = self.getParams('exposureTime')
+    def validateVideoExposureTime(self, *args):
+        # Sanitize current video exposure time settings
+
+        videoExposureTime = self.getParams('videoExposureTime')/1000
         videoFrequency = self.getParams('videoFrequency')
-        maxExposureTime = 1000000 * 0.95 / videoFrequency
-        if exposureTime > maxExposureTime:
-            exposureTime = maxExposureTime
-        exposureTime = int(exposureTime)
-        self.setParams(exposureTime=exposureTime)
+
+        minHighLowTime = 0.001
+        maxDutyCycle = 1 - (minHighLowTime * videoFrequency)
+        minDutyCycle = minHighLowTime * videoFrequency
+
+        videoDutyCycle = convertExposureTimeToDutyCycle(videoExposureTime, videoFrequency)
+
+        if videoDutyCycle > maxDutyCycle:
+            videoExposureTime = convertDutyCycleToExposureTime(maxDutyCycle, videoFrequency)
+        if videoDutyCycle < minDutyCycle:
+            videoDutyCycle = convertDutyCycleToExposureTime(minDutyCycle, videoFrequency)
+
+        self.setParams(videoExposureTime=videoExposureTime)
 
     def validateGain(self, *args):
         # Sanitize current gain settings (make sure it's >= 0)
@@ -1533,6 +1553,9 @@ him know. Otherwise, I had nothing to do with it.
         self.autoUpdateVideoMonitors()
         self.autoUpdateTriggerIndicator()
         self.autoUpdateAudioAnalysisMonitors()
+
+    def startSyncProcess(self):
+        self.syncProcess.start()
 
     def autoUpdateAudioAnalysisMonitors(self, beginAuto=True):
         if self.audioTriggerProcess is not None:
@@ -2118,16 +2141,17 @@ him know. Otherwise, I had nothing to do with it.
         camSerials = self.getParams('camSerials')
         return (len(audioDAQChannels)>0) + len(camSerials) + 1  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
     def getAcquireSettings(self):
-        params = self.getParams('exposureTime', 'gain')
-        exposureTime = params['exposureTime']
-        gain = params['gain']
+        #params = self.getParams('exposureTime', 'gain')
+        # exposureTime = params['exposureTime']
+        # gain = params['gain']
+        gain = self.getParams('gain')
         return [
             ('AcquisitionMode', 'Continuous', 'enum'),
             ('TriggerMode', 'Off', 'enum'),
             ('TriggerSelector', 'FrameStart', 'enum'),
             ('TriggerSource', 'Line0', 'enum'),
             ('TriggerActivation', 'RisingEdge', 'enum'),
-            ('PixelFormat', 'BGR8', 'enum'),
+            ('PixelFormat', 'BayerRG8', 'enum'),
             # ('ExposureMode', 'TriggerWidth'),
             # ('Width', 800, 'integer'),
             # ('Height', 800, 'integer'),
@@ -2135,8 +2159,8 @@ him know. Otherwise, I had nothing to do with it.
             ('GainAuto', 'Off', 'enum'),
             ('Gain', gain, 'float'),
             ('ExposureAuto', 'Off', 'enum'),
-            ('ExposureMode', 'Timed', 'enum'),
-            ('ExposureTime', exposureTime, 'float')]   # List of attribute/value pairs to be applied to the camera in the given order
+            ('ExposureMode', 'TriggerWidth', 'enum')]
+#            ('ExposureTime', exposureTime, 'float')]   # List of attribute/value pairs to be applied to the camera in the given order
     def setAcquireSettings(self, *args):
         raise NotImplementedError()
 
@@ -2222,6 +2246,7 @@ him know. Otherwise, I had nothing to do with it.
                 startTriggerChannel=p["acquisitionStartTriggerSource"],
                 audioSyncChannel=p["audioSyncTerminal"],
                 videoSyncChannel=p["videoSyncTerminal"],
+                videoDutyCycle=convertExposureTimeToDutyCycle(p["videoExposureTime"]/1000, p["videoFrequency"]),
                 requestedAudioFrequency=p["audioFrequency"],
                 requestedVideoFrequency=p["videoFrequency"],
                 verbose=self.syncVerbose,
@@ -2255,6 +2280,8 @@ him know. Otherwise, I had nothing to do with it.
                 verbose=self.audioWriteVerbose,
                 stdoutQueue=self.StdoutManager.queue)
 
+        maxGPUVEnc = 3  # Maximum number of venc sessions allowed by GPU. Only this number of video writers can attempt to use the GPU to accelerate video encoding.
+        gpuCount = 0
         for camSerial in p["camSerials"]:
             if camSerial in p["videoDirectories"]:
                 videoDirectory = p["videoDirectories"]
@@ -2277,12 +2304,13 @@ him know. Otherwise, I had nothing to do with it.
                 verbose=self.videoAcquireVerbose,
                 bufferSizeSeconds=p["bufferSizeSeconds"],
                 ready=ready,
-                videoWidth=3208,  # Should not be hardcoded
-                videoHeight=2200, # Figure out how to obtain this automatically from camera
                 stdoutQueue=self.StdoutManager.queue)
             if p["triggerMode"] == "SimpleContinuous":
                 if mergeMsgQueue is not None:
                     self.log('Warning: SimpleVideoWriter does not support A/V merging yet.')
+                gpuOk = (gpuCount < 3)
+                if not gpuOk:
+                    self.log('Warning: Cannot use GPU acceleration for all cameras - not enough GPU VEnc sessions allowed.')
                 videoWriteProcess = SimpleVideoWriter(
                     camSerial=camSerial,
                     videoDirectory=videoDirectory,
@@ -2293,8 +2321,10 @@ him know. Otherwise, I had nothing to do with it.
 #                    mergeMessageQueue=mergeMsgQueue,   # Merging not supported for SimpleVideoWriter
                     videoLength=p["recordTime"],
                     verbose=self.videoWriteVerbose,
-                    stdoutQueue=self.StdoutManager.queue
+                    stdoutQueue=self.StdoutManager.queue,
+                    gpuVEnc=gpuOk
                     )
+                gpuCount += 1
             else:
                 videoWriteProcess = VideoWriter(
                     camSerial=camSerial,
@@ -2362,7 +2392,10 @@ him know. Otherwise, I had nothing to do with it.
             self.videoAcquireProcesses[camSerial].start()
 
         # Start other processes
-        if self.syncProcess is not None: self.syncProcess.start()
+        if self.syncProcess is not None:
+            if p["triggerMode"] != "SimpleContinuous":
+                # In SimpleContinuous mode, we need to start the sync proces manually to give user time to change settings
+                self.syncProcess.start()
         if self.mergeProcess is not None: self.mergeProcess.start()
         if self.continuousTriggerProcess is not None: self.continuousTriggerProcess.start()
 
@@ -2546,8 +2579,8 @@ him know. Otherwise, I had nothing to do with it.
         self.audioFrequencyEntry.grid()
         self.videoFrequencyFrame.grid(row=1, column=1, sticky=tk.EW)
         self.videoFrequencyEntry.grid()
-        self.exposureTimeFrame.grid(row=1, column=2, sticky=tk.EW)
-        self.exposureTimeEntry.grid()
+        self.videoExposureTimeFrame.grid(row=1, column=2, sticky=tk.EW)
+        self.videoExposureTimeEntry.grid()
         self.preTriggerTimeFrame.grid(row=2, column=0, sticky=tk.EW)
         self.preTriggerTimeEntry.grid()
         self.recordTimeFrame.grid(row=2, column=1, sticky=tk.EW)
@@ -2587,6 +2620,8 @@ him know. Otherwise, I had nothing to do with it.
         # else:
         #     self.triggerModeControlGroupFrames[mode].grid_forget()
         self.manualWriteTriggerButton.grid(row=1, column=0)
+
+        self.manualSyncStartButton.grid(row=1, column=1)
 
         self.triggerHiLoFrame.grid(row=0, column=0, columnspan=4, sticky=tk.NW)
         self.triggerHighLevelFrame.grid(row=0, column=0)
