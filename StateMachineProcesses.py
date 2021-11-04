@@ -45,6 +45,19 @@ nodeAccessorTypes = {
     'category':PySpin.CCategoryPtr
 }
 
+def getFrameSize(camSerial):
+    system = PySpin.System.GetInstance()
+    camList = system.GetCameras()
+    cam = camList.GetBySerial(camSerial)
+    cam.Init()
+    width = cam.Width.GetValue()
+    height = cam.Height.GetValue()
+    camList.Clear()
+    cam.DeInit()
+    cam = None
+    system.ReleaseInstance()
+    return width, height
+
 def syncPrint(*args, sep=' ', end='\n', flush=True, buffer=None):
     kwargs = dict(sep=sep, end=end, flush=flush)
     buffer.append((args, kwargs))
@@ -74,13 +87,12 @@ def clearQueue(q):
                 break
 
 class Stopwatch:
-    def __init__(self):
-        self.t0 = None
-        self.t1 = None
+    def __init__(self, history=2):
+        self.t = [None for k in range(history)]
 
     def click(self):
-        self.t0 = self.t1
-        self.t1 = time.time()
+        self.t.append(time.time())
+        self.t.pop(0)
 
     def frequency(self):
         period = self.period()
@@ -89,9 +101,11 @@ class Stopwatch:
         return 1.0 / period
 
     def period(self):
-        if self.t1 is None or self.t0 is None:
+        t0 = self.t[0]
+        t1 = self.t[-1]
+        if t1 is None or t0 is None:
             return None
-        return (self.t1 - self.t0)
+        return (t1 - t0)/(len(self.t)-1)
 
 class Trigger():
     # A class to represent a record trigger.
@@ -1018,6 +1032,8 @@ class Synchronizer(StateMachineProcess):
                             initial_delay=0.0,
                             freq=self.videoFrequency,
                             duty_cycle=self.videoDutyCycle)     # Prepare a counter output channel for the video sync signal
+                        if self.verbose >= 2:
+                            self.log('Added video sync channel to task')
                     if self.audioSyncChannel is not None:
                         trigTask.co_channels.add_co_pulse_chan_freq(
                             counter=self.audioSyncChannel,
@@ -1026,6 +1042,8 @@ class Synchronizer(StateMachineProcess):
                             initial_delay=0.0,
                             freq=self.audioFrequency,
                             duty_cycle=self.audioDutyCycle)     # Prepare a counter output channel for the audio sync signal
+                        if self.verbose >= 2:
+                            self.log('Added audio sync channel to task')
                     # if (self.startTriggerChannel is not None) and ((self.videoSyncChannel is not None) or (self.audioSyncChannel is not None)):
                     #     # Configure task to wait for a digital pulse on the specified channel.
                     #     trigTask.triggers.arm_start_trigger.dig_edge_src=self.startTriggerChannel
@@ -1051,6 +1069,9 @@ class Synchronizer(StateMachineProcess):
                         # startTask.triggers.arm_start_trigger.dig_edge_edge=Edge.RISING
                         startReader = DigitalSingleChannelReader(startTask.in_stream)  # Set up an analog stream reader
                         startTask.di_channels.add_di_chan(self.startTriggerChannel)
+                        if self.verbose >= 2:
+                            self.log('Added digital trigger channel to start task')
+
                         # startTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
                         #     rate=1000,
                         #     active_edge=nidaqmx.constants.Edge.RISING,
@@ -1079,6 +1100,8 @@ class Synchronizer(StateMachineProcess):
                 elif state == Synchronizer.SYNC_READY:
                     # DO STUFF
                     try:
+                        if self.verbose >= 2:
+                            self.log('Ready to start task')
                         if self.ready is not None:
                             self.ready.wait()
                         # To give audio and video processes a chance to get totally set up for acquiring, wait a second.
@@ -1088,7 +1111,8 @@ class Synchronizer(StateMachineProcess):
                             startTask.start()
                             while not startReader.read_one_sample_one_line():
                                 pass
-                            self.log("Got sync start trigger!")
+                            if self.verbose >= 2:
+                                self.log("Got sync start trigger!")
 
                         preTime = time.time_ns()
                         trigTask.start()
@@ -2640,11 +2664,10 @@ class VideoAcquirer(StateMachineProcess):
                 bufferSizeSeconds=2.2,
                 monitorFrameRate=15,
                 verbose=False,
-                videoWidth=1280,
-                videoHeight=1024,
                 ready=None,                        # Synchronization barrier to ensure everyone's ready before beginning
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
+        self.verbose = verbose
         self.startTimeSharedValue = startTime
         self.camSerial = camSerial
         self.ID = 'VA_'+self.camSerial
@@ -2655,26 +2678,31 @@ class VideoAcquirer(StateMachineProcess):
         # self.imageQueue = mp.Queue()
         # self.imageQueue.cancel_join_thread()
         self.bufferSize = int(2*bufferSizeSeconds * self.requestedFrameRate)
-        print("Creating shared image sender with max buffer size:", self.bufferSize)
+
+        if self.verbose >= 3: self.log("Temporarily initializing camera to get image size...")
+        videoWidth, videoHeight = getFrameSize(self.camSerial)
         self.imageQueue = SharedImageSender(
             width=videoWidth,
             height=videoHeight,
             verbose=False,
-            outputType='PySpin',
-            outputCopy=True,
+            outputType='bytes',
+            outputCopy=False,
             lockForOutput=False,
-            maxBufferSize=self.bufferSize
+            maxBufferSize=self.bufferSize,
+            channels=1
         )
+        if self.verbose >= 2: self.log("Creating shared image sender with max buffer size:", self.bufferSize)
         self.imageQueueReceiver = self.imageQueue.getReceiver()
 
         self.monitorImageSender = SharedImageSender(
             width=videoWidth,
             height=videoHeight,
+            verbose=False,
             outputType='PIL',
             outputCopy=False,
-            verbose=False,
             lockForOutput=False,
-            maxBufferSize=1
+            maxBufferSize=1,
+            channels=1
         )
         self.monitorImageReceiver = self.monitorImageSender.getReceiver()
 #        self.monitorImageQueue.cancel_join_thread()
@@ -2685,7 +2713,6 @@ class VideoAcquirer(StateMachineProcess):
         self.acquireStopwatch = Stopwatch()
         self.exitFlag = False
         self.errorMessages = []
-        self.verbose = verbose
 
     def setParams(self, **params):
         for key in params:
@@ -2700,8 +2727,8 @@ class VideoAcquirer(StateMachineProcess):
 #        if self.verbose >= 1: profiler = cProfile.Profile()
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
 
-        self.monitorImageSender.setupBuffers()
         self.imageQueue.setupBuffers()
+        self.monitorImageSender.setupBuffers()
 
         state = VideoAcquirer.STOPPED
         nextState = VideoAcquirer.STOPPED
@@ -2746,6 +2773,7 @@ class VideoAcquirer(StateMachineProcess):
                     camList = system.GetCameras()
                     cam = camList.GetBySerial(self.camSerial)
                     cam.Init()
+
                     nodemap = cam.GetNodeMap()
                     self.setCameraAttributes(nodemap, self.acquireSettings)
                     if self.verbose > 2: self.log("...camera initialization complete")
@@ -2859,7 +2887,8 @@ class VideoAcquirer(StateMachineProcess):
                             # imp = PickleableImage(imageResult.GetWidth(), imageResult.GetHeight(), 0, 0, imageResult.GetPixelFormat(), imageResult.GetData(), frameTime)
 
                             # Put image into image queue
-                            self.imageQueue.put(imageResult, metadata={'frameTime':frameTime, 'imageID':imageID})
+                            if self.verbose >= 3: self.log("bytes = "+str(imageResult.GetNDArray()[0:10]))
+                            self.imageQueue.put(imarray=imageResult.GetNDArray(), metadata={'frameTime':frameTime, 'imageID':imageID})
                             if self.verbose >= 3: self.log("Pushed image into buffer")
 
                             if self.monitorImageSender is not None:
@@ -3083,10 +3112,11 @@ class SimpleVideoWriter(StateMachineProcess):
                 verbose=False,
                 daySubfolders=True,
                 videoLength=2,   # Video length in seconds
+                gpuVEnc=False,   # Should we use GPU acceleration
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.camSerial = camSerial
-        self.ID = 'VW_' + self.camSerial
+        self.ID = 'SVW_' + self.camSerial
         self.videoDirectory=videoDirectory
         self.videoBaseFileName = videoBaseFileName
         self.imageQueue = imageQueue
@@ -3102,6 +3132,7 @@ class SimpleVideoWriter(StateMachineProcess):
         self.daySubfolders = daySubfolders
         self.videoLength = videoLength
         self.videoFrameCount = None   # Number of frames to save to each video. Wait until we get actual framerate from synchronizer
+        self.gpuVEnc = gpuVEnc
 
     def setParams(self, **params):
         for key in params:
@@ -3226,7 +3257,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     elif self.videoWriteMethod == "ffmpeg":
                         if videoFileInterface is not None:
                             videoFileInterface.close()
-                        videoFileInterface = fw.ffmpegWriter(videoFileName, "numpy", fps=self.frameRate)
+                        videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", fps=self.frameRate, gpuVEnc=self.gpuVEnc)
 
                     videoCount += 1
 
@@ -3256,7 +3287,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     if self.verbose >= 3:
                         self.log("Image queue size: ", self.imageQueue.qsize())
 
-                    im, frameTime, imageID = self.getNextimage()
+                    im, frameTime, imageID, frameShape = self.getNextimage()
 
                     if im is None:
                         # No images available. To avoid hosing the processor, sleep a bit before continuing
@@ -3264,6 +3295,12 @@ class SimpleVideoWriter(StateMachineProcess):
                     else:
                         if videoFileInterface is None:
                             raise IOError('Attempted to write but writer interface does not exist')
+
+                        if len(self.imageQueue.frameShape) == 3:
+                            width, height, channels = frameShape
+                        else:
+                            width, height = frameShape
+                            channels = 1
 
                         # Write video frame from queue to file
                         if self.videoWriteMethod == "PySpin":
@@ -3280,8 +3317,9 @@ class SimpleVideoWriter(StateMachineProcess):
                             #         self.log(traceback.format_exc())
                             del im
                         elif self.videoWriteMethod == "ffmpeg":
-                            videoFileInterface.write(im.GetNDArray(), shape=(im.GetWidth(), im.GetHeight()))
+                            videoFileInterface.write(im, shape=(height, width))
                             if self.verbose >= 2: self.log("wrote frame using ffmpeg!")
+                            if self.verbose >= 3: self.log("bytes=", str(im[0:10]))
 
                         numFramesInCurrentVideo += 1
                         numFramesInCurrentSeries += 1
@@ -3469,6 +3507,7 @@ class SimpleVideoWriter(StateMachineProcess):
             im, metadata = self.imageQueue.get(includeMetadata=True) #block=True, timeout=0.1)
             frameTime = metadata['frameTime']
             imageID = metadata['imageID']
+            frameShape = self.imageQueue.frameShape;
 
             if self.verbose >= 3: self.log("Got video frame from acquirer. ID={ID}, t={t}".format(t=metadata['frameTime'], ID=imageID))
         except queue.Empty:
@@ -3477,7 +3516,8 @@ class SimpleVideoWriter(StateMachineProcess):
             im = None
             frameTime = None
             imageID = None
-        return im, frameTime, imageID
+            frameShape = None
+        return im, frameTime, imageID, frameShape
 
 class VideoWriter(StateMachineProcess):
     # States:
