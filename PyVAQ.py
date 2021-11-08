@@ -2308,7 +2308,7 @@ him know. Otherwise, I had nothing to do with it.
             if p["triggerMode"] == "SimpleContinuous":
                 if mergeMsgQueue is not None:
                     self.log('Warning: SimpleVideoWriter does not support A/V merging yet.')
-                gpuOk = (gpuCount < 3)
+                gpuOk = (gpuCount < maxGPUVEnc)
                 if not gpuOk:
                     self.log('Warning: Cannot use GPU acceleration for all cameras - not enough GPU VEnc sessions allowed.')
                 videoWriteProcess = SimpleVideoWriter(
