@@ -892,6 +892,8 @@ class PyVAQ:
         self.actualVideoFrequency = None
         self.actualAudioFrequency = None
 
+        self.maxGPUVEncVar = ttk.StringVar(); self.maxGPUVEncVar.set('3')
+
         # Verbosity of child processes
         #   0=Errors, 1=Occasional important status updates
         #   2=Minor status updates, 3=Continuous status messages
@@ -911,6 +913,7 @@ class PyVAQ:
             'audioFrequency':                   dict(get=lambda:int(self.audioFrequencyVar.get()),              set=self.audioFrequencyVar.set),
             'videoFrequency':                   dict(get=lambda:int(self.videoFrequencyVar.get()),              set=self.videoFrequencyVar.set),
             'chunkSize':                        dict(get=lambda:int(self.chunkSizeVar.get()),                   set=self.chunkSizeVar.set),
+            "maxGPUVEnc":                       dict(get=lambda:int(self.maxGPUVencVar.get()),                  set=self.maxGPUVencVar.set),
             # 'exposureTime':                     dict(get=lambda:int(self.exposureTimeVar.get()),                set=self.exposureTimeVar.set),
             'gain':                             dict(get=lambda:float(self.gainVar.get()),                      set=self.gainVar.set),
             'preTriggerTime':                   dict(get=lambda:float(self.preTriggerTimeVar.get()),            set=self.preTriggerTimeVar.set),
@@ -2297,7 +2300,6 @@ him know. Otherwise, I had nothing to do with it.
                     verbose=self.audioWriteVerbose,
                     stdoutQueue=self.StdoutManager.queue)
 
-        maxGPUVEnc = 3  # Maximum number of venc sessions allowed by GPU. Only this number of video writers can attempt to use the GPU to accelerate video encoding.
         gpuCount = 0
         for camSerial in p["camSerials"]:
             if camSerial in p["videoDirectories"]:
@@ -2325,8 +2327,9 @@ him know. Otherwise, I had nothing to do with it.
             if p["triggerMode"] == "SimpleContinuous":
                 if mergeMsgQueue is not None:
                     self.log('Warning: SimpleVideoWriter does not support A/V merging yet.')
-                gpuOk = (gpuCount < maxGPUVEnc)
-                if not gpuOk:
+                gpuOk = (gpuCount < p['maxGPUVEnc'])
+                if p['maxGPUVenc'] > 0 and not gpuOk:
+                    # Some GPU video encoder sessions requested, but not enough for all cameras.
                     self.log('Warning: Cannot use GPU acceleration for all cameras - not enough GPU VEnc sessions allowed.')
                 videoWriteProcess = SimpleVideoWriter(
                     camSerial=camSerial,
