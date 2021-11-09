@@ -196,10 +196,24 @@ class AudioChunk():
         self.chunkStartTime = chunkStartTime
         self.audioFrequency = audioFrequency
         self.channelNumber, self.chunkSize = self.data.shape
-        self.chunkEndTime = chunkStartTime + (self.chunkSize / self.audioFrequency)
+        self.chunkEndTime = self.calculateChunkEndTime()
 
     def __str__(self):
         return 'Audio chunk {id}: {start} ---- {samples} samp x {n} ch ----> {end} @ {freq} Hz'.format(start=self.chunkStartTime, end=self.chunkEndTime, samples=self.chunkSize, n=self.channelNumber, freq=self.audioFrequency, id=self.id)
+
+    def calculateChunkEndTime(self):
+        return self.chunkStartTime + (self.chunkSize / self.audioFrequency)
+
+    def addChunkToEnd(self, nextChunk):
+        # Add on another chunk to the end of this one.
+        self.data = np.concatenate(self.data, nextChunk.data, axis=1)
+        self.chunkEndTime = self.calculateChunkEndTime()
+
+    def getChannelCount(self):
+        return self.data.shape[0]
+
+    def getSampleCount(self):
+        return self.data.shape[1]
 
     def getTriggerState(self, trigger):
         # Check the manner in which this audio chunk overlaps, or does not
@@ -207,6 +221,29 @@ class AudioChunk():
         chunkStartTriggerState = trigger.state(self.chunkStartTime)
         chunkEndTriggerState =   trigger.state(self.chunkEndTime)
         return chunkStartTriggerState, chunkEndTriggerState
+
+    def splitAtSample(self, sampleSplitNum):
+        # Split audio chunk into two so the first chunk has sampleSplitNum
+        #   samples in it, and the second chunk has the rest.
+        #   Returns the two resultant chunks in a tuple
+
+        if sampleSplitNum < 0:
+            sampleSplitNum = 0
+        if sampleSplitNum > self.getSampleCount():
+            sampleSplitNum = self.getSampleCount()
+
+        # Construct the pre-chunk
+        preChunk = AudioChunk(
+            chunkStartTime=self.chunkStartTime,
+            audioFrequency=self.audioFrequency,
+            data=np.copy(self.data[:, :sampleSplitNum]))
+
+        # Modify this chunk so it's the post-chunk
+        self.data = self.data[:, sampleSplitNum:]
+        self.chunkStartTime = self.chunkStartTime + (sampleSplitNum / self.audioFrequency)
+        self.channelNumber, self.chunkSize = self.data.shape
+        self.chunkEndTime = self.calculateChunkEndTime()
+        return preChunk, self
 
     def trimToTrigger(self, trigger, returnOtherPieces=False): # padStart=False):
         # Trim audio chunk so it lies entirely within the trigger period, and update stats accordingly
@@ -267,7 +304,7 @@ class AudioChunk():
         self.data = self.data[:, startSample:endSample]
         self.chunkStartTime = newChunkStartTime
         self.channelNumber, self.chunkSize = self.data.shape
-        self.chunkEndTime = self.chunkStartTime + (self.chunkSize / self.audioFrequency)
+        self.chunkEndTime = self.calculateChunkEndTime()
         return parts
 
         # if padStart is True and startSample == 0:
@@ -2170,26 +2207,29 @@ class SimpleAudioWriter(StateMachineProcess):
                 channelNames=[],
                 audioDirectory='.',
                 audioQueue=None,
-                audioFrequency=None,
+                audioFrequency=None,    # A shared variable for audioFrequency
+                frameRate=None,         # A shared variable for video framerate (needed to ensure audio sync)
                 numChannels=1,
-                chunksPerFile=1,
+                videoLength=None,       # Requested time in seconds of each video.
                 verbose=False,
                 audioDepthBytes=2,
                 mergeMessageQueue=None, # Queue to put (filename, trigger) in for merging
                 daySubfolders=True,         # Create and write to subfolders labeled by day?
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
-        self.ID = "AW"
+        self.ID = "SAW"
         self.audioDirectory = audioDirectory
         self.audioBaseFileName = audioBaseFileName
         self.channelNames = channelNames
         self.audioQueue = audioQueue
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
-        self.audioFrequencyVar = audioFrequency
+        self.audioFrequencyVar = frameRate
         self.audioFrequency = None
+        self.frameRateVar = videoFrequency
+        self.frameRate = None
         self.numChannels = numChannels
-        self.chunksPerFile = chunksPerFile
+        self.videoLength = videoLength
         self.mergeMessageQueue = mergeMessageQueue
         self.errorMessages = []
         self.verbose = verbose
@@ -2248,13 +2288,26 @@ class SimpleAudioWriter(StateMachineProcess):
                     audioFile = None
                     seriesStartTime = time.time()   # Record approximate start time (in seconds since epoch) of series for filenaming purposes
                     audioFileCount = 0
-                    numChunksInCurrentSeries = 0
+                    numSamplesInCurrentSeries = 0
+                    audioChunk = None
 
                     # Read actual audio frequency from the Synchronizer process
                     while self.audioFrequencyVar.value == -1:
                         # Wait for shared value audioFrequency to be set by the Synchronizer process
                         time.sleep(0.1)
                     self.audioFrequency = self.audioFrequencyVar.value
+                    while self.frameRateVar.value == -1:
+                        # Wait for shared value frameRate to be set by the Synchronizer process
+                        time.sleep(0.1)
+                    self.frameRate = self.frameRateVar.value
+
+                    # Calculate actual exact # of frames per video that SimpleVideoWriter will be recording
+                    actualFramesPerVideo = round(self.videoLength * self.frameRate)
+                    # Actual video length that SimpleVideoWriter will be using
+                    actualVideoLength = actualFramesPerVideo * self.frameRate
+                    # Actual # of samples per video we should record. Note thta this will have an accuracy of +/- 0.5 audio samples.
+                    #   At 44100 Hz, and 30 fps, the audio may be as much as whole frame de-synced after 2900 videos. This is acceptable for now.
+                    numSamplesPerFile = round(actualVideoLength * self.audioFrequency)
 
                     # CHECK FOR MESSAGES
                     try:
@@ -2274,154 +2327,40 @@ class SimpleAudioWriter(StateMachineProcess):
                         nextState = SimpleAudioWriter.STOPPING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
-# ********************************* BUFFERING ********************************
+# ********************************* AUDIOINIT ********************************
                 elif state == SimpleAudioWriter.AUDIOINIT:
+                    # Start a new audio file
                     # DO STUFF
-                    audioChunk = None
-                    if self.verbose >= 3:
-                        self.log("Audio queue size: ", self.audioQueue.qsize())
-                        self.log("Audio chunks in buffer: ", len(self.buffer))
-                        self.log([c.id for c in self.buffer])
+                    audioFileStartTime = seriesStartTime + numSamplesInCurrentSeries / self.audioFrequency
+                    numSamplesInCurrentFile = 0
 
-                    if len(self.buffer) >= self.bufferSize:
-                        # If buffer is full, pull oldest audio chunk from buffer
-                        audioChunk = self.buffer.popleft()
-                        if self.verbose >= 0:
-                            if len(self.buffer) >= self.bufferSize + 3:
-                                # Buffer is getting overful for some reason
-                                self.log("Warning, audio buffer is overfull: {curlen} > {maxlen}".format(curlen=len(self.buffer), maxlen=self.bufferSize))
-                        if self.verbose >= 3: self.log("Pulled audio chunk {id} from buffer (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.bufferSize, id=audioChunk.id))
+                    if audioFile is not None:
+                        # Close file
+                        audioFile.writeframes(b'')  # Causes recompute of header info?
+                        audioFile.close()
+                        audioFile = None
 
-                    try:
-                        if len(self.buffer) < self.bufferSize:
-                            # There is room in the buffer for a new chunk
-                            # Get new audio chunk and push it into the buffer
-                            newAudioChunk = self.audioQueue.get(block=True, timeout=0.1)
-                            if self.verbose >= 3: self.log("Got audio chunk {id} from acquirer. Pushing into the buffer.".format(id=newAudioChunk.id))
-                            self.buffer.append(newAudioChunk)
-                        else:
-                            newAudioChunk = None
-                    except queue.Empty: # None available
-                        newAudioChunk = None
+                    # Generate new audio file path
+                    audioFileNameTags = [','.join(self.channelNames), generateTimeString(timestamp=seriesStartTime)], '{audioFileCount:03d}'.format(audioFileCount=audioFileCount))
+                    if self.daySubfolders:
+                        audioDirectory = getDaySubfolder(self.audioDirectory, timestamp=audioFileStartTime)
+                    else:
+                        audioDirectory = self.audioDirectory
+                    audioFileName = generateFileName(directory=audioDirectory, baseName=self.audioBaseFileName, extension='.avi', tags=videoFileNameTags)
+                    ensureDirectoryExists(audioDirectory)
+
+                    # Open and initialize audio file
+                    audioFile = wave.open(audioFileName, 'w')
+                    audioFile.audioFileName = audioFileName
+                    # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
+                    audioFile.setparams((self.numChannels, self.audioDepthBytes, self.audioFrequency, 0, 'NONE', 'not compressed'))
+
+                    audioFileCount += 1
 
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
                         if msg == SimpleAudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == SimpleAudioWriter.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
-
-                    # CHOOSE NEXT STATE
-                    if msg == SimpleAudioWriter.STOP:
-                        nextState = SimpleAudioWriter.STOPPING
-                    elif msg == SimpleAudioWriter.EXIT:
-                        self.exitFlag = True
-                        nextState = SimpleAudioWriter.STOPPING
-                    elif len(triggers) > 0:
-                        # We have triggers - next state will depend on them
-                        if self.verbose >= 2: self.log("{N} triggers in line".format(N=len(triggers)))
-                        if audioChunk is not None:
-                            # At least one audio chunk has been received - we can check if trigger period has begun
-                            chunkStartTriggerState, chunkEndTriggerState = audioChunk.getTriggerState(triggers[0])
-                            delta = audioChunk.chunkStartTime - triggers[0].startTime
-                            if self.verbose >= 3: self.log("Chunk {cid} trigger {tid} state: |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState, tid=triggers[0].id, cid=audioChunk.id))
-                            if chunkStartTriggerState < 0 and chunkEndTriggerState < 0:
-                                # Entire chunk is before trigger range. Continue buffering until we get to trigger start time.
-                                if self.verbose >= 2: self.log("Active trigger {id}, but haven't gotten to start time yet, continue buffering.".format(id=triggers[0].id))
-                                nextState = SimpleAudioWriter.BUFFERING
-                            elif chunkEndTriggerState >= 0 and ((chunkStartTriggerState < 0) or (delta < (1/self.audioFrequency))):
-                                # Chunk overlaps start of trigger, or starts within one sample duration of the start of the trigger
-                                if self.verbose >= 1: self.log("Got trigger {id} start!".format(id=triggers[0].id))
-                                timeWrote = 0
-                                nextState = SimpleAudioWriter.WRITING
-                            elif chunkStartTriggerState == 0 or (chunkStartTriggerState < 0 and chunkStartTriggerState > 0):
-                                # Chunk overlaps trigger, but not the start of the trigger
-                                if self.verbose >= 0:
-                                    self.log("Partially missed audio trigger {id} by {t} seconds, which is {s} samples and {c} chunks!".format(t=delta, s=delta * self.audioFrequency, c=delta * self.audioFrequency / self.chunkSize, id=triggers[0].id))
-                                timeWrote = 0
-                                nextState = SimpleAudioWriter.WRITING
-                            else:
-                                # Time is after trigger range...
-                                if self.verbose >= 0: self.log("Warning, completely missed entire audio trigger {id}!".format(id=triggers[0].id))
-                                timeWrote = 0
-                                nextState = SimpleAudioWriter.BUFFERING
-                                triggers.pop(0)   # Pop off trigger that we missed
-                        else:
-                            # No audio chunks have been received yet, can't evaluate if trigger time has begun yet
-                            if self.verbose >= 1: self.log("No audio chunks yet, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.bufferSize))
-                            nextState = SimpleAudioWriter.BUFFERING
-                    elif msg in ['', SimpleAudioWriter.START]:
-                        nextState = SimpleAudioWriter.BUFFERING
-                    else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
-# ********************************* WRITING *********************************
-                elif state == SimpleAudioWriter.WRITING:
-                    # DO STUFF
-                    if self.verbose >= 3:
-                        self.log("Audio queue size: ", self.audioQueue.qsize())
-                        self.log("Audio chunks in buffer: ", len(self.buffer))
-                        self.log([c.id for c in self.buffer])
-                    if audioChunk is not None:
-                        #     padStart = True  # Because this is the first chunk, pad the start of the chunk if it starts after the trigger period start
-                        # else:
-                        #     padStart = False
-                        [preChunk, postChunk] = audioChunk.trimToTrigger(triggers[0], returnOtherPieces=True) #, padStart=padStart)
-                        if self.verbose >= 3:
-                            self.log("Trimmed chunk:", audioChunk)
-                            self.log("Pre chunk:", preChunk)
-                            self.log("Post chunk:", postChunk)
-                        # preChunk can be discarded, as the trigger is past it, but postChunk needs to be put back in the buffer
-
-                        if audioFile is None:
-                            # Start new audio file
-                            audioFileStartTime = audioChunk.chunkStartTime
-                            audioFileNameTags = [','.join(self.channelNames), generateTimeString(triggers[0])] + list(triggers[0].tags)
-                            if self.daySubfolders:
-                                audioDirectory = getDaySubfolder(self.audioDirectory, triggers[0])
-                            else:
-                                audioDirectory = self.audioDirectory
-                            audioFileName = generateFileName(directory=audioDirectory, baseName=self.audioBaseFileName, extension='.wav', tags=audioFileNameTags)
-                            ensureDirectoryExists(audioDirectory)
-                            audioFile = wave.open(audioFileName, 'w')
-                            audioFile.audioFileName = audioFileName
-                            # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
-                            audioFile.setparams((self.numChannels, self.audioDepthBytes, self.audioFrequency, 0, 'NONE', 'not compressed'))
-
-                        # Write chunk of audio to file that was previously retrieved from the buffer
-                        audioFile.writeframes(audioChunk.getAsBytes())
-                        if self.verbose >= 3:
-                            self.log("Wrote audio chunk {id}".format(id=audioChunk.id))
-                            timeWrote += (audioChunk.data.shape[1] / audioChunk.audioFrequency)
-                            self.log("Audio time wrote: {time}".format(time=timeWrote))
-                    else:
-                        preChunk = None
-                        postChunk = None
-                    try:
-                        # Pop the oldest buffered audio chunk from the back of the buffer.
-                        audioChunk = self.buffer.popleft()
-                        if self.verbose >= 3: self.log("Pulled audio chunk {id} from buffer".format(id=audioChunk.id))
-                    except IndexError:
-                        if self.verbose >= 0: self.log("No audio chunks in buffer")
-                        audioChunk = None  # Buffer was empty
-
-                    # Pull new audio chunk from AudioAcquirer and add to the front of the buffer.
-                    try:
-                        if len(self.buffer) < self.bufferSize:
-                            newAudioChunk = self.audioQueue.get(True, 0.05)
-                            if self.verbose >= 3: self.log("Got audio chunk {id} from acquirer. Pushing into buffer.".format(id=newAudioChunk.id))
-                            self.buffer.append(newAudioChunk)
-                        else:
-                            newAudioChunk = None
-                    except queue.Empty:
-                        # No data in audio queue yet - pass.
-                        if self.verbose >= 3: self.log("No audio chunks available from acquirer")
-                        newAudioChunk = None
-
-                    # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == SimpleAudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == SimpleAudioWriter.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -2434,48 +2373,87 @@ class SimpleAudioWriter(StateMachineProcess):
                         nextState = SimpleAudioWriter.STOPPING
                     elif msg in ['', SimpleAudioWriter.START]:
                         nextState = SimpleAudioWriter.WRITING
-                        if len(triggers) > 0 and audioChunk is not None:
-                            chunkStartTriggerState, chunkEndTriggerState = audioChunk.getTriggerState(triggers[0])
-                            if self.verbose >= 3: self.log("Chunk {cid} trigger {tid} state: |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState, tid=triggers[0].id, cid=audioChunk.id))
-                            if chunkStartTriggerState * chunkEndTriggerState > 0:
-                                # Trigger period does not overlap the chunk at all - return to buffering
-                                if self.verbose >= 2: self.log("Audio chunk {cid} does not overlap trigger {tid}. Switching to buffering.".format(cid=audioChunk.id, tid=triggers[0].id))
-                                nextState = SimpleAudioWriter.BUFFERING
-                                if audioFile is not None:
-                                    # Done with trigger, close file and clear audioFile
-                                    audioFile.writeframes(b'')  # Causes recompute of header info?
-                                    audioFile.close()
-                                    if self.mergeMessageQueue is not None:
-                                        # Send file for AV merging:
-                                        fileEvent = dict(
-                                            filePath=audioFile.audioFileName,
-                                            streamType=AVMerger.AUDIO,
-                                            trigger=triggers[0],
-                                            streamID='audio',
-                                            startTime=audioFileStartTime
-                                        )
-                                        if self.verbose >= 1: self.log("Sending audio filename to merger")
-                                        self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
-                                    audioFile = None
-                                # Remove current trigger
-                                oldTrigger = triggers.pop(0)
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+# ********************************* WRITING *********************************
+                elif state == SimpleAudioWriter.WRITING:
+                    # DO STUFF
+                    if self.verbose >= 3:
+                        self.log("Audio queue size: ", self.audioQueue.qsize())
 
-                                # Last chunk wasn't part of this trigger at all, so it didn't get written. Put it back in buffer.
-                                self.buffer.appendleft(audioChunk)
-                                if self.verbose >= 2:
-                                    self.log("Trigger id {id} is over - putting back unused chunk.".format(id=oldTrigger.id))
-                                    self.log(str(audioChunk))
-                                # Last part of previous chunk wasn't part of this trigger, so put it back.
-                                if postChunk is not None:
-                                    # Put remainder of previous chunk back in the buffer, since it didn't get written
-                                    if self.verbose >= 2:
-                                        self.log("Trigger id {id} is over - putting back remaining {s} samples of current chunk in buffer.".format(s=postChunk.chunkSize, id=oldTrigger.id))
-                                        self.log(str(postChunk))
-                                    self.buffer.appendleft(postChunk)
+                    # Write all or part of last audio chunk to file
+                    if audioChunk is None:
+                        # No audio chunk yet
+                        pass
+                    else:
+                        # We have an audio chunk to write.
 
-                            else:
-                                # Audio chunk does overlap with trigger period. Continue writing.
-                                pass
+                        # Calculate how many more samples needed to complete the file
+                        samplesUntilEOF = numSamplesPerFile- numSamplesInCurrentFile
+
+                        # Split chunk to part before end of file, and part after end of file.
+                        [audioChunk, audioChunkLeftover] = audioChunk.splitAtSample(samplesUntilEOF)
+                        if self.verbose >= 3:
+                            self.log("Pre chunk:", audioChunk)
+                            self.log("Post chunk:", audioChunkLeftover)
+
+                        # Write chunk of audio to file that was previously retrieved from the buffer
+                        audioFile.writeframes(audioChunk.getAsBytes())
+                        numSamplesInCurrentFile += audioChunk.getSampleCount()
+                        numSamplesInCurrentSeries += audioChunk.getSampleCount()
+
+                        if self.verbose >= 3:
+                            self.log("Wrote audio chunk {id}".format(id=audioChunk.id))
+                            timeWrote += (audioChunk.getSampleCount() / audioChunk.audioFrequency)
+                            self.log("Audio time wrote: {time}".format(time=timeWrote))
+
+                    audioChunk = self.getNextChunk()
+                    if audioChunkLeftover.getSampleCount() != 0:
+                        # There are leftover samples. Include those at the start of this chunk.
+                        if self.verbose >= 3:
+                            self.log('Concatenating new chunk to end of leftover chunk:')
+                            self.log('Leftover: ' + audioChunkLeftover)
+                            self.log('New:      ' + audioChunk)
+                        nextAudioChunk.addChunkToEnd(audioChunk)
+                        audioChunk = nextAudioChunk
+
+                    # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
+                    try:
+                        msg, arg = self.msgQueue.get(block=False)
+                        if msg == SimpleAudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                    except queue.Empty: msg = ''; arg = None
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        nextState = SimpleAudioWriter.STOPPING
+                    elif msg == SimpleAudioWriter.STOP:
+                        nextState = SimpleAudioWriter.STOPPING
+                    elif msg == SimpleAudioWriter.EXIT:
+                        self.exitFlag = True
+                        nextState = SimpleAudioWriter.STOPPING
+                    elif msg in ['', SimpleAudioWriter.START]:
+                        if numSamplesInCurrentFile == numSamplesPerFile:
+                            # We've reached the desired sample count. Start a new audio file.
+                            nextState = SimpleAudioWriter.AUDIOINIT
+                            # If requested, merge with video
+                            if self.mergeMessageQueue is not None:
+                                raise SyntaxError("Sorry, SimpleAudioWriter can't merge with audio yet. Try again without providing a merge message queue.")
+                                # Send file for AV merging:
+                                fileEvent = dict(
+                                    filePath=audioFile.audioFileName,
+                                    streamType=AVMerger.AUDIO,
+                                    trigger=None, #triggers[0],
+                                    streamID='audio',
+                                    startTime=audioFileStartTime
+                                )
+                                if self.verbose >= 1: self.log("Sending audio filename to merger")
+                                self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                        elif numSamplesInCurrentFile < numSamplesPerFile:
+                            # Not enough audio samples written to this file yet. Keep writing.
+                            nextState = SimpleAudioWriter.WRITING
+                        else:
+                            # Uh oh, too many audio samples in this file? Something went wrong.
+                            raise IOError('More audio samples ({k}) than requested ({n}) in file!'.format(k=numSamplesInCurrentFile, n=numSamplesPerFile))
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* STOPPING *********************************
@@ -2485,17 +2463,17 @@ class SimpleAudioWriter(StateMachineProcess):
                         audioFile.writeframes(b'')  # Recompute header info?
                         audioFile.close()
                         if self.mergeMessageQueue is not None:
+                            raise SyntaxError("Sorry, SimpleAudioWriter can't merge with audio yet. Try again without providing a merge message queue.")
                             # Send file for AV merging:
                             fileEvent = dict(
                                 filePath=audioFile.audioFileName,
                                 streamType=AVMerger.AUDIO,
-                                trigger=triggers[0],
+                                trigger=None, #triggers[0],
                                 streamID='audio',
                                 startTime=audioFileStartTime
                             )
                             self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
                         audioFile = None
-                    triggers = []
 
                     # CHECK FOR MESSAGES
                     try:
@@ -2586,26 +2564,14 @@ class SimpleAudioWriter(StateMachineProcess):
         self.flushStdout()
         self.updatePublishedState(self.DEAD)
 
-    def updateTriggers(self, triggers, newTrigger):
+    def getNextChunk(self):
         try:
-            triggerIndex = [trigger.id for trigger in triggers].index(newTrigger.id)
-            # This is an updated trigger, not a new trigger
-            if self.verbose >= 2:
-                self.log("Updating trigger:")
-                self.log(newTrigger)
-            if triggerIndex > 0 and newTrigger.startTime > newTrigger.endTime:
-                # End time has been set before start time, and this is not the active trigger, so delete this trigger.
-                del triggers[triggerIndex]
-                if self.verbose >= 2: self.log("Deleting invalidated trigger")
-            else:
-                triggers[triggerIndex] = newTrigger
-        except ValueError:
-            # This is a new trigger
-            if self.verbose >= 2:
-                self.log("Adding new trigger:")
-                self.log(newTrigger)
-            triggers.append(newTrigger)
-
+            # Get new audio chunk and return it
+            newAudioChunk = self.audioQueue.get(block=True, timeout=0.1)
+            if self.verbose >= 3: self.log("Got audio chunk {id} from acquirer. Pushing into the buffer.".format(id=newAudioChunk.id))
+        except queue.Empty: # None available
+            newAudioChunk = None
+        return newAudioChunk
 
 class AudioWriter(StateMachineProcess):
     # States:
@@ -3699,7 +3665,7 @@ class SimpleVideoWriter(StateMachineProcess):
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
 # ********************************* VIDEOINIT *********************************
                 elif state == SimpleVideoWriter.VIDEOINIT:
-                    # if self.verbose >= 1: profiler.enable()
+                    # Start a new video file
                     # DO STUFF
                     im = None
                     videoFileStartTime = seriesStartTime + numFramesInCurrentSeries / self.frameRate
@@ -3828,8 +3794,7 @@ class SimpleVideoWriter(StateMachineProcess):
                             # If requested, merge with audio.
                             #   This doesn't really work with SimpleVideoWriter right now. For potential future use.
                             if self.mergeMessageQueue is not None:
-                                if self.verbose >= 0:
-                                    self.log("Sorry, SimpleVideoWriter can't merge with audio yet. Try again without providing a merge message queue.")
+                                raise SyntaxError("Sorry, SimpleVideoWriter can't merge with audio yet. Try again without providing a merge message queue.")
                                 # Send file for AV merging:
                                 if self.videoWriteMethod == "PySpin":
                                     fileEvent = dict(
@@ -3867,8 +3832,7 @@ class SimpleVideoWriter(StateMachineProcess):
                         elif self.videoWriteMethod == "ffmpeg":
                             videoFileInterface.close()
                         if self.mergeMessageQueue is not None:
-                            if self.verbose >= 0:
-                                self.log("Sorry, SimpleVideoWriter can't merge with audio yet. Try again without providing a merge message queue.")
+                            raise SyntaxError("Sorry, SimpleVideoWriter can't merge with audio yet. Try again without providing a merge message queue.")
                             # Send file for AV merging:
                             if self.videoWriteMethod == "PySpin":
                                 fileEvent = dict(
@@ -3988,7 +3952,6 @@ class SimpleVideoWriter(StateMachineProcess):
             frameTime = metadata['frameTime']
             imageID = metadata['imageID']
             frameShape = self.imageQueue.frameShape;
-
             if self.verbose >= 3: self.log("Got video frame from acquirer. ID={ID}, t={t}".format(t=metadata['frameTime'], ID=imageID))
         except queue.Empty:
             # No frames available from acquirer

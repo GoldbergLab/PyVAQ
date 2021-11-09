@@ -2267,18 +2267,35 @@ him know. Otherwise, I had nothing to do with it.
                 verbose=self.audioAcquireVerbose,
                 ready=ready,
                 stdoutQueue=self.StdoutManager.queue)
-            self.audioWriteProcess = AudioWriter(
-                audioDirectory=p["audioDirectory"],
-                audioBaseFileName=p["audioBaseFileName"],
-                channelNames=p["audioDAQChannels"],
-                audioQueue=audioQueue,
-                mergeMessageQueue=mergeMsgQueue,
-                chunkSize=p["chunkSize"],
-                bufferSizeSeconds=p["bufferSizeSeconds"],
-                audioFrequency=self.actualAudioFrequency,
-                numChannels=len(p["audioDAQChannels"]),
-                verbose=self.audioWriteVerbose,
-                stdoutQueue=self.StdoutManager.queue)
+            if p["triggerMode"] == "SimpleContinuous":
+                if mergeMsgQueue is not None:
+                    self.log('Warning: SimpleAudioWriter does not support A/V merging yet.')
+                self.audioWriteProcess = SimpleAudioWriter(
+                    audioDirectory=p["audioDirectory"],
+                    audioBaseFileName=p["audioBaseFileName"],
+                    channelNames=p["audioDAQChannels"],
+                    audioQueue=audioQueue,
+                    mergeMessageQueue=mergeMsgQueue,
+                    chunkSize=p["chunkSize"],
+                    videoLength=p["recordTime"],
+                    bufferSizeSeconds=p["bufferSizeSeconds"],
+                    audioFrequency=self.actualAudioFrequency,
+                    numChannels=len(p["audioDAQChannels"]),
+                    verbose=self.audioWriteVerbose,
+                    stdoutQueue=self.StdoutManager.queue)
+            else:
+                self.audioWriteProcess = AudioWriter(
+                    audioDirectory=p["audioDirectory"],
+                    audioBaseFileName=p["audioBaseFileName"],
+                    channelNames=p["audioDAQChannels"],
+                    audioQueue=audioQueue,
+                    mergeMessageQueue=mergeMsgQueue,
+                    chunkSize=p["chunkSize"],
+                    bufferSizeSeconds=p["bufferSizeSeconds"],
+                    audioFrequency=self.actualAudioFrequency,
+                    numChannels=len(p["audioDAQChannels"]),
+                    verbose=self.audioWriteVerbose,
+                    stdoutQueue=self.StdoutManager.queue)
 
         maxGPUVEnc = 3  # Maximum number of venc sessions allowed by GPU. Only this number of video writers can attempt to use the GPU to accelerate video encoding.
         gpuCount = 0
