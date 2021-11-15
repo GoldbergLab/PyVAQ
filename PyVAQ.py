@@ -37,7 +37,7 @@ except ModuleNotFoundError:
     # pip seems to install PySpin as pyspin sometimes...
     import pyspin as PySpin
 from MonitorWidgets import AudioMonitor, CameraMonitor
-from StateMachineProcesses import Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, nodeAccessorFunctions, nodeAccessorTypes, ContinuousTriggerer, syncPrint, SimpleVideoWriter
+from StateMachineProcesses import Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, nodeAccessorFunctions, nodeAccessorTypes, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter
 import inspect
 
 VERSION='0.2.0'
@@ -704,7 +704,7 @@ class PyVAQ:
         self.startChildProcessesButton = ttk.Button(self.acquisitionFrame, text="Start acquisition", command=self.acquireButtonClick)
 
         self.audioFrequencyFrame =  ttk.LabelFrame(self.acquisitionFrame, text="Audio freq. (Hz)", style='SingleContainer.TLabelframe')
-        self.audioFrequencyVar =    tk.StringVar(); self.audioFrequencyVar.set("22050")
+        self.audioFrequencyVar =    tk.StringVar(); self.audioFrequencyVar.set("44100")
         self.audioFrequencyEntry =  ttk.Entry(self.audioFrequencyFrame, width=15, textvariable=self.audioFrequencyVar);
 
         self.videoFrequencyFrame =  ttk.LabelFrame(self.acquisitionFrame, text="Video freq (fps)", style='SingleContainer.TLabelframe')
@@ -892,7 +892,8 @@ class PyVAQ:
         self.actualVideoFrequency = None
         self.actualAudioFrequency = None
 
-        self.maxGPUVEncVar = ttk.StringVar(); self.maxGPUVEncVar.set('3')
+        DEFAULT_NUM_GPU_VENC_SESSIONS = 0
+        self.maxGPUVEncVar = tk.StringVar(); self.maxGPUVEncVar.set(str(DEFAULT_NUM_GPU_VENC_SESSIONS))
 
         # Verbosity of child processes
         #   0=Errors, 1=Occasional important status updates
@@ -913,7 +914,7 @@ class PyVAQ:
             'audioFrequency':                   dict(get=lambda:int(self.audioFrequencyVar.get()),              set=self.audioFrequencyVar.set),
             'videoFrequency':                   dict(get=lambda:int(self.videoFrequencyVar.get()),              set=self.videoFrequencyVar.set),
             'chunkSize':                        dict(get=lambda:int(self.chunkSizeVar.get()),                   set=self.chunkSizeVar.set),
-            "maxGPUVEnc":                       dict(get=lambda:int(self.maxGPUVencVar.get()),                  set=self.maxGPUVencVar.set),
+            "maxGPUVEnc":                       dict(get=lambda:int(self.maxGPUVEncVar.get()),                  set=self.maxGPUVEncVar.set),
             # 'exposureTime':                     dict(get=lambda:int(self.exposureTimeVar.get()),                set=self.exposureTimeVar.set),
             'gain':                             dict(get=lambda:float(self.gainVar.get()),                      set=self.gainVar.set),
             'preTriggerTime':                   dict(get=lambda:float(self.preTriggerTimeVar.get()),            set=self.preTriggerTimeVar.set),
@@ -1112,7 +1113,7 @@ class PyVAQ:
         if videoDutyCycle < minDutyCycle:
             videoDutyCycle = convertDutyCycleToExposureTime(minDutyCycle, videoFrequency)
 
-        self.setParams(videoExposureTime=videoExposureTime)
+        self.setParams(videoExposureTime=videoExposureTime*1000)
 
     def validateGain(self, *args):
         # Sanitize current gain settings (make sure it's >= 0)
@@ -2278,12 +2279,12 @@ him know. Otherwise, I had nothing to do with it.
                     audioBaseFileName=p["audioBaseFileName"],
                     channelNames=p["audioDAQChannels"],
                     audioQueue=audioQueue,
-                    mergeMessageQueue=mergeMsgQueue,
-                    chunkSize=p["chunkSize"],
-                    videoLength=p["recordTime"],
-                    bufferSizeSeconds=p["bufferSizeSeconds"],
                     audioFrequency=self.actualAudioFrequency,
+                    frameRate=self.actualVideoFrequency,
                     numChannels=len(p["audioDAQChannels"]),
+                    videoLength=p["recordTime"],
+                    mergeMessageQueue=mergeMsgQueue,
+                    daySubfolders=p['daySubfolders'],
                     verbose=self.audioWriteVerbose,
                     stdoutQueue=self.StdoutManager.queue)
             else:
@@ -2297,6 +2298,7 @@ him know. Otherwise, I had nothing to do with it.
                     bufferSizeSeconds=p["bufferSizeSeconds"],
                     audioFrequency=self.actualAudioFrequency,
                     numChannels=len(p["audioDAQChannels"]),
+                    daySubfolders=p['daySubfolders'],
                     verbose=self.audioWriteVerbose,
                     stdoutQueue=self.StdoutManager.queue)
 
@@ -2328,7 +2330,7 @@ him know. Otherwise, I had nothing to do with it.
                 if mergeMsgQueue is not None:
                     self.log('Warning: SimpleVideoWriter does not support A/V merging yet.')
                 gpuOk = (gpuCount < p['maxGPUVEnc'])
-                if p['maxGPUVenc'] > 0 and not gpuOk:
+                if p['maxGPUVEnc'] > 0 and not gpuOk:
                     # Some GPU video encoder sessions requested, but not enough for all cameras.
                     self.log('Warning: Cannot use GPU acceleration for all cameras - not enough GPU VEnc sessions allowed.')
                 videoWriteProcess = SimpleVideoWriter(
@@ -2340,6 +2342,7 @@ him know. Otherwise, I had nothing to do with it.
                     requestedFrameRate=p["videoFrequency"],
 #                    mergeMessageQueue=mergeMsgQueue,   # Merging not supported for SimpleVideoWriter
                     videoLength=p["recordTime"],
+                    daySubfolders=p['daySubfolders'],
                     verbose=self.videoWriteVerbose,
                     stdoutQueue=self.StdoutManager.queue,
                     gpuVEnc=gpuOk
@@ -2355,6 +2358,7 @@ him know. Otherwise, I had nothing to do with it.
                     requestedFrameRate=p["videoFrequency"],
                     mergeMessageQueue=mergeMsgQueue,
                     bufferSizeSeconds=p["bufferSizeSeconds"],
+                    daySubfolders=p['daySubfolders'],
                     verbose=self.videoWriteVerbose,
                     stdoutQueue=self.StdoutManager.queue
                     )

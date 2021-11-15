@@ -206,7 +206,13 @@ class AudioChunk():
 
     def addChunkToEnd(self, nextChunk):
         # Add on another chunk to the end of this one.
-        self.data = np.concatenate(self.data, nextChunk.data, axis=1)
+        self.data = np.concatenate((self.data, nextChunk.data), axis=1)
+        self.chunkEndTime = self.calculateChunkEndTime()
+
+    def addChunkToStart(self, nextChunk):
+        # Add on another chunk to the end of this one.
+        self.data = np.concatenate((nextChunk.data, self.data), axis=1)
+        self.chunkStartTime = nextChunk.chunkStartTime
         self.chunkEndTime = self.calculateChunkEndTime()
 
     def getChannelCount(self):
@@ -236,7 +242,8 @@ class AudioChunk():
         preChunk = AudioChunk(
             chunkStartTime=self.chunkStartTime,
             audioFrequency=self.audioFrequency,
-            data=np.copy(self.data[:, :sampleSplitNum]))
+            data=np.copy(self.data[:, :sampleSplitNum]),
+            idspace=self.id[1])
 
         # Modify this chunk so it's the post-chunk
         self.data = self.data[:, sampleSplitNum:]
@@ -2203,9 +2210,9 @@ class SimpleAudioWriter(StateMachineProcess):
         ]
 
     def __init__(self,
+                audioDirectory='.',
                 audioBaseFileName='audioFile',
                 channelNames=[],
-                audioDirectory='.',
                 audioQueue=None,
                 audioFrequency=None,    # A shared variable for audioFrequency
                 frameRate=None,         # A shared variable for video framerate (needed to ensure audio sync)
@@ -2224,9 +2231,9 @@ class SimpleAudioWriter(StateMachineProcess):
         self.audioQueue = audioQueue
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
-        self.audioFrequencyVar = frameRate
+        self.audioFrequencyVar = audioFrequency
         self.audioFrequency = None
-        self.frameRateVar = videoFrequency
+        self.frameRateVar = frameRate
         self.frameRate = None
         self.numChannels = numChannels
         self.videoLength = videoLength
@@ -2290,6 +2297,8 @@ class SimpleAudioWriter(StateMachineProcess):
                     audioFileCount = 0
                     numSamplesInCurrentSeries = 0
                     audioChunk = None
+                    audioChunkLeftover = None
+                    timeWrote = 0
 
                     # Read actual audio frequency from the Synchronizer process
                     while self.audioFrequencyVar.value == -1:
@@ -2304,10 +2313,16 @@ class SimpleAudioWriter(StateMachineProcess):
                     # Calculate actual exact # of frames per video that SimpleVideoWriter will be recording
                     actualFramesPerVideo = round(self.videoLength * self.frameRate)
                     # Actual video length that SimpleVideoWriter will be using
-                    actualVideoLength = actualFramesPerVideo * self.frameRate
+                    actualVideoLength = actualFramesPerVideo / self.frameRate
                     # Actual # of samples per video we should record. Note thta this will have an accuracy of +/- 0.5 audio samples.
                     #   At 44100 Hz, and 30 fps, the audio may be as much as whole frame de-synced after 2900 videos. This is acceptable for now.
                     numSamplesPerFile = round(actualVideoLength * self.audioFrequency)
+
+                    if self.verbose >= 1:
+                        self.log('Audio writer initialized:')
+                        self.log('\tAudiofreq = {af} Hz'.format(af=self.audioFrequency))
+                        self.log('\tSamples per file = {spf}'.format(spf=numSamplesPerFile))
+                        self.log('\tTime per file = {t} s'.format(t=actualVideoLength))
 
                     # CHECK FOR MESSAGES
                     try:
@@ -2319,7 +2334,7 @@ class SimpleAudioWriter(StateMachineProcess):
                     if self.exitFlag:
                         nextState = SimpleAudioWriter.STOPPING
                     elif msg in ['', SimpleAudioWriter.START]:
-                        nextState = SimpleAudioWriter.BUFFERING
+                        nextState = SimpleAudioWriter.AUDIOINIT
                     elif msg == SimpleAudioWriter.STOP:
                         nextState = SimpleAudioWriter.STOPPING
                     elif msg == SimpleAudioWriter.EXIT:
@@ -2341,12 +2356,12 @@ class SimpleAudioWriter(StateMachineProcess):
                         audioFile = None
 
                     # Generate new audio file path
-                    audioFileNameTags = [','.join(self.channelNames), generateTimeString(timestamp=seriesStartTime)], '{audioFileCount:03d}'.format(audioFileCount=audioFileCount))
+                    audioFileNameTags = [','.join(self.channelNames), generateTimeString(timestamp=seriesStartTime), '{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
                     if self.daySubfolders:
                         audioDirectory = getDaySubfolder(self.audioDirectory, timestamp=audioFileStartTime)
                     else:
                         audioDirectory = self.audioDirectory
-                    audioFileName = generateFileName(directory=audioDirectory, baseName=self.audioBaseFileName, extension='.avi', tags=videoFileNameTags)
+                    audioFileName = generateFileName(directory=audioDirectory, baseName=self.audioBaseFileName, extension='.wav', tags=audioFileNameTags)
                     ensureDirectoryExists(audioDirectory)
 
                     # Open and initialize audio file
@@ -2354,6 +2369,8 @@ class SimpleAudioWriter(StateMachineProcess):
                     audioFile.audioFileName = audioFileName
                     # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
                     audioFile.setparams((self.numChannels, self.audioDepthBytes, self.audioFrequency, 0, 'NONE', 'not compressed'))
+                    if self.verbose >= 3:
+                        self.log('Opened audio file {name} with {n} channels, {b} bitdepth, and {f} audio frequency'.format(name=audioFileName, n=self.numChannels, b=self.audioDepthBytes, f=self.audioFrequency))
 
                     audioFileCount += 1
 
@@ -2389,7 +2406,7 @@ class SimpleAudioWriter(StateMachineProcess):
                         # We have an audio chunk to write.
 
                         # Calculate how many more samples needed to complete the file
-                        samplesUntilEOF = numSamplesPerFile- numSamplesInCurrentFile
+                        samplesUntilEOF = numSamplesPerFile - numSamplesInCurrentFile
 
                         # Split chunk to part before end of file, and part after end of file.
                         [audioChunk, audioChunkLeftover] = audioChunk.splitAtSample(samplesUntilEOF)
@@ -2408,14 +2425,15 @@ class SimpleAudioWriter(StateMachineProcess):
                             self.log("Audio time wrote: {time}".format(time=timeWrote))
 
                     audioChunk = self.getNextChunk()
-                    if audioChunkLeftover.getSampleCount() != 0:
-                        # There are leftover samples. Include those at the start of this chunk.
-                        if self.verbose >= 3:
-                            self.log('Concatenating new chunk to end of leftover chunk:')
-                            self.log('Leftover: ' + audioChunkLeftover)
-                            self.log('New:      ' + audioChunk)
-                        nextAudioChunk.addChunkToEnd(audioChunk)
-                        audioChunk = nextAudioChunk
+                    if audioChunkLeftover is not None:
+                        if audioChunkLeftover.getSampleCount() != 0:
+                            # There are leftover samples. Include those at the start of this chunk.
+                            if self.verbose >= 3:
+                                self.log('Prepending leftover chunk to new chunk:')
+                                self.log('Leftover: ' + audioChunkLeftover)
+                                self.log('New:      ' + audioChunk)
+                            audioChunk.addChunkToStart(audioChunkLeftover)
+                            audioChunkLeftover = None
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
