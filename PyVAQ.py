@@ -765,7 +765,7 @@ class PyVAQ:
 
         self.mergeCompressionFrame = ttk.LabelFrame(self.mergeFrame, text="Compression:")
         self.mergeCompressionVar = tk.StringVar(); self.mergeCompressionVar.set('23')
-        self.mergeCompression = ttk.Combobox(self.mergeCompressionFrame, textvariable=self.mergeCompressionVar, values=[str(k) for k in range(52)], width=12)
+        self.mergeCompression = ttk.Combobox(self.mergeCompressionFrame, textvariable=self.mergeCompressionVar, values=AVMerger.COMPRESSION_OPTIONS, width=12)
         self.mergeCompressionVar.trace('w', lambda *args: self.changeAVMergerParams(compression=self.mergeCompressionVar.get()))
 
         self.fileSettingsFrame = ttk.LabelFrame(self.acquisitionFrame, text="File settings")
@@ -2327,8 +2327,6 @@ him know. Otherwise, I had nothing to do with it.
                 ready=ready,
                 stdoutQueue=self.StdoutManager.queue)
             if p["triggerMode"] == "SimpleContinuous":
-                if mergeMsgQueue is not None:
-                    self.log('Warning: SimpleVideoWriter does not support A/V merging yet.')
                 gpuOk = (gpuCount < p['maxGPUVEnc'])
                 if p['maxGPUVEnc'] > 0 and not gpuOk:
                     # Some GPU video encoder sessions requested, but not enough for all cameras.
@@ -2340,7 +2338,7 @@ him know. Otherwise, I had nothing to do with it.
                     imageQueue=videoAcquireProcess.imageQueueReceiver,
                     frameRate=self.actualVideoFrequency,
                     requestedFrameRate=p["videoFrequency"],
-#                    mergeMessageQueue=mergeMsgQueue,   # Merging not supported for SimpleVideoWriter
+                    mergeMessageQueue=mergeMsgQueue,
                     videoLength=p["recordTime"],
                     daySubfolders=p['daySubfolders'],
                     verbose=self.videoWriteVerbose,
