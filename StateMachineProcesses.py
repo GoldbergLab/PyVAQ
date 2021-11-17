@@ -118,11 +118,16 @@ class Trigger():
     # Generator for new unique IDs
     newid = itertools.count().__next__   # Source of this clever little idea: https://stackoverflow.com/a/1045724/1460057
     # A class to represent a trigger object
-    def __init__(self, startTime, triggerTime, endTime, tags=set(), idspace=None):
+    def __init__(self, startTime, triggerTime, endTime, tags=set(), id=None, idspace=None):
         # times in seconds
         if not (endTime >= triggerTime >= startTime):
             raise ValueError("Trigger times must satisfy startTime <= triggerTime <= endTime")
-        self.id = (Trigger.newid(), idspace)
+        if id is None:
+            # No ID supplied. Generate a unique one.
+            self.id = (Trigger.newid(), idspace)
+        else:
+            # ID given. Assign it.
+            self.id = (id, idspace)
         self.startTime = startTime
         self.triggerTime = triggerTime
         self.endTime = endTime
@@ -356,9 +361,7 @@ def generateFileName(directory='.', baseName='unnamed', tags=[], extension=''):
     #   zero or more tags, and an extension.
     extension = '.' + slugify(extension)
     fileName = baseName
-    for tag in tags:
-        if len(tag) > 0:
-            fileName += '_' + tag
+    fileName = '_'.join([fileName]+tags)
     fileName = slugify(fileName)
     fileName += extension
     return os.path.join(directory, fileName)
@@ -507,6 +510,10 @@ class AVMerger(StateMachineProcess):
     VIDEO = 'video'
     AUDIO = 'audio'
 
+    NO_REENCODING = "No reencoding"
+    COMPRESSION_OPTIONS = [NO_REENCODING]+[str(k) for k in range(52)]
+
+
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
@@ -517,7 +524,8 @@ class AVMerger(StateMachineProcess):
         'deleteMergedAudioFiles',
         'deleteMergedVideoFiles',
         'compression',
-        'daySubfolders'
+        'daySubfolders',
+        'baseFileName'
     ]
 
     def __init__(self,
@@ -761,7 +769,11 @@ class AVMerger(StateMachineProcess):
                         if self.verbose >= 1: self.log('Merging into directory: {d}, daySubfolders={dsf}'.format(d=mergeDirectory, dsf=self.daySubfolders))
                         if not self.montage:  # Make a separate file for each video stream
                             # Construct command template
-                            mergeCommandTemplate = 'ffmpeg -i "{videoFile}" ' + audioFileInputText + ' -c:v libx264 -preset veryfast -crf {compression} -shortest -nostdin -y "{outputFile}"'
+                            if self.compression == AVMerger.NO_REENCODING:
+                                videoEncoding = '-c:v copy'
+                            else:
+                                videoEncoding = '-c:v libx264 -preset veryfast -crf {compression}'.format(compression=self.compression)
+                            mergeCommandTemplate = 'ffmpeg -i "{videoFile}" ' + audioFileInputText + ' ' + videoEncoding + ' -shortest -nostdin -y "{outputFile}"'
                             # Set up dictionary of strings to substitute into command template
                             kwargs = dict([('audioFile{k}'.format(k=k), audioFileEvents[k]['filePath']) for k in range(len(audioFileEvents))])
                             for videoFileEvent in videoFileEvents:
@@ -769,7 +781,6 @@ class AVMerger(StateMachineProcess):
                                 kwargs['videoFile'] = videoFileEvent['filePath']
                                 fileNameTags = [videoFileEvent['streamID'], 'merged', generateTimeString(videoFileEvent['trigger'])] + list(videoFileEvent['trigger'].tags)
                                 kwargs['outputFile'] = generateFileName(directory=mergeDirectory, baseName=self.baseFileName, extension='.avi', tags=fileNameTags)
-                                kwargs['compression'] = self.compression
                                 # Substitute strings into command template
                                 mergeCommand = mergeCommandTemplate.format(**kwargs)
                                 if self.verbose >= 1:
@@ -783,13 +794,20 @@ class AVMerger(StateMachineProcess):
                         else:   # Montage the video streams into one file
                             # Construct the video part of the ffmpeg command template
                             videoFileInputText = ' '.join(['-i "{{videoFile{k}}}"'.format(k=k) for k in range(len(videoFileEvents))])
+                            if self.compression == AVMerger.NO_REENCODING:
+                                videoEncoding = '-c:v copy'
+                            else:
+                                videoEncoding = '-c:v libx264 -preset veryfast -crf {compression}'.format(compression=self.compression)
                             # Construct command template
-                            mergeCommandTemplate = "ffmpeg " + videoFileInputText + " " + audioFileInputText + ' -c:v libx264 -preset veryfast -crf {compression} -shortest -nostdin -y -filter_complex hstack "{outputFile}"'
+                            mergeCommandTemplate = "ffmpeg " + videoFileInputText + " " + audioFileInputText + ' ' + videoEncoding + ' -shortest -nostdin -y -filter_complex hstack "{outputFile}"'
                             # Set up dictionary of strings to substitute into command template
                             kwargs = dict(
                                 [('audioFile{k}'.format(k=k), audioFileEvents[k]['filePath']) for k in range(len(audioFileEvents))] + \
                                 [('videoFile{k}'.format(k=k), videoFileEvents[k]['filePath']) for k in range(len(videoFileEvents))])
-                            fileNameTags = [videoFileEvent['streamID'], 'montage', generateTimeString(videoFileEvent['trigger'])] + list(videoFileEvent['trigger'].tags)
+                            fileNameTags = ['_'.join([videoFileEvent['streamID'] for videoFileEvent in videoFileEvents]),
+                                            'montage',
+                                            generateTimeString(videoFileEvent['trigger'])
+                                            ] + list(videoFileEvent['trigger'].tags)
                             kwargs['outputFile'] = generateFileName(directory=mergeDirectory, baseName=self.baseFileName, extension='.avi', tags=fileNameTags)
                             kwargs['compression'] = self.compression
                             mergeCommand = mergeCommandTemplate.format(**kwargs)
@@ -2455,17 +2473,23 @@ class SimpleAudioWriter(StateMachineProcess):
                             nextState = SimpleAudioWriter.AUDIOINIT
                             # If requested, merge with video
                             if self.mergeMessageQueue is not None:
-                                raise SyntaxError("Sorry, SimpleAudioWriter can't merge with audio yet. Try again without providing a merge message queue.")
                                 # Send file for AV merging:
                                 fileEvent = dict(
                                     filePath=audioFile.audioFileName,
                                     streamType=AVMerger.AUDIO,
-                                    trigger=None, #triggers[0],
+                                    trigger=Trigger(audioFileStartTime,
+                                        audioFileStartTime,
+                                        audioFileStartTime+actualVideoLength,
+                                        id=audioFileCount, idspace='SimpleAVFiles'), #triggers[0],
                                     streamID='audio',
-                                    startTime=audioFileStartTime
-                                )
+                                    startTime=audioFileStartTime,
+                                    tags=['{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
+                                    )
                                 if self.verbose >= 1: self.log("Sending audio filename to merger")
                                 self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                            else:
+                                if self.verbose >= 3:
+                                    self.log('No merge message queue available, cannot send to AVMerger')
                         elif numSamplesInCurrentFile < numSamplesPerFile:
                             # Not enough audio samples written to this file yet. Keep writing.
                             nextState = SimpleAudioWriter.WRITING
@@ -2481,17 +2505,23 @@ class SimpleAudioWriter(StateMachineProcess):
                         audioFile.writeframes(b'')  # Recompute header info?
                         audioFile.close()
                         if self.mergeMessageQueue is not None:
-                            raise SyntaxError("Sorry, SimpleAudioWriter can't merge with audio yet. Try again without providing a merge message queue.")
                             # Send file for AV merging:
                             fileEvent = dict(
                                 filePath=audioFile.audioFileName,
                                 streamType=AVMerger.AUDIO,
-                                trigger=None, #triggers[0],
+                                trigger=Trigger(audioFileStartTime,
+                                    audioFileStartTime,
+                                    audioFileStartTime+actualVideoLength,
+                                    id=audioFileCount, idspace='SimpleAVFiles'), #triggers[0],
                                 streamID='audio',
-                                startTime=audioFileStartTime
+                                startTime=audioFileStartTime,
+                                tags=['{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
                             )
                             self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
                         audioFile = None
+                    else:
+                        if self.verbose >= 3:
+                            self.log('No merge message queue available, cannot send to AVMerger')
 
                     # CHECK FOR MESSAGES
                     try:
@@ -3812,7 +3842,6 @@ class SimpleVideoWriter(StateMachineProcess):
                             # If requested, merge with audio.
                             #   This doesn't really work with SimpleVideoWriter right now. For potential future use.
                             if self.mergeMessageQueue is not None:
-                                raise SyntaxError("Sorry, SimpleVideoWriter can't merge with audio yet. Try again without providing a merge message queue.")
                                 # Send file for AV merging:
                                 if self.videoWriteMethod == "PySpin":
                                     fileEvent = dict(
@@ -3820,18 +3849,26 @@ class SimpleVideoWriter(StateMachineProcess):
                                         streamType=AVMerger.VIDEO,
                                         trigger=None, #triggers[0],
                                         streamID=self.camSerial,
-                                        startTime=videoFileStartTime
+                                        startTime=videoFileStartTime,
+                                        tags=['{videoCount:03d}'.format(videoCount=videoCount)]
                                     )
                                 else:
                                     fileEvent = dict(
-                                        filePath=videoFileName+'.avi',
+                                        filePath=videoFileName,
                                         streamType=AVMerger.VIDEO,
-                                        trigger=None, #triggers[0],
+                                        trigger=Trigger(videoFileStartTime,
+                                            videoFileStartTime,
+                                            videoFileStartTime+self.videoFrameCount/self.frameRate,
+                                            id=videoCount, idspace='SimpleAVFiles'), #triggers[0],
                                         streamID=self.camSerial,
-                                        startTime=videoFileStartTime
+                                        startTime=videoFileStartTime,
+                                        tags=['{videoCount:03d}'.format(videoCount=videoCount)]
                                     )
                                 if self.verbose >= 2: self.log("Sending video filename to merger")
                                 self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                            else:
+                                if self.verbose >= 3:
+                                    self.log('No merge message queue available, cannot send to AVMerger')
                         elif numFramesInCurrentVideo < self.videoFrameCount:
                             # Not enough frames yet. Keep writing.
                             nextState = SimpleVideoWriter.WRITING
@@ -3850,7 +3887,6 @@ class SimpleVideoWriter(StateMachineProcess):
                         elif self.videoWriteMethod == "ffmpeg":
                             videoFileInterface.close()
                         if self.mergeMessageQueue is not None:
-                            raise SyntaxError("Sorry, SimpleVideoWriter can't merge with audio yet. Try again without providing a merge message queue.")
                             # Send file for AV merging:
                             if self.videoWriteMethod == "PySpin":
                                 fileEvent = dict(
@@ -3858,15 +3894,20 @@ class SimpleVideoWriter(StateMachineProcess):
                                     streamType=AVMerger.VIDEO,
                                     trigger=None, #triggers[0],
                                     streamID=self.camSerial,
-                                    startTime=videoFileStartTime
+                                    startTime=videoFileStartTime,
+                                    tags=['{videoCount:03d}'.format(videoCount=videoCount)]
                                 )
                             else:
                                 fileEvent = dict(
-                                    filePath=videoFileName+'.avi',
+                                    filePath=videoFileName,
                                     streamType=AVMerger.VIDEO,
-                                    trigger=None, #triggers[0],
+                                    trigger=Trigger(videoFileStartTime,
+                                        videoFileStartTime,
+                                        videoFileStartTime+self.videoFrameCount/self.frameRate,
+                                        id=videoCount, idspace='SimpleAVFiles'), #triggers[0],
                                     streamID=self.camSerial,
-                                    startTime=videoFileStartTime
+                                    startTime=videoFileStartTime,
+                                    tags=['{videoCount:03d}'.format(videoCount=videoCount)]
                                 )
                             self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
                         videoFileInterface = None
