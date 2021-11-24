@@ -12,12 +12,12 @@ import math
 # This is the format used by PyVAQ running SimpleVideoWriter and
 #   SimpleAudioWriter
 
-def mergeFolder(folderPath, overwrite=False, dryRun=False):
+def mergeFolder(folderPaths, overwrite=False, dryRun=False):
     '''Loop through files in a folder and merge matching audio/video files
 
     Arguments:
-        folderPath = the path to the folder to look in (either a string or a
-            pathlib.Path object)
+        folderPaths = one or more paths to the folder to look in (either a
+            string or a pathlib.Path object)
         overwrite = (optional) boolean flag indicating whether or not to
             overwrite files if they already exist. Default is False.
         dryRun = (optional) boolean flag indicating whether or not to do a
@@ -25,33 +25,38 @@ def mergeFolder(folderPath, overwrite=False, dryRun=False):
             Default is False.
     '''
 
+    if type(folderPaths) != type([]):
+        # User passed a single path in - wrap it in a list for consistency.
+        folderPaths = [folderPaths]
+
     videoStreams = {}
     audioStreams = {}
-    for k, subpath in enumerate(folderPath.iterdir()):
-        if subpath.is_file():
-            extension = subpath.suffix.lower()
-            name = subpath.name[:-len(extension)]
-            if '_' not in name:
-                print('Skipping file because it does not contain underscore-separated tags: {f}'.format(f=subpath))
-                continue
-            baseName, index = name.rsplit(sep='_', maxsplit=1)
-            try:
-                index = int(index)
-            except ValueError:
-                print('Skipping file because end tag is not numerical: {f}'.format(f=subpath))
-                continue
-            if extension == '.avi':
-                if baseName not in videoStreams:
-                    videoStreams[baseName] = {}
-                if index in videoStreams[baseName]:
-                    print('Warning, duplicate video files found for baseName {b} and index {i}'.format(b=baseName, i=index))
-                videoStreams[baseName][index] = subpath
-            elif extension == '.wav':
-                if baseName not in audioStreams:
-                    audioStreams[baseName] = {}
-                if index in audioStreams[baseName]:
-                    print('Warning, duplicate audio files found for baseName {b} and index {i}'.format(b=baseName, i=index))
-                audioStreams[baseName][index] = subpath
+    for folderPath in folderpaths:
+        for k, subpath in enumerate(folderPath.iterdir()):
+            if subpath.is_file():
+                extension = subpath.suffix.lower()
+                name = subpath.name[:-len(extension)]
+                if '_' not in name:
+                    print('Skipping file because it does not contain underscore-separated tags: {f}'.format(f=subpath))
+                    continue
+                baseName, index = name.rsplit(sep='_', maxsplit=1)
+                try:
+                    index = int(index)
+                except ValueError:
+                    print('Skipping file because end tag is not numerical: {f}'.format(f=subpath))
+                    continue
+                if extension == '.avi':
+                    if baseName not in videoStreams:
+                        videoStreams[baseName] = {}
+                    if index in videoStreams[baseName]:
+                        print('Warning, duplicate video files found for baseName {b} and index {i}'.format(b=baseName, i=index))
+                    videoStreams[baseName][index] = subpath
+                elif extension == '.wav':
+                    if baseName not in audioStreams:
+                        audioStreams[baseName] = {}
+                    if index in audioStreams[baseName]:
+                        print('Warning, duplicate audio files found for baseName {b} and index {i}'.format(b=baseName, i=index))
+                    audioStreams[baseName][index] = subpath
 
     print('Found {n} video streams'.format(n=len(videoStreams)))
     for baseName in videoStreams:
@@ -123,5 +128,5 @@ def mergeFiles(videoFiles, audioFile, reencodeVideo=False, reencodeAudio=False, 
 
 if __name__ == "__main__":
     # A utility to make all files and folders within a tree as short a name as possible.
-    folderPath = Path(sys.argv[1])
-    mergeFolder(folderPath, dryRun=False)
+    folderPaths = Path(sys.argv[1:])
+    mergeFolder(folderPaths, dryRun=False)
