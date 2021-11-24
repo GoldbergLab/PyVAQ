@@ -128,5 +128,5 @@ def mergeFiles(videoFiles, audioFile, reencodeVideo=False, reencodeAudio=False, 
 
 if __name__ == "__main__":
     # A utility to make all files and folders within a tree as short a name as possible.
-    folderPaths = Path(sys.argv[1:])
+    folderPaths = [Path(p) for p in sys.argv[1:]]
     mergeFolder(folderPaths, dryRun=False)
