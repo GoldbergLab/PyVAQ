@@ -7,7 +7,7 @@ import subprocess
 FFMPEG_EXE = shutil.which('ffmpeg')
 
 # A script to split mutli-channel audio files into separate single-channel audio
-#   files.
+#   files, plus one file that has both stereo tracks mixed into one mono track
 
 def splitAudioTracksInFolder(folderPaths, overwrite=False, dryRun=False, requireNumericalEndTag=True):
     '''Loop through files in a folder and split audio files into track files
@@ -44,6 +44,8 @@ def splitAudioTracksInFolder(folderPaths, overwrite=False, dryRun=False, require
     for audioFile in audioFiles:
         extension = audioFile.suffix.lower()
         name = audioFile.name[:-len(extension)]
+
+        # Check that file matches expected filename pattern
         if '_' not in name:
             print('Skipping file because it does not contain underscore-separated tags: {f}'.format(f=audioFile))
             continue
@@ -56,6 +58,8 @@ def splitAudioTracksInFolder(folderPaths, overwrite=False, dryRun=False, require
                 continue
         baseName = name
         print(audioFile)
+
+        # Get number of channels in file
         af = wave.open(str(audioFile), 'r')
         nChannels = af.getnchannels()
         af.close()
@@ -63,17 +67,30 @@ def splitAudioTracksInFolder(folderPaths, overwrite=False, dryRun=False, require
         if nChannels < 2:
             print('Skipping file because it doesn\'t have multiple channels: {f}'.format(f=audioFile))
 
+        # Increment input file counter
+        fileCount += 1
+
+        # Construct ffmpeg command to mix stereo tracks into a mono track. This will be labeled "chan0"
+        outName = '{baseName}_chan{k}.wav'.format(k=0, baseName=baseName)
+        outFile = audioFile.parents[0] / outName
+        ffmpegMixCommand = 'ffmpeg -i "{inFile}" -ac 1 "{outFile}"'.format(inFile=audioFile, outFile=outFile)
+
+        # Run ffmpeg split command
+        ffmpegProc = subprocess.call(ffmpegMixCommand)
+
+        # Construct ffmpeg command to split stereo track into two mono tracks. These mono files will be labeled "chan1", "chan2", etc
         mapCommand = []
         for k in range(nChannels):
-            outName = '{baseName}_chan{k}.wav'.format(k=k, baseName=baseName, idx=index)
+            outName = '{baseName}_chan{k}.wav'.format(k=k+1, baseName=baseName, idx=index)
             outFile = audioFile.parents[0] / outName
             mapCommand.append('-map_channel 0.0.{k} "{outFile}"'.format(k=k, outFile=outFile))
         mapCommand = ' '.join(mapCommand)
+        ffmpegSplitCommand = 'ffmpeg -i "{inFile}" {mapCommand}'.format(inFile=audioFile, mapCommand=mapCommand)
+        # Run ffmpeg split command
+        ffmpegProc = subprocess.call(ffmpegSplitCommand)
 
-        ffmpegCommand = 'ffmpeg -i "{inFile}" {mapCommand}'.format(inFile=audioFile, mapCommand=mapCommand)
-        fileCount += 1
+        # Increment split file counter
         splitCount += nChannels
-        ffmpegProc = subprocess.call(ffmpegCommand)
 
     print()
     print('Result:')
