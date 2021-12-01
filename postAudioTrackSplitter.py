@@ -70,8 +70,8 @@ def splitAudioTracksInFolder(folderPaths, overwrite=False, dryRun=False, require
         # Increment input file counter
         fileCount += 1
 
-        # Construct ffmpeg command to mix stereo tracks into a mono track. This will be labeled "chanN" where N is after the last split channel
-        outName = '{baseName}_chan{k}.wav'.format(k=nChannels, baseName=baseName)
+        # Construct ffmpeg command to mix stereo tracks into a mono track. This will be labeled "chan0"
+        outName = '{baseName}_chan{k}.wav'.format(k=0, baseName=baseName)
         outFile = audioFile.parents[0] / outName
         ffmpegMixCommand = 'ffmpeg -i "{inFile}" -ac 1 "{outFile}"'.format(inFile=audioFile, outFile=outFile)
 
@@ -81,7 +81,7 @@ def splitAudioTracksInFolder(folderPaths, overwrite=False, dryRun=False, require
         # Construct ffmpeg command to split stereo track into two mono tracks. These mono files will be labeled "chan1", "chan2", etc
         mapCommand = []
         for k in range(nChannels):
-            outName = '{baseName}_chan{k}.wav'.format(k=k, baseName=baseName, idx=index)
+            outName = '{baseName}_chan{k}.wav'.format(k=k+1, baseName=baseName, idx=index)
             outFile = audioFile.parents[0] / outName
             mapCommand.append('-map_channel 0.0.{k} "{outFile}"'.format(k=k, outFile=outFile))
         mapCommand = ' '.join(mapCommand)
