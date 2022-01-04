@@ -473,8 +473,9 @@ def checkCameraSpeed(camSerial):
         cam = camList.GetBySerial(camSerial)
         cam.Init()
         cameraSpeedValue, cameraSpeed = getCameraAttribute(cam.GetTLDeviceNodeMap(), 'DeviceCurrentSpeed', PySpin.CEnumerationPtr)
-        cameraBaudValue, cameraBaud =   getCameraAttribute(cam.GetNodeMap(), 'SerialPortBaudRate', PySpin.CEnumerationPtr)
-        cameraSpeed = cameraSpeed + ' ' + cameraBaud
+        # This causes weird crashes for one of our flea3 cameras...
+        #cameraBaudValue, cameraBaud =   getCameraAttribute(cam.GetNodeMap(), 'SerialPortBaudRate', PySpin.CEnumerationPtr)
+#        cameraSpeed = cameraSpeed + ' ' + cameraBaud
         cam.DeInit()
         del cam
         camList.Clear()
