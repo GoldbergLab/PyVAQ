@@ -30,12 +30,13 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 # from matplotlib.lines import Line2D
-from pympler import tracker
+# from pympler import tracker
 try:
     import PySpin
 except ModuleNotFoundError:
     # pip seems to install PySpin as pyspin sometimes...
     import pyspin as PySpin
+
 from MonitorWidgets import AudioMonitor, CameraMonitor
 from StateMachineProcesses import Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, nodeAccessorFunctions, nodeAccessorTypes, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter
 import inspect
