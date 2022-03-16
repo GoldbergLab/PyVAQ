@@ -1380,7 +1380,10 @@ him know. Otherwise, I had nothing to do with it.
                 d.unDockButton.grid(row=0, column=0, sticky=tk.NE)
                 d.docker.grid(row=1, column=0)
 
-            self.audioMonitorDocker = Docker(self.monitorMasterFrame, root=self.master, unDockFunction=unDockFunction, reDockFunction=reDockFunction)
+            self.audioMonitorDocker = Docker(
+                self.monitorMasterFrame, root=self.master,
+                unDockFunction=unDockFunction, reDockFunction=reDockFunction,
+                unDockText='undock', reDockText='dock', background='#d9d9d9')
             self.audioMonitorDocker.unDockButton.grid(row=0, column=0, sticky=tk.NE)
             self.audioMonitorDocker.reDockButton.grid(row=0, column=0, sticky=tk.NW)
             self.audioMonitorDocker.reDockButton.grid_forget()
