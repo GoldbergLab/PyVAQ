@@ -1175,7 +1175,7 @@ him know. Otherwise, I had nothing to do with it.
                     pass
             if 'Audio history length' in choices and len(choices['Audio history length']) > 0:
                 try:
-                    self.self.audioMonitor.historyLength = float(choices['Audio history length']) * p['audioFrequency']
+                    self.audioMonitor.historyLength = float(choices['Audio history length']) * p['audioFrequency']
                 except ValueError:
                     pass
 
