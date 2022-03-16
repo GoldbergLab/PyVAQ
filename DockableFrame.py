@@ -6,6 +6,7 @@ import tkinter.ttk as ttk
 class Docker:
     def __init__(self, parent, *args, root=None, unDockFunction=None, reDockFunction=None, **kwargs):
         # parent = widget to assign as DockableFrame's parent
+        # root = tkinter.Tk widget (the root window widget)
         # unDockFunction = a function to call when undocking - should take one
         #   argument, the Docker object itself.
         # reDockFunction = a function to call when redocking - should take one
@@ -40,3 +41,24 @@ class Docker:
         self.isDocked = True
         if self.reDockFunction is not None:
             self.reDockFunction(self)
+
+if __name__ == "__main__":
+    # Demo
+
+    root = tk.Tk()
+
+    def unDockFunction(d):
+        pass
+
+    def reDockFunction(d):
+        d.docker.grid(row=1, column=0)
+
+    df = Docker(root, unDockFunction=unDockFunction, reDockFunction=reDockFunction)
+    labOut = tk.Label(root, text='That there is a dockable frame')
+    labOut.grid(row=0, column=0)
+    df.docker.grid(row=1, column=0)
+    labIn = tk.Label(df.docker, text='hi there I am in a dockable frame.')
+    df.unDockButton.grid(row=0, column=0)
+    df.reDockButton.grid(row=0, column=1)
+    labIn.grid(row=1, column=0, columnspan=2)
+    root.mainloop()
