@@ -1374,15 +1374,15 @@ him know. Otherwise, I had nothing to do with it.
 
             def unDockFunction(d):
                 d.unDockButton.grid_forget()
-                d.reDockButton.grid()
+                d.reDockButton.grid(row=0, column=0, sticky=tk.NW)
             def reDockFunction(d):
                 d.reDockButton.grid_forget()
-                d.unDockButton.grid()
+                d.unDockButton.grid(row=0, column=0, sticky=tk.NE)
                 d.docker.grid(row=1, column=0)
 
             self.audioMonitorDocker = Docker(self.monitorMasterFrame, root=self.master, unDockFunction=unDockFunction, reDockFunction=reDockFunction)
-            self.audioMonitorDocker.unDockButton.grid(row=0, column=0)
-            self.audioMonitorDocker.reDockButton.grid(row=0, column=1)
+            self.audioMonitorDocker.unDockButton.grid(row=0, column=0, sticky=tk.NE)
+            self.audioMonitorDocker.reDockButton.grid(row=0, column=0, sticky=tk.NW)
             self.audioMonitorDocker.reDockButton.grid_forget()
 
             self.audioMonitor = AudioMonitor(
@@ -1390,7 +1390,7 @@ him know. Otherwise, I had nothing to do with it.
                 initialDirectory=audioDirectory,
                 initialBaseFileName=audioBaseFileName
                 )
-            self.audioMonitor.grid(row=1, column=0, columnspan=2)
+            self.audioMonitor.grid(row=1, column=0)
 
         print(audioDAQChannels)
         if audioDAQChannels is None or len(audioDAQChannels) == 0:
@@ -1405,6 +1405,9 @@ him know. Otherwise, I had nothing to do with it.
         self.audioMonitor.setDirectoryChangeHandler(self.audioDirectoryChangeHandler)
         self.audioMonitor.setBaseFileNameChangeHandler(self.audioBaseFileNameChangeHandler)
         self.update()
+        print('unDockButton:', self.audioMonitorDocker.unDockButton.grid_info())
+        print('reDockButton:', self.audioMonitorDocker.reDockButton.grid_info())
+        print('audioMonitor:', self.audioMonitor.grid_info())
 
     def updateAudioTriggerSettings(self, *args):
         # Update settings that determine for what audio values the GUI will
