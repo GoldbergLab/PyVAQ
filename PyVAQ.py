@@ -38,6 +38,7 @@ except ModuleNotFoundError:
     import pyspin as PySpin
 
 from MonitorWidgets import AudioMonitor, CameraMonitor
+from DockableFrame import Docker
 from StateMachineProcesses import Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, nodeAccessorFunctions, nodeAccessorTypes, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter
 import inspect
 
@@ -1370,11 +1371,36 @@ him know. Otherwise, I had nothing to do with it.
 
         # Create new audio stream monitoring widgets
         if self.audioMonitor is None:
+
+            def unDockFunction(d):
+                d.unDockButton.grid_forget()
+                d.reDockButton.grid()
+            def reDockFunction(d):
+                d.reDockButton.grid_forget()
+                d.unDockButton.grid()
+                d.docker.grid(row=1, column=0)
+
+            self.audioMonitorDocker = Docker(self.monitorMasterFrame, root=self.master, unDockFunction=unDockFunction, reDockFunction=reDockFunction)
+            self.audioMonitorDocker.unDockButton.grid(row=0, column=0)
+            self.audioMonitorDocker.reDockButton.grid(row=0, column=1)
+            self.audioMonitorDocker.reDockButton.grid_forget()
+
             self.audioMonitor = AudioMonitor(
-                self.monitorMasterFrame,
+                self.audioMonitorDocker.docker,
                 initialDirectory=audioDirectory,
                 initialBaseFileName=audioBaseFileName
                 )
+            self.audioMonitor.grid(row=1, column=0, columnspan=2)
+
+        print(audioDAQChannels)
+        if audioDAQChannels is None or len(audioDAQChannels) == 0:
+            # Don't display docker buttons
+            self.audioMonitorDocker.unDockButton.grid_forget()
+            self.audioMonitorDocker.reDockButton.grid_forget()
+        else:
+            # Re-dock audio monitor, which includes making sure docker buttons
+            #   are displayed properly.
+            self.audioMonitorDocker.reDock()
         self.audioMonitor.updateChannels(audioDAQChannels)
         self.audioMonitor.setDirectoryChangeHandler(self.audioDirectoryChangeHandler)
         self.audioMonitor.setBaseFileNameChangeHandler(self.audioBaseFileNameChangeHandler)
@@ -2585,7 +2611,8 @@ him know. Otherwise, I had nothing to do with it.
             self.cameraMonitors[camSerial].grid(row=2*(k // wV), column = k % wV)
             # self.cameraAttributeBrowserButtons[camSerial].grid(row=1, column=0)
 
-        self.audioMonitor.grid(row=1, column=0, sticky=tk.NSEW)
+        self.audioMonitorDocker.docker.grid(row=1, column=0, sticky=tk.NSEW)
+#        self.audioMonitor.grid(row=1, column=0, sticky=tk.NSEW)
 
         self.controlFrame.grid(row=0, column=1, sticky=tk.NSEW)
         # self.controlFrame.columnconfigure(0, weight=1)
