@@ -695,7 +695,28 @@ class PyVAQ:
         self.closeButton = ttk.Button(self.titleBarFrame, text="X", command=self.cleanupAndExit)
 
         self.monitorMasterFrame = ttk.Frame(self.mainFrame)
-        self.videoMonitorMasterFrame = ttk.Frame(self.monitorMasterFrame)
+
+        # Set up undockable frame for video monitoring
+        def unDockFunction(d):
+            d.unDockButton.grid_forget()
+            d.reDockButton.grid(row=0, column=0, sticky=tk.NW)
+            tk.Wm.protocol(d.docker, "WM_DELETE_WINDOW", d.reDock)
+
+        def reDockFunction(d):
+            d.reDockButton.grid_forget()
+            d.unDockButton.grid(row=0, column=0, sticky=tk.NE)
+            d.docker.grid(row=0, column=0)
+
+        self.videoMonitorDocker = Docker(
+            self.monitorMasterFrame, root=self.master,
+            unDockFunction=unDockFunction, reDockFunction=reDockFunction,
+            unDockText='undock', reDockText='dock', background='#d9d9d9')
+        self.videoMonitorDocker.unDockButton.grid(row=0, column=0, sticky=tk.NE)
+        self.videoMonitorDocker.reDockButton.grid(row=0, column=0, sticky=tk.NW)
+        self.videoMonitorDocker.reDockButton.grid_forget()
+
+        self.videoMonitorMasterFrame = self.videoMonitorDocker.docker # ttk.Frame(self.monitorMasterFrame)
+
         self.audioMonitor = None  #ttk.Frame(self.monitorMasterFrame)
 
         self.cameraAttributes = {}
@@ -1369,6 +1390,15 @@ him know. Otherwise, I had nothing to do with it.
             self.cameraMonitors[camSerial].setDirectoryChangeHandler(self.videoDirectoryChangeHandler)
             self.cameraMonitors[camSerial].setBaseFileNameChangeHandler(self.videoBaseFileNameChangeHandler)
 
+        if len(camSerials) == 0:
+            # Don't display docker buttons
+            self.videoMonitorDocker.unDockButton.grid_forget()
+            self.videoMonitorDocker.reDockButton.grid_forget()
+        else:
+            # Re-dock video monitor, which includes making sure docker buttons
+            #   are displayed properly.
+            self.videoMonitorDocker.reDock()
+
         # Create new audio stream monitoring widgets
         if self.audioMonitor is None:
 
@@ -1395,7 +1425,6 @@ him know. Otherwise, I had nothing to do with it.
                 )
             self.audioMonitor.grid(row=1, column=0)
 
-        print(audioDAQChannels)
         if audioDAQChannels is None or len(audioDAQChannels) == 0:
             # Don't display docker buttons
             self.audioMonitorDocker.unDockButton.grid_forget()
@@ -1408,9 +1437,6 @@ him know. Otherwise, I had nothing to do with it.
         self.audioMonitor.setDirectoryChangeHandler(self.audioDirectoryChangeHandler)
         self.audioMonitor.setBaseFileNameChangeHandler(self.audioBaseFileNameChangeHandler)
         self.update()
-        print('unDockButton:', self.audioMonitorDocker.unDockButton.grid_info())
-        print('reDockButton:', self.audioMonitorDocker.reDockButton.grid_info())
-        print('audioMonitor:', self.audioMonitor.grid_info())
 
     def updateAudioTriggerSettings(self, *args):
         # Update settings that determine for what audio values the GUI will
@@ -2614,7 +2640,7 @@ him know. Otherwise, I had nothing to do with it.
         camSerials = self.getParams('camSerials')
         wV, hV = getOptimalMonitorGrid(len(camSerials))
         for k, camSerial in enumerate(camSerials):
-            self.cameraMonitors[camSerial].grid(row=2*(k // wV), column = k % wV)
+            self.cameraMonitors[camSerial].grid(row=1+2*(k // wV), column = k % wV)
             # self.cameraAttributeBrowserButtons[camSerial].grid(row=1, column=0)
 
         self.audioMonitorDocker.docker.grid(row=1, column=0, sticky=tk.NSEW)
