@@ -4,7 +4,7 @@ import tkinter.ttk as ttk
 # Thanks to David Duran (https://stackoverflow.com/a/63345653/1460057) for the idea behind Docker
 
 class Docker:
-    def __init__(self, parent, *args, root=None, unDockText='[=]=>',
+    def __init__(self, parent, *args, root=None, unDockText='[=]=>', labelText='',
         reDockText='[<=]=', unDockFunction=None, reDockFunction=None, **kwargs):
         # Docker: A class that provides a "dockable" frame, meaning a Tkinter
         #   frame that can be "undocked" from the main window, and "redocked"
@@ -28,12 +28,18 @@ class Docker:
         #   argument, the Docker object itself.
         # unDockText = the text to display on the undock button
         # reDockText = the text to display on the redock button
+        # labelText = if empty or None, Docker.docker object will be a
+        #   tkinter.Frame with no label. If it is a non-empty string, then
+        #   Docker.docker will be a tkinter.LabelFrame with the label as given.
         #
         self.parent = parent
         if root is None:
             raise TypeError('root argument must be a tkinter.Tk object')
         self.root = root
-        self.docker = tk.Frame(self.parent, *args, **kwargs)
+        if labelText is None or len(labelText) == 0:
+            self.docker = tk.Frame(self.parent, *args, **kwargs)
+        else:
+            self.docker = tk.LabelFrame(self.parent, *args, text=labelText, **kwargs)
         self.unDockFunction = unDockFunction
         self.reDockFunction = reDockFunction
 
@@ -43,17 +49,13 @@ class Docker:
 
     def unDock(self):
         # Pop widget off as its own window
-        # if not self.isDocked:
-        #     return
         self.root.wm_manage(self.docker)
         self.isDocked = False
         if self.unDockFunction is not None:
             self.unDockFunction(self)
 
     def reDock(self):
-        # Return widget to a
-        # if self.isDocked:
-        #     return
+        # Return widget to a docked state
         self.root.wm_forget(self.docker)
         self.isDocked = True
         if self.reDockFunction is not None:
@@ -62,20 +64,53 @@ class Docker:
 if __name__ == "__main__":
     # Demo
 
+    # Create root window
     root = tk.Tk()
 
+    # Define a function to be run when Docker is undocking
     def unDockFunction(d):
-        pass
-
+        # Hide undock button
+        d.unDockButton.grid_forget()
+        # Show dock button
+        d.reDockButton.grid(row=1, column=1)
+    # Define a function to be run when Docker is docking
     def reDockFunction(d):
+        # Hide dock button
+        d.reDockButton.grid_forget()
+        # Show undock button
+        d.unDockButton.grid(row=1, column=1)
+        # Re-display dock button
         d.docker.grid(row=1, column=0)
 
-    df = Docker(root, root=root, unDockFunction=unDockFunction, reDockFunction=reDockFunction)
-    labOut = tk.Label(root, text='That there is a dockable frame')
-    labOut.grid(row=0, column=0)
+    # Create and display an outer frame
+    mainFrame = tk.LabelFrame(root, text='Dockable Frame demo')
+    mainFrame.grid()
+
+    # Create the Docker object. In this case, the main frame is the parent of
+    #   the docker frame (it could be any container widget including the root
+    #   window). The docker also needs access to the root window, which is the
+    #   root keyword argument. Note that any number of keyword arguments can
+    #   be passed to format the docker frame. See tkinter.Frame documentation.
+    df = Docker(mainFrame, root=root, unDockFunction=unDockFunction,
+        reDockFunction=reDockFunction, unDockText='Undock it!',
+        reDockText='Dock it!', borderwidth=3, relief=tk.SUNKEN)
+
+    # Create & display a label that is outside the docker frame
+    outerLabel = tk.Label(mainFrame, text='That there is a dockable frame! \/\/\/')
+    outerLabel.grid(row=0, column=0)
+
+    # Display the docker frame
     df.docker.grid(row=1, column=0)
-    labIn = tk.Label(df.docker, text='hi there I am in a dockable frame.')
-    df.unDockButton.grid(row=0, column=0)
-    df.reDockButton.grid(row=0, column=1)
-    labIn.grid(row=1, column=0, columnspan=2)
+
+    # A label that's in the docker frame. Notice that the parent is
+    #   the Docker.docker object, which is a tkinter.Frame
+    innerLabel = tk.Label(df.docker, text='hi there I am in a dockable frame.')
+
+    # Display inner label
+    innerLabel.grid(row=1, column=0)
+
+    # Calling "reDock" properly initializes the docker to the docked state.
+    df.reDock()
+
+    # Start main GUI loop
     root.mainloop()
