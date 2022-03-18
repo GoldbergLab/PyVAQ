@@ -2176,6 +2176,7 @@ him know. Otherwise, I had nothing to do with it.
                 return False
             else:
                 process.msgQueue.put(msg)
+                return True
 
     def setBufferSizeSeconds(self, *args):
         raise AttributeError('This attribute is a derived property, and is not directly settable')
