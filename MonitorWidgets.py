@@ -182,7 +182,7 @@ class AudioMonitor(ttk.LabelFrame):
         # self.displayWidgets[channel]['figureLine'] = line
 
 class CameraMonitor(ttk.LabelFrame):
-    def __init__(self, *args, displaySize=(400, 300), camSerial='Unknown camera', speedText='Unknown speed', initialDirectory='', initialBaseFileName='', **kwargs):
+    def __init__(self, *args, displaySize=(400, 300), camSerial='Unknown camera', speedText='Unknown speed', initialDirectory='', initialBaseFileName='', debayer=False, **kwargs):
         ttk.LabelFrame.__init__(self, *args, **kwargs)
         self.camSerial = camSerial
         self.config(text="{serial} ({speed})".format(serial=self.camSerial, speed=speedText))
@@ -190,6 +190,7 @@ class CameraMonitor(ttk.LabelFrame):
         self.canvas = tk.Canvas(self, width=self.displaySize[0], height=self.displaySize[1], borderwidth=2, relief=tk.SUNKEN)
         self.imageID = None
         self.currentImage = None
+        self.debayer = debayer
 
         self.fileWidget = FileWritingEntry(
             self,
