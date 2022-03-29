@@ -2367,11 +2367,11 @@ him know. Otherwise, I had nothing to do with it.
         gpuCount = 0
         for camSerial in p["camSerials"]:
             if camSerial in p["videoDirectories"]:
-                videoDirectory = p["videoDirectories"]
+                videoDirectory = p["videoDirectories"][camSerial]
             else:
                 videoDirectory = ''
             if camSerial in p["videoBaseFileNames"]:
-                videoBaseFileName = p["videoBaseFileNames"]
+                videoBaseFileName = p["videoBaseFileNames"][camSerial]
             else:
                 videoBaseFileName = ''
 
