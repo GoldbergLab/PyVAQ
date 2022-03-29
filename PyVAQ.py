@@ -918,7 +918,7 @@ class PyVAQ:
         self.actualVideoFrequency = None
         self.actualAudioFrequency = None
 
-        DEFAULT_NUM_GPU_VENC_SESSIONS = 0
+        DEFAULT_NUM_GPU_VENC_SESSIONS = 3
         self.maxGPUVEncVar = tk.StringVar(); self.maxGPUVEncVar.set(str(DEFAULT_NUM_GPU_VENC_SESSIONS))
 
         # Verbosity of child processes
