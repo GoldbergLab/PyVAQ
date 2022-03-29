@@ -6,3 +6,6 @@
 /logs/
 # Ignore specific files:
 /TODO.txt
+*.wav
+*.avi
+*.pvs
