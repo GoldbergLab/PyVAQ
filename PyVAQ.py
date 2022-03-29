@@ -796,6 +796,11 @@ class PyVAQ:
         self.daySubfoldersCheckbutton = ttk.Checkbutton(self.fileSettingsFrame, text="File in day subfolders", variable=self.daySubfoldersVar)
         self.daySubfoldersVar.trace('w', lambda *args: self.updateDaySubfolderSetting())
 
+        DEFAULT_NUM_GPU_VENC_SESSIONS = 3
+        self.maxGPUVencFrame = ttk.LabelFrame(self.fileSettingsFrame, text="Max GPU VEnc sessions")
+        self.maxGPUVEncVar = tk.StringVar(); self.maxGPUVEncVar.set(str(DEFAULT_NUM_GPU_VENC_SESSIONS))
+        self.maxGPUVEncEntry = ttk.Entry(self.maxGPUVencFrame, width=10, textvariable=self.maxGPUVEncVar)
+
         self.scheduleFrame = ttk.LabelFrame(self.acquisitionFrame, text="Trigger enable schedule")
         self.scheduleEnabledVar = tk.BooleanVar(); self.scheduleEnabledVar.set(False)
         self.scheduleEnabledCheckbutton = ttk.Checkbutton(self.scheduleFrame, text="Restrict trigger to schedule", variable=self.scheduleEnabledVar)
@@ -917,9 +922,6 @@ class PyVAQ:
         # Actual a/v frequency shared vars
         self.actualVideoFrequency = None
         self.actualAudioFrequency = None
-
-        DEFAULT_NUM_GPU_VENC_SESSIONS = 3
-        self.maxGPUVEncVar = tk.StringVar(); self.maxGPUVEncVar.set(str(DEFAULT_NUM_GPU_VENC_SESSIONS))
 
         # Verbosity of child processes
         #   0=Errors, 1=Occasional important status updates
@@ -2681,6 +2683,8 @@ him know. Otherwise, I had nothing to do with it.
 
         self.fileSettingsFrame.grid(row=4, column=1, columnspan=2, sticky=tk.NSEW)
         self.daySubfoldersCheckbutton.grid(row=0, column=0)
+        self.maxGPUVencFrame.grid(row=0, column=1)
+        self.maxGPUVEncEntry.grid()
 
         self.scheduleFrame.grid(row=5, column=1, columnspan=2, sticky=tk.NSEW)
         self.scheduleEnabledCheckbutton.grid(row=0, column=0, sticky=tk.NW)
