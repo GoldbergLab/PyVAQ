@@ -3183,7 +3183,9 @@ class VideoAcquirer(StateMachineProcess):
             outputCopy=False,
             lockForOutput=False,
             maxBufferSize=self.bufferSize,
-            channels=1
+            channels=1,
+            name=self.camSerial+'____main',
+            allowOverflow=False
         )
         if self.verbose >= 2: self.log("Creating shared image sender with max buffer size:", self.bufferSize)
         self.imageQueueReceiver = self.imageQueue.getReceiver()
@@ -3196,7 +3198,9 @@ class VideoAcquirer(StateMachineProcess):
             outputCopy=False,
             lockForOutput=False,
             maxBufferSize=1,
-            channels=1
+            channels=1,
+            name=self.camSerial+'_monitor',
+            allowOverflow=True
         )
         self.monitorImageReceiver = self.monitorImageSender.getReceiver()
 #        self.monitorImageQueue.cancel_join_thread()

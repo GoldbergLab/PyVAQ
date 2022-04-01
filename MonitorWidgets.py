@@ -2,7 +2,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 import numpy as np
 from PIL import Image, ImageTk
-from SharedImageQueue import SharedImageSender
+#from SharedImageQueue import SharedImageSender
 from scipy.signal import butter, lfilter
 from matplotlib.backends.backend_tkagg import (
     FigureCanvasTkAgg, NavigationToolbar2Tk)

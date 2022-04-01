@@ -25,7 +25,9 @@ class SharedImageSender():
                 outputCopy=True,                    # If true, the output data type references a copied buffer, rather than the original. Caution - the original buffer is not synchronized, and may be overwritten at any time!
                 fileWriter=None,                    # fileWriter must be either None or a function that takes the specified output type and writes it to a file.
                 lockForOutput=True,                # Should the shared memory buffer be locked during fileWriter call? If outputCopy=False and fileWriter is not None, it is recommended that lockForOutput=True
-                maxBufferSize=1                     # Maximum number of images to allocate. Attempting to allocate more than that will raise an index error
+                maxBufferSize=1,                    # Maximum number of images to allocate. Attempting to allocate more than that will raise an index error
+                name=None,                          # Identifying name for sender/receiver pair
+                allowOverflow=False,                # Should an error be raised if the queue is filled up, or should old entries be overwritten?
                 ):
 
         self.verbose = verbose
@@ -35,6 +37,8 @@ class SharedImageSender():
         self.width = width
         self.height = height
         self.channels = channels
+        self.name = name
+        self.allowOverflow = allowOverflow
 
         self.metadataQueue = mp.Queue(maxsize=maxBufferSize)
 
@@ -72,7 +76,8 @@ class SharedImageSender():
             imageDataType=imageDataType,
             lockForOutput=lockForOutput,
             metadataQueue=self.metadataQueue,
-            readLag=self.readLag)
+            readLag=self.readLag,
+            name=self.name)
 
     def qsize(self):
         return self.readLag.value
@@ -112,13 +117,22 @@ class SharedImageSender():
         with self.readLag.get_lock():
             readLag = self.readLag.value
             if readLag >= self.maxBufferSize:
-                raise qFull('Reader too far behind writer')
+                if not self.allowOverflow:
+                    raise qFull('Reader too far behind writer')
+                else:
+                    print('Warning, queue full. Overflow allowed - continuing...')
             self.readLag.value = readLag + 1
         nextID = self.getNextID()
         with self.bufferLocks[nextID % self.maxBufferSize]:
             np.copyto(self.npBuffers[nextID % self.maxBufferSize], imarray)
-        if self.verbose: print("PUT! buffer #", nextID % self.maxBufferSize, " readlag=", readLag+1, "data=", imarray[0:5, 0, 0])
-        self.metadataQueue.put(metadata, block=False)
+        if self.verbose: print("PUT! name={name} buffer #{ID:03d} readlag={rl}, metadata_qsize={mqs}".format(name=self.name, ID=nextID % self.maxBufferSize, rl=readLag+1, mqs=self.metadataQueue.qsize())) #, "data=", imarray[0:5, 0, 0])
+        try:
+            self.metadataQueue.put(metadata, block=False)
+        except qFull:
+            if not self.allowOverflow:
+                raise qFull('Metadata queue overflow')
+            else:
+                print('Warning, metadata queue full. Overflow allowed - continuing...')
 
 class SharedImageReceiver():
     def __init__(self,
@@ -137,7 +151,8 @@ class SharedImageReceiver():
                 outputCopy=True,
                 lockForOutput=True,
                 metadataQueue=None,
-                readLag=None
+                readLag=None,
+                name=None
                 ):
         self.width = width
         self.height = height
@@ -157,6 +172,7 @@ class SharedImageReceiver():
         self.metadataQueue = metadataQueue
         self.verbose = verbose
         self.nextID = 0
+        self.name = name
 
         if self.channels > 1:
             self.frameShape = (self.height, self.width, self.channels)
@@ -190,7 +206,7 @@ class SharedImageReceiver():
                 output = Image.frombytes(format, (self.width, self.height), data, "raw", format, 0, 1)
             else:
                 output = Image.frombuffer(format, (self.width, self.height), data, "raw", format, 0, 1)
-            if self.verbose: print("Got image: ", np.array(output)[0:5, 0, 0])
+            #if self.verbose: print("Got image: ", np.array(output)[0:5, 0, 0])
         elif self.outputType == 'numpy':
             output = np.frombuffer(data, dtype=self.imageDataType).reshape(self.frameShape)
             if self.outputCopy:
@@ -221,7 +237,7 @@ class SharedImageReceiver():
         output = None
         with self.bufferLocks[nextID % self.maxBufferSize]:
             data = self.buffers[nextID % self.maxBufferSize]
-            if self.verbose: print("GET! buffer #", nextID % self.maxBufferSize, " readlag=", readLag-1)
+            if self.verbose: print("GET! name={name} buffer #{ID:03d} readlag={rl}, metadata_qsize={mqs}".format(name=self.name, ID=nextID % self.maxBufferSize, rl=readLag+1, mqs=self.metadataQueue.qsize())) #, "data=", imarray[0:5, 0, 0])
             if self.lockForOutput:
                 output = self.prepareOutput(data)
         if not self.lockForOutput:
