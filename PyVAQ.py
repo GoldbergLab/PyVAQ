@@ -607,7 +607,7 @@ class GeneralVar:
         self.value = value
 
 class PyVAQ:
-    def __init__(self, master):
+    def __init__(self, master, settingsFilePath=None):
         self.master = master
         self.master.resizable(height=False, width=False)  # Disallow resizing window
         self.customTitleBar = False
@@ -669,7 +669,7 @@ class PyVAQ:
         self.settingsMenu.add_command(label='Save settings...', command=self.saveSettings)
         self.settingsMenu.add_command(label='Load settings...', command=self.loadSettings)
         self.settingsMenu.add_command(label='Save default settings...', command=lambda *args: self.saveSettings(path='default.pvs'))
-        self.settingsMenu.add_command(label='Save default settings...', command=lambda *args: self.loadSettings(path='default.pvs'))
+        self.settingsMenu.add_command(label='Load default settings...', command=lambda *args: self.loadSettings(path='default.pvs'))
 
         self.helpMenu = tk.Menu(self.menuBar, tearoff=False)
         self.helpMenu.add_command(label="Help", command=self.showHelpDialog)
@@ -1012,6 +1012,10 @@ class PyVAQ:
         self.autoDebugAll()
 
         self.master.update_idletasks()
+
+        # If provided, load settings file
+        if settingsFilePath is not None:
+            self.loadSettings(path=settingsFilePath)
 
     # def createSetting(self, settingName, parent, varType, initialValue, labelText, width=None):
     #     # Creates a set of widgets (label, input widget, variable). Only good for Entry-type inputs
@@ -2749,8 +2753,12 @@ him know. Otherwise, I had nothing to do with it.
         self.audioAnalysisWidgets['canvas'].get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        settingsFilePath = sys.argv[1]
+    else:
+        settingsFilePath = None
     root = tk.Tk()
-    p = PyVAQ(root)
+    p = PyVAQ(root, settingsFilePath=settingsFilePath)
     root.mainloop()
 
 
