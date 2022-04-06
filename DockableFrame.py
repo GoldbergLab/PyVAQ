@@ -54,17 +54,17 @@ class Docker:
         self.reDockButton = ttk.Button(self.docker, text=reDockText, command=self.reDock)
 
         # Set boolean isDocked flag to True
-        self.isDocked = True
+        self._isDocked = True
 
     def isDocked(self):
         # Return whether frame is in docked or undocked state
-        return self.isDocked
+        return self._isDocked
 
     def unDock(self):
         # Pop widget off as its own window
         self.root.wm_manage(self.docker)
         # Set boolean isDocked flag to False
-        self.isDocked = False
+        self._isDocked = False
         # Make the window close "X" button re-dock frame instead of closing it
         tk.Wm.protocol(self.docker, "WM_DELETE_WINDOW", self.reDock)
         # If present, run user-supplied undock callbacks
@@ -75,7 +75,7 @@ class Docker:
         # Return widget to a docked state
         self.root.wm_forget(self.docker)
         # Set boolean isDocked flag to True
-        self.isDocked = True
+        self._isDocked = True
         # If present, run user-supplied redock callbacks
         if self.reDockFunction is not None:
             self.reDockFunction(self)
