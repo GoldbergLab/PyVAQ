@@ -31,7 +31,7 @@ def mergeFolder(folderPaths, overwrite=False, dryRun=False):
 
     videoStreams = {}
     audioStreams = {}
-    for folderPath in folderpaths:
+    for folderPath in folderPaths:
         for k, subpath in enumerate(folderPath.iterdir()):
             if subpath.is_file():
                 extension = subpath.suffix.lower()
