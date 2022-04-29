@@ -50,7 +50,7 @@ class ffmpegWriter():
                     '-v', 'error', '-f', 'rawvideo', '-c:v', 'rawvideo',
                     '-pix_fmt', self.input_pixel_format, '-s', shapeArg,
                     '-r', str(self.fps), '-i', '-', '-c:v', 'h264_nvenc', '-preset', 'fast',
-                    '-qp', '23',
+                    '-cq', '32',
                     '-pix_fmt', self.output_pixel_format, '-an', self.filename]
             else:
                 # Without GPU acceleration
@@ -60,8 +60,8 @@ class ffmpegWriter():
                     '-s', shapeArg, '-r', str(self.fps), '-i', '-',
                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
                     '-pix_fmt', self.output_pixel_format, '-an', self.filename]
-            print('Command:')
-            print(ffmpegCommand)
+            # print('Command:')
+            # print(ffmpegCommand)
             self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
             # self.ffmpegProc = subprocess.Popen([FFMPEG_EXE, '-hide_banner', '-y',
             #     '-v', 'error', '-f', 'rawvideo', '-vcodec', 'rawvideo',

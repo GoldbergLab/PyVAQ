@@ -11,6 +11,7 @@ from matplotlib.backends.backend_tkagg import (
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from fileWritingEntry import FileWritingEntry
+import cv2
 
 WIDGET_COLORS = [
     '#050505', # near black
@@ -295,6 +296,9 @@ class CameraMonitor(ttk.LabelFrame):
     def updateImage(self, image):
         # Expects a PIL image object
         if self.viewerEnabled():
+            if self.debayer:
+                # Invert bayer filter to get full color image
+                image = Image.fromarray(cv2.cvtColor(np.asarray(image), cv2.COLOR_BayerRGGB2RGB))
             newSize = self.getBestImageSize(image.size)
             image = image.resize(newSize, resample=Image.BILINEAR)
             self.currentImage = ImageTk.PhotoImage(image)

@@ -700,11 +700,13 @@ class PyVAQ:
         def unDockFunction(d):
             d.unDockButton.grid_forget()
             d.reDockButton.grid(row=0, column=0, sticky=tk.NW)
+            self.update()
 
         def reDockFunction(d):
             d.reDockButton.grid_forget()
             d.unDockButton.grid(row=0, column=0, sticky=tk.NE)
             d.docker.grid(row=0, column=0)
+            self.update()
 
         self.videoMonitorDocker = Docker(
             self.monitorMasterFrame, root=self.master,
@@ -1406,10 +1408,12 @@ him know. Otherwise, I had nothing to do with it.
             def unDockFunction(d):
                 d.unDockButton.grid_forget()
                 d.reDockButton.grid(row=0, column=0, sticky=tk.NW)
+                self.update()
             def reDockFunction(d):
                 d.reDockButton.grid_forget()
                 d.unDockButton.grid(row=0, column=0, sticky=tk.NE)
                 d.docker.grid(row=1, column=0)
+                self.update()
 
             self.audioMonitorDocker = Docker(
                 self.monitorMasterFrame, root=self.master,
@@ -2635,16 +2639,28 @@ him know. Otherwise, I had nothing to do with it.
         self.mainFrame.rowconfigure(0, weight=1)
         self.mainFrame.rowconfigure(1, weight=1)
 
-        self.monitorMasterFrame.grid(row=0, column=0)
+        p = self.getParams(
+            'camSerials',
+            'audioDAQChannels',
+            )
+        camSerials = p["camSerials"]
+        audioDAQChannels = p["audioDAQChannels"]
 
-        self.videoMonitorMasterFrame.grid(row=0, column=0, sticky=tk.NSEW)
+        if (self.audioMonitorDocker.isDocked() and len(audioDAQChannels) > 0) or (self.videoMonitorDocker.isDocked() and len(camSerials) > 0):
+            self.monitorMasterFrame.grid(row=0, column=0)
+        else:
+            self.monitorMasterFrame.grid_forget()
+
+        if self.videoMonitorDocker.isDocked():
+            self.videoMonitorMasterFrame.grid(row=0, column=0, sticky=tk.NSEW)
         camSerials = self.getParams('camSerials')
         wV, hV = getOptimalMonitorGrid(len(camSerials))
         for k, camSerial in enumerate(camSerials):
             self.cameraMonitors[camSerial].grid(row=1+2*(k // wV), column = k % wV)
             # self.cameraAttributeBrowserButtons[camSerial].grid(row=1, column=0)
 
-        self.audioMonitorDocker.docker.grid(row=1, column=0, sticky=tk.NSEW)
+        if self.audioMonitorDocker.isDocked():
+            self.audioMonitorDocker.docker.grid(row=1, column=0, sticky=tk.NSEW)
 #        self.audioMonitor.grid(row=1, column=0, sticky=tk.NSEW)
 
         self.controlFrame.grid(row=0, column=1, sticky=tk.NSEW)
