@@ -151,7 +151,6 @@ class AudioMonitor(ttk.LabelFrame):
             self.masterDisplayFrame.grid_forget()
             self.fileWidget.grid_forget()
 
-
     def createChannelDisplay(self, channel, index):
         self.displayWidgets[channel] = {}  # Change this to gracefully remove existing channel widgets under this channel name
         self.displayWidgets[channel]['displayFrame'] = ttk.LabelFrame(self.masterDisplayFrame, text=channel)

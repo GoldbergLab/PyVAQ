@@ -12,18 +12,34 @@ from collections import defaultdict, deque
 from threading import BrokenBarrierError
 import itertools
 import ffmpegWriter as fw
-import nidaqmx
-from nidaqmx.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
-from nidaqmx.constants import Edge, TriggerType
 from SharedImageQueue import SharedImageSender
 import traceback
 import unicodedata
 import re
-try:
-    import PySpin
-except ModuleNotFoundError:
-    # pip seems to install PySpin as pyspin sometimes...
-    import pyspin as PySpin
+import sys
+
+simulatedHardware = False
+for arg in sys.argv[1:]:
+    if arg == '-s' or arg == '--sim':
+        # Use simulated harddware instead of physical cameras and DAQs
+        simulatedHardware = True
+
+if simulatedHardware:
+    # Use simulated harddware instead of physical cameras and DAQs
+    import PySpinSim.PySpinSim as PySpin
+    import nidaqmxSim as nidaqmx
+    from nidaqmxSim.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
+    from nidaqmxSim.constants import Edge, TriggerType
+else:
+    # Use physical cameras/DAQs
+    try:
+        import PySpin
+    except ModuleNotFoundError:
+        # pip seems to install PySpin as pyspin sometimes...
+        import pyspin as PySpin
+    import nidaqmx
+    from nidaqmx.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
+    from nidaqmx.constants import Edge, TriggerType
 
 nodeAccessorFunctions = {
     PySpin.intfIString:('string', PySpin.CStringPtr),

@@ -2769,10 +2769,20 @@ him know. Otherwise, I had nothing to do with it.
         self.audioAnalysisWidgets['canvas'].get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        settingsFilePath = sys.argv[1]
-    else:
-        settingsFilePath = None
+    simulatedHardware = False
+    settingsFilePath = None
+    for arg in sys.argv[1:]:
+        if arg == '-s' or arg == '--sim':
+            # Use simulated harddware instead of physical cameras and DAQs
+            simulatedHardware = True
+        else:
+            # Any other parameter is the settings file path
+            settingsFilePath = arg
+
+    if simulatedHardware:
+        import PySpinSim.PySpinSim as PySpin
+        import nidaqmxSim.system as nisys
+
     root = tk.Tk()
     p = PyVAQ(root, settingsFilePath=settingsFilePath)
     root.mainloop()
