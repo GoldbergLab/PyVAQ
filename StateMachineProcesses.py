@@ -17,6 +17,7 @@ import traceback
 import unicodedata
 import re
 import sys
+import PySpinUtilities as psu
 
 simulatedHardware = False
 for arg in sys.argv[1:]:
@@ -40,26 +41,6 @@ else:
     import nidaqmx
     from nidaqmx.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
     from nidaqmx.constants import Edge, TriggerType
-
-nodeAccessorFunctions = {
-    PySpin.intfIString:('string', PySpin.CStringPtr),
-    PySpin.intfIInteger:('integer', PySpin.CIntegerPtr),
-    PySpin.intfIFloat:('float', PySpin.CFloatPtr),
-    PySpin.intfIBoolean:('boolean', PySpin.CBooleanPtr),
-    PySpin.intfICommand:('command', PySpin.CEnumerationPtr),
-    PySpin.intfIEnumeration:('enum', PySpin.CEnumerationPtr),
-    PySpin.intfICategory:('category', PySpin.CCategoryPtr)
-}
-
-nodeAccessorTypes = {
-    'string':PySpin.CStringPtr,
-    'integer':PySpin.CIntegerPtr,
-    'float':PySpin.CFloatPtr,
-    'boolean':PySpin.CBooleanPtr,
-    'command':PySpin.CEnumerationPtr,
-    'enum':PySpin.CEnumerationPtr,
-    'category':PySpin.CCategoryPtr
-}
 
 def getFrameSize(camSerial):
     system = PySpin.System.GetInstance()
@@ -3189,6 +3170,8 @@ class VideoAcquirer(StateMachineProcess):
         # self.imageQueue.cancel_join_thread()
         self.bufferSize = int(2*bufferSizeSeconds * self.requestedFrameRate)
 
+        self.nChannels = psu.getColorChannelCount(camSerial=self.camSerial)
+
         if self.verbose >= 3: self.log("Temporarily initializing camera to get image size...")
         videoWidth, videoHeight = getFrameSize(self.camSerial)
         self.imageQueue = SharedImageSender(
@@ -3199,7 +3182,7 @@ class VideoAcquirer(StateMachineProcess):
             outputCopy=False,
             lockForOutput=False,
             maxBufferSize=self.bufferSize,
-            channels=1,
+            channels=self.nChannels,
             name=self.camSerial+'____main',
             allowOverflow=False
         )
@@ -3214,7 +3197,7 @@ class VideoAcquirer(StateMachineProcess):
             outputCopy=False,
             lockForOutput=False,
             maxBufferSize=1,
-            channels=1,
+            channels=self.nChannels,
             name=self.camSerial+'_monitor',
             allowOverflow=True
         )
@@ -3551,7 +3534,7 @@ class VideoAcquirer(StateMachineProcess):
     def setCameraAttribute(self, nodemap, attributeName, attributeValue, type='enum'):
         # Set camera attribute. ReturnRetrusn True if successful, False otherwise.
         if self.verbose >= 1: self.log('Setting', attributeName, 'to', attributeValue, 'as', type)
-        nodeAttribute = nodeAccessorTypes[type](nodemap.GetNode(attributeName))
+        nodeAttribute = psu.nodeAccessorTypes[type](nodemap.GetNode(attributeName))
         if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsWritable(nodeAttribute):
             if self.verbose >= 0: self.log('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (enum retrieval). Aborting...')
             return False

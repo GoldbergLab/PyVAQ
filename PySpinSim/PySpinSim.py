@@ -12,6 +12,25 @@ from pathlib import Path
 DEFAULT_SYSTEM_RECORD_FILENAME = 'simCamSystem.tmp'
 DEFAULT_SIM_CAMERA_FEED = 'simCameraFeed.gif'
 
+pixelSizes = {
+    1:'Bpp1',
+    2:'Bpp2',
+    4:'Bpp4',
+    8:'Bpp8',
+    10:'Bpp10',
+    12:'Bpp12',
+    14:'Bpp14',
+    16:'Bpp16',
+    20:'Bpp20',
+    24:'Bpp24',
+    30:'Bpp30',
+    32:'Bpp32',
+    36:'Bpp36',
+    48:'Bpp48',
+    64:'Bpp64',
+    96:'Bpp96',
+}
+
 class System:
     def __init__(self, systemRecordFilename=None, n=2, regenerateSystemRecord=False):
         # If no system record filename exists, create a new one with n cameras
@@ -77,32 +96,57 @@ class Camera:
         self.simCamProcess = None
         self.simCamReceiver = None
         self.imageID = None
+        self.TLDeviceNodeMap = None
+        self.NodeMap = None
+    def IsInitialized(self):
+        return self.images is not None
+    def IsAcquisitionStarted(self):
+        return self.imageID is not None
     def GetTLDeviceNodeMap(self):
-        nm = NodeMap()
-        nm.AddNode('DeviceSerialNumber', self.serial)
-        return nm
+        if not self.IsInitialized():
+            raise RuntimeError('You must call Init and BeginAcquistion on camera before getting images.')
+        if self.TLDeviceNodeMap is None:
+            self.TLDeviceNodeMap = NodeMap()
+            self.TLDeviceNodeMap.AddNode('DeviceSerialNumber', self.serial, 'string')
+        return self.TLDeviceNodeMap
     def GetNodeMap(self):
-        return NodeMap()
+        if not self.IsInitialized():
+            raise RuntimeError('You must call Init and BeginAcquistion on camera before getting images.')
+        if self.NodeMap is None:
+            self.NodeMap = NodeMap()
+        return self.NodeMap
     def Init(self):
         image = PIL.Image.open(self.videoFile)
-        width = image.size[0]
-        height = image.size[1]
-        self.Width = NodeAttribute('Width', width)
-        self.Height = NodeAttribute('Height', height)
+        imageShape = np.asarray(image.convert('RGB'), dtype='uint8').shape
+        width = imageShape[1]
+        height = imageShape[0]
+        if len(imageShape) < 3:
+            nChannels = 1
+        else:
+            nChannels = imageShape[2]
+        bitsPerChannel = 8
+        pixelSizeName = pixelSizes[bitsPerChannel * nChannels]
+
+        self.Width = NodeAttribute('Width', width, type='int')
+        self.Height = NodeAttribute('Height', height, type='int')
         self.NumFrames = image.n_frames
 
-        print('Opened image with size {w}x{h}x{c}x{n}'.format(w=width, h=height, c=3, n=self.NumFrames))
-
-        self.images = np.zeros([height, width, 3, self.NumFrames], dtype='uint8')
+        print('Opened image with size {w}x{h}x{c}x{n}'.format(w=width, h=height, c=nChannels, n=self.NumFrames))
+        self.images = np.zeros([height, width, nChannels, self.NumFrames], dtype='uint8')
         for frameNum in range(self.NumFrames):
             image.seek(frameNum)
             self.images[:, :, :, frameNum] = np.asarray(image.convert('RGB'), dtype='uint8')
         image.close()
 
+        nm = self.GetNodeMap()
+        nm.AddNode('PixelSize', pixelSizeName, 'enum')
+        nm.AddNode('PixelDynamicRangeMax', np.iinfo(self.images.dtype).max, type='int')
+        nm.AddNode('PixelDynamicRangeMin', np.iinfo(self.images.dtype).min, type='int')
+
     def BeginAcquisition(self):
         self.imageID = 0
     def GetNextImage(self):
-        if self.imageID is None or self.images is None:
+        if not self.IsInitialized() or not self.IsAcquisitionStarted():
             raise RuntimeError('You must call Init and BeginAcquistion on camera before getting images.')
         frameNum = self.imageID % self.NumFrames
         image = self.images[:, :, :, frameNum]
@@ -113,57 +157,6 @@ class Camera:
         self.imageID = None
     def DeInit(self):
         self.images = None
-
-# class CameraProcess(mp.Process):
-#     def __init__(self,
-#                 *args,
-#                 camSerial='',
-#                 frameRate=None,
-#                 imageStack=None,
-#                 verbose=False,
-#                 daemon=True,
-#                 **kwargs):
-#         mp.Process.__init__(self, *args, daemon=daemon, **kwargs)
-#         self.verbose = verbose
-#         self.camSerial = camSerial
-#         self.frameRate = None
-#         self.bufferSize = 10
-#         self.imageStack = imageStack
-#         self.videoHeight, self.videoWidth, self.nChannels, self.numFrames = imageStack.shape
-#         self.kill = mp.Value(c_bool, False)
-#         self.imageQueue = SharedImageSender(
-#             width=self.videoWidth,
-#             height=self.videoHeight,
-#             verbose=False,
-#             outputType='numpy',
-#             outputCopy=False,
-#             lockForOutput=False,
-#             maxBufferSize=self.bufferSize,
-#             channels=1,
-#             name=self.camSerial+'____main',
-#             allowOverflow=True
-#         )
-#         self.imageQueueReceiver = self.imageQueue.getReceiver()
-#
-#     def EndAcquisition(self):
-#         self.kill.value = True
-#
-#     def run(self):
-#         print('Initiating simulated acquisition')
-#         self.imageQueue.setupBuffers()
-#
-#         imageID = 0
-#         sleepTime = 1/self.frameRate - 0.0001
-#
-#         while True:
-#             frameNum = imageID % self.numFrames
-#             self.imageQueue.put(self.images[:, :, :, frameNum], metadata={'imageID':imageID, 'frameNum':frameNum})
-#             imageID += 1
-#             if self.kill.value:
-#                 print('Ending simulated acquisition...')
-#                 break
-#             time.sleep(sleepTime)
-#         print('Simulated acquisition terminated.')
 
 class Image:
     def __init__(self, imArr, imID):
@@ -197,26 +190,31 @@ class NodeMap:
     def __init__(self, attributes={}):
         self.nodes = {}
         for attributeName in attributes:
-            self.AddNode(attributeName, attributes[attributeName])
+            self.AddNode(attributeName, value=attributes[attributeName][0], type=attributes[attributeName][1])
     def GetNode(self, attributeName):
         if attributeName not in self.nodes:
             self.nodes[attributeName] = Node(attributeName)
         return self.nodes[attributeName]
-    def AddNode(self, name, value):
-        self.nodes[name] = Node(name, value)
+    def AddNode(self, name, value, type):
+        self.nodes[name] = Node(name, value, type)
 
 class Node:
-    def __init__(self, name, value=None):
-        self.attribute = NodeAttribute(name, value)
+    def __init__(self, name, value=None, type=None):
+        self.attribute = NodeAttribute(name, value=value, type=type)
 
 class NodeAttribute:
-    def __init__(self, name, value=None):
+    def __init__(self, name, value=None, type=None):
         self.name = name
         self.value = value
+        self.type = type
     def GetEntryByName(self, attributeValue):
         # If it's an enum
         return NodeAttributeValue(attributeValue)
+    def GetCurrentEntry(self):
+        return NodeAttributeValue(self.value)
     def GetValue(self):
+        if self.type == 'enum':
+            raise AttributeError('I guess you can\' just get the value of an enum or whatever. Try GetCurrentEntry instead.')
         return self.value
     def SetIntValue(self, value):
         self.value = value
@@ -227,6 +225,10 @@ class NodeAttributeValue:
     def __init__(self, attributeValue):
         self.value = attributeValue
     def GetValue(self):
+        return self.value
+    def GetName(self):
+        return self.value
+    def GetDisplayName(self):
         return self.value
 
 def CStringPtr(node):
