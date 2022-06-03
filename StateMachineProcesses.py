@@ -3166,6 +3166,7 @@ class VideoAcquirer(StateMachineProcess):
         self.requestedFrameRate = requestedFrameRate
         self.frameRateVar = frameRate
         self.frameRate = None
+        self.pixelFormat = None
         # self.imageQueue = mp.Queue()
         # self.imageQueue.cancel_join_thread()
         self.bufferSize = int(2*bufferSizeSeconds * self.requestedFrameRate)
@@ -3274,6 +3275,10 @@ class VideoAcquirer(StateMachineProcess):
                     nodemap = cam.GetNodeMap()
                     self.setCameraAttributes(nodemap, self.acquireSettings)
                     if self.verbose > 2: self.log("...camera initialization complete")
+
+                    # Get current camera pixel format
+                    self.pixelFormat = psu.getCameraAttribute('PixelFormat', PySpin.CEnumerationPtr, nodemap=nodemap)[1]
+                    print('initializing - pixel format is:', self.pixelFormat)
 
                     monitorFramePeriod = 1.0/self.monitorMasterFrameRate
                     if self.verbose >= 1: self.log("Monitoring with period", monitorFramePeriod)
@@ -3394,7 +3399,8 @@ class VideoAcquirer(StateMachineProcess):
                                 actualMonitorFramePeriod = thisTime - lastTime
                                 if (thisTime - lastTime) >= monitorFramePeriod:
                                     try:
-                                        self.monitorImageSender.put(imageResult)
+                                        print('acquiring - pixel format is:', self.pixelFormat)
+                                        self.monitorImageSender.put(imageResult, metadata={'pixelFormat':self.pixelFormat})
                                         if self.verbose >= 3: self.log("Sent frame for monitoring")
                                         lastTime = thisTime
                                     except queue.Full:

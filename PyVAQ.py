@@ -942,7 +942,7 @@ him know. Otherwise, I had nothing to do with it.
             self.cameraMonitors[camSerial].destroy()
             del self.cameraMonitors[camSerial]
 
-        self.cameraSpeeds = dict([(camSerial, psu.checkCameraSpeed(camSerial)) for camSerial in camSerials])
+        self.cameraSpeeds = dict([(camSerial, psu.checkCameraSpeed(camSerial=camSerial)) for camSerial in camSerials])
         # self.updateAllCamerasAttributes()
         # with open('attributes.txt', 'w') as f:
         #     pp = pprint.PrettyPrinter(stream=f, indent=2)
@@ -964,8 +964,7 @@ him know. Otherwise, I had nothing to do with it.
                 camSerial=camSerial,
                 speedText=self.cameraSpeeds[camSerial],
                 initialDirectory=videoDirectory,
-                initialBaseFileName=videoBaseFileName,
-                debayer=True
+                initialBaseFileName=videoBaseFileName
             )
             self.cameraMonitors[camSerial].setDirectoryChangeHandler(self.videoDirectoryChangeHandler)
             self.cameraMonitors[camSerial].setBaseFileNameChangeHandler(self.videoBaseFileNameChangeHandler)
@@ -1314,9 +1313,12 @@ him know. Otherwise, I had nothing to do with it.
     def autoUpdateVideoMonitors(self, beginAuto=True):
         if self.videoAcquireProcesses is not None:
             availableImages = {}
+            pixelFormats = {}
             for camSerial in self.videoAcquireProcesses:
                 try:
-                    availableImages[camSerial] = self.videoAcquireProcesses[camSerial].monitorImageReceiver.get()
+                    # Get all available images with the associated pixel format information fromt he monitor queue
+                    availableImages[camSerial], metadata = self.videoAcquireProcesses[camSerial].monitorImageReceiver.get(includeMetadata=True)
+                    pixelFormats[camSerial] = metadata['pixelFormat']
                 except queue.Empty:
                     pass
 
@@ -1324,7 +1326,7 @@ him know. Otherwise, I had nothing to do with it.
                 # pImage = availableImages[camSerial]
                 # imData = np.reshape(pImage.data, (pImage.height, pImage.width, 3))
                 # im = Image.fromarray(imData)
-                self.cameraMonitors[camSerial].updateImage(availableImages[camSerial])
+                self.cameraMonitors[camSerial].updateImage(availableImages[camSerial], pixelFormat=pixelFormats[camSerial])
 
         if beginAuto:
             period = int(round(1000.0/(2*self.monitorMasterFrameRate)))
@@ -1403,38 +1405,7 @@ him know. Otherwise, I had nothing to do with it.
         return {'widgets':widgets, 'childWidgets':childWidgets, 'childCategoryWidgets':childCategoryWidgets, 'childCategoryHolder':childCategoryHolder}
 
     def updateAllCamerasAttributes(self):
-        system = PySpin.System.GetInstance()
-        camList = system.GetCameras()
-        for cam in camList:
-            cam.Init()
-
-            camSerial = psu.getCameraAttribute(cam.GetTLDeviceNodeMap(), 'DeviceSerialNumber', PySpin.CStringPtr)
-            self.updateCameraAttributes(camSerial, cam=cam)
-
-            cam.DeInit()
-            del cam
-        camList.Clear()
-        system.ReleaseInstance()
-
-    def updateCameraAttributes(self, camSerial, cam=None):
-        if cam is None:
-            getCam = True
-        else:
-            getCam = False
-
-        if getCam:
-            system = PySpin.System.GetInstance()
-            camList = system.GetCameras()
-            cam = camList.GetBySerial(camSerial)
-            cam.Init()
-
-        self.cameraAttributes[camSerial] = psu.getAllCameraAttributes(cam)
-
-        if getCam:
-            cam.DeInit()
-            del cam
-            camList.Clear()
-            system.ReleaseInstance()
+        self.cameraAttributes = psu.getAllCamerasAttributes()
 
     def getQueueSizes(self):
         self.log("Get qsizes...")

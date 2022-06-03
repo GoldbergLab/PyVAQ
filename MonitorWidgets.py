@@ -12,6 +12,7 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from fileWritingEntry import FileWritingEntry
 import cv2
+import PySpinUtilities as psu
 
 WIDGET_COLORS = [
     '#050505', # near black
@@ -182,7 +183,9 @@ class AudioMonitor(ttk.LabelFrame):
         # self.displayWidgets[channel]['figureLine'] = line
 
 class CameraMonitor(ttk.LabelFrame):
-    def __init__(self, *args, displaySize=(400, 300), camSerial='Unknown camera', speedText='Unknown speed', initialDirectory='', initialBaseFileName='', debayer=False, **kwargs):
+    def __init__(self, *args, displaySize=(400, 300),
+                    camSerial='Unknown camera', speedText='Unknown speed',
+                    initialDirectory='', initialBaseFileName='', **kwargs):
         ttk.LabelFrame.__init__(self, *args, **kwargs)
         self.camSerial = camSerial
         self.config(text="{serial} ({speed})".format(serial=self.camSerial, speed=speedText))
@@ -190,7 +193,6 @@ class CameraMonitor(ttk.LabelFrame):
         self.canvas = tk.Canvas(self, width=self.displaySize[0], height=self.displaySize[1], borderwidth=2, relief=tk.SUNKEN)
         self.imageID = None
         self.currentImage = None
-        self.debayer = debayer
 
         self.fileWidget = FileWritingEntry(
             self,
@@ -292,10 +294,10 @@ class CameraMonitor(ttk.LabelFrame):
     def setBaseFileNameChangeHandler(self, function):
         self.fileWidget.setBaseFileNameChangeHandler(function)
 
-    def updateImage(self, image):
+    def updateImage(self, image, pixelFormat=None):
         # Expects a PIL image object
         if self.viewerEnabled():
-            if self.debayer:
+            if psu.pixelFormats[pixelFormat]['bayer']:
                 # Invert bayer filter to get full color image
                 image = Image.fromarray(cv2.cvtColor(np.asarray(image), cv2.COLOR_BayerRGGB2RGB))
             newSize = self.getBestImageSize(image.size)

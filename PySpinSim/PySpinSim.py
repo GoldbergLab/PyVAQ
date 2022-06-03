@@ -139,9 +139,10 @@ class Camera:
         image.close()
 
         nm = self.GetNodeMap()
-        nm.AddNode('PixelSize', pixelSizeName, 'enum')
-        nm.AddNode('PixelDynamicRangeMax', np.iinfo(self.images.dtype).max, type='int')
-        nm.AddNode('PixelDynamicRangeMin', np.iinfo(self.images.dtype).min, type='int')
+        nm.AddNode('PixelSize', pixelSizeName, 'enum', readOnly=True)
+        nm.AddNode('PixelDynamicRangeMax', np.iinfo(self.images.dtype).max, type='int', readOnly=True)
+        nm.AddNode('PixelDynamicRangeMin', np.iinfo(self.images.dtype).min, type='int', readOnly=True)
+        nm.AddNode('PixelFormat', 'RGB8', type='enum', readOnly=True)
 
     def BeginAcquisition(self):
         self.imageID = 0
@@ -195,18 +196,19 @@ class NodeMap:
         if attributeName not in self.nodes:
             self.nodes[attributeName] = Node(attributeName)
         return self.nodes[attributeName]
-    def AddNode(self, name, value, type):
-        self.nodes[name] = Node(name, value, type)
+    def AddNode(self, name, value, type, readOnly=False):
+        self.nodes[name] = Node(name, value, type, readOnly=readOnly)
 
 class Node:
-    def __init__(self, name, value=None, type=None):
-        self.attribute = NodeAttribute(name, value=value, type=type)
+    def __init__(self, name, value=None, type=None, readOnly=False):
+        self.attribute = NodeAttribute(name, value=value, type=type, readOnly=readOnly)
 
 class NodeAttribute:
-    def __init__(self, name, value=None, type=None):
+    def __init__(self, name, value=None, type=None, readOnly=False):
         self.name = name
         self.value = value
         self.type = type
+        self.readOnly = readOnly
     def GetEntryByName(self, attributeValue):
         # If it's an enum
         return NodeAttributeValue(attributeValue)
@@ -217,9 +219,15 @@ class NodeAttribute:
             raise AttributeError('I guess you can\' just get the value of an enum or whatever. Try GetCurrentEntry instead.')
         return self.value
     def SetIntValue(self, value):
-        self.value = value
+        if self.readOnly:
+            print('Warning, tried to set {n} to {v}, but it was marked as read only. No changes made.'.format(n=self.name, v=self.value))
+        else:
+            self.value = value
     def SetValue(self, value):
-        self.value = value
+        if self.readOnly:
+            print('Warning, tried to set {n} to {v}, but it was marked as read only. No changes made.'.format(n=self.name, v=self.value))
+        else:
+            self.value = value
 
 class NodeAttributeValue:
     def __init__(self, attributeValue):
@@ -260,17 +268,3 @@ def IsWritable(nodeAttribute):
     return True
 def IsReadable(nodeAttribute):
     return True
-
-# system = PySpin.System.GetInstance()
-# camList = system.GetCameras()
-# cam = camList.GetBySerial(self.camSerial)
-# cam.Init()
-#
-# nodemap = cam.GetNodeMap()
-# self.setCameraAttributes(nodemap, self.acquireSettings)
-# cam.BeginAcquisition()
-# imageResult = cam.GetNextImage()
-# camList.Clear()
-# cam.EndAcquisition()
-# cam.DeInit()
-# system.ReleaseInstance()
