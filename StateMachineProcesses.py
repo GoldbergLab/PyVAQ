@@ -3399,7 +3399,6 @@ class VideoAcquirer(StateMachineProcess):
                                 actualMonitorFramePeriod = thisTime - lastTime
                                 if (thisTime - lastTime) >= monitorFramePeriod:
                                     try:
-                                        print('acquiring - pixel format is:', self.pixelFormat)
                                         self.monitorImageSender.put(imageResult, metadata={'pixelFormat':self.pixelFormat})
                                         if self.verbose >= 3: self.log("Sent frame for monitoring")
                                         lastTime = thisTime
@@ -3601,7 +3600,9 @@ class SimpleVideoWriter(StateMachineProcess):
         'verbose',
         'videoBaseFileName',
         'videoDirectory',
-        'daySubfolders'
+        'daySubfolders',
+        'enableWrite',
+        'gpuVEnc'
         ]
 
     def __init__(self,
@@ -3616,6 +3617,7 @@ class SimpleVideoWriter(StateMachineProcess):
                 daySubfolders=True,
                 videoLength=2,   # Video length in seconds
                 gpuVEnc=False,   # Should we use GPU acceleration
+                enableWrite=True,
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.camSerial = camSerial
@@ -3636,6 +3638,7 @@ class SimpleVideoWriter(StateMachineProcess):
         self.videoLength = videoLength
         self.videoFrameCount = None   # Number of frames to save to each video. Wait until we get actual framerate from synchronizer
         self.gpuVEnc = gpuVEnc
+        self.enableWrite = enableWrite
 
     def setParams(self, **params):
         for key in params:
@@ -3736,31 +3739,32 @@ class SimpleVideoWriter(StateMachineProcess):
                             videoFileInterface.close()
                         videoFileInterface = None
 
-                    # Generate new video file path
-                    videoFileNameTags = [self.camSerial, generateTimeString(timestamp=seriesStartTime), '{videoCount:03d}'.format(videoCount=videoCount)]
-                    if self.daySubfolders:
-                        videoDirectory = getDaySubfolder(self.videoDirectory, timestamp=videoFileStartTime)
-                    else:
-                        videoDirectory = self.videoDirectory
-                    videoFileName = generateFileName(directory=videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
-                    ensureDirectoryExists(videoDirectory)
+                    if self.enableWrite:
+                        # Generate new video file path
+                        videoFileNameTags = [self.camSerial, generateTimeString(timestamp=seriesStartTime), '{videoCount:03d}'.format(videoCount=videoCount)]
+                        if self.daySubfolders:
+                            videoDirectory = getDaySubfolder(self.videoDirectory, timestamp=videoFileStartTime)
+                        else:
+                            videoDirectory = self.videoDirectory
+                        videoFileName = generateFileName(directory=videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
+                        ensureDirectoryExists(videoDirectory)
 
-                    # Initialize video writer interface
-                    if self.videoWriteMethod == "PySpin":
-                        if videoFileInterface is not None:
-                            videoFileInterface.Close()
+                        # Initialize video writer interface
+                        if self.videoWriteMethod == "PySpin":
+                            if videoFileInterface is not None:
+                                videoFileInterface.Close()
 
-                        videoFileInterface = PySpin.SpinVideo()
-                        option = PySpin.AVIOption()
-                        option.frameRate = self.frameRate
-                        if self.verbose >= 2: self.log("Opening file to save video with frameRate ", option.frameRate)
-                        videoFileInterface.Open(videoFileName, option)
-                        stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
-                        videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
-                    elif self.videoWriteMethod == "ffmpeg":
-                        if videoFileInterface is not None:
-                            videoFileInterface.close()
-                        videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", fps=self.frameRate, gpuVEnc=self.gpuVEnc)
+                            videoFileInterface = PySpin.SpinVideo()
+                            option = PySpin.AVIOption()
+                            option.frameRate = self.frameRate
+                            if self.verbose >= 2: self.log("Opening file to save video with frameRate ", option.frameRate)
+                            videoFileInterface.Open(videoFileName, option)
+                            stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
+                            videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
+                        elif self.videoWriteMethod == "ffmpeg":
+                            if videoFileInterface is not None:
+                                videoFileInterface.close()
+                            videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", fps=self.frameRate, gpuVEnc=self.gpuVEnc)
 
                     videoCount += 1
 
@@ -3792,8 +3796,9 @@ class SimpleVideoWriter(StateMachineProcess):
 
                     im, frameTime, imageID, frameShape = self.getNextimage()
 
-                    if im is None:
-                        # No images available. To avoid hosing the processor, sleep a bit before continuing
+                    if im is None or videoFileInterface is None:
+                        # No images available, or writing is disabled.
+                        # To avoid hosing the processor, sleep a bit before continuing
                         time.sleep(0.5/self.requestedFrameRate)
                     else:
                         if videoFileInterface is None:

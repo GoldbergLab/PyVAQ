@@ -234,6 +234,7 @@ class PyVAQ:
         self.videoSyncTerminal = GeneralVar(); self.videoSyncTerminal.set(None)
         self.audioSyncSource = GeneralVar(); self.audioSyncSource.set("PFI5")
         self.videoSyncSource = GeneralVar(); self.videoSyncSource.set("PFI4")
+        self.videoWriteEnable = GeneralVar(); self.videoWriteEnable.set({})
         self.acquisitionStartTriggerSource = GeneralVar(); self.acquisitionStartTriggerSource.set(None)
         self.audioChannelConfiguration = GeneralVar(); self.audioChannelConfiguration.set(None)
 
@@ -570,6 +571,7 @@ class PyVAQ:
             "videoSyncSource":                  dict(get=self.videoSyncSource.get,                              set=self.videoSyncSource.set),
             "acquisitionStartTriggerSource":    dict(get=self.acquisitionStartTriggerSource.get,                set=self.acquisitionStartTriggerSource.set),
             "audioChannelConfiguration":        dict(get=self.audioChannelConfiguration.get,                    set=self.audioChannelConfiguration.set),
+            "videoWriteEnable":                 dict(get=self.videoWriteEnable.get,                             set=self.setVideoWriteEnable),
         }
 
         self.createAudioAnalysisMonitor()
@@ -968,6 +970,7 @@ him know. Otherwise, I had nothing to do with it.
             )
             self.cameraMonitors[camSerial].setDirectoryChangeHandler(self.videoDirectoryChangeHandler)
             self.cameraMonitors[camSerial].setBaseFileNameChangeHandler(self.videoBaseFileNameChangeHandler)
+            self.cameraMonitors[camSerial].setEnableWriteChangeHandler(self.videoWriteEnableChangeHandler)
 
         if len(camSerials) == 0:
             # Don't display docker buttons
@@ -1076,6 +1079,11 @@ him know. Otherwise, I had nothing to do with it.
     def changeAVMergerParams(self, **params):
         self.sendMessage(self.mergeProcess, (AVMerger.SETPARAMS, params))
 
+    def videoWriteEnableChangeHandler(self, *args):
+        videoWriteEnables = {}
+        for camSerial in self.cameraMonitors:
+            videoWriteEnables[camSerial] = self.cameraMonitors[camSerial].getEnableWrite()
+        self.setVideoWriteEnable(videoWriteEnables, updateTextField=False)
     def videoBaseFileNameChangeHandler(self, *args):
         videoBaseFileNames = {}
         for camSerial in self.cameraMonitors:
@@ -1641,6 +1649,22 @@ him know. Otherwise, I had nothing to do with it.
             self.log(params)
             self.setParams(**params)
         self.endLog(inspect.currentframe().f_code.co_name)
+
+    def setVideoWriteEnable(self, newVideoWriteEnables, *args, updateTextField=True):
+        # Expects newVideoWriteEnables to be a dictionary of camserial:writeEnable, which will be used
+        #   to enable or disable video file writing for each camera.
+        print('setVideoWriteEnable')
+        self.videoWriteEnable.set(newVideoWriteEnables)
+        for camSerial in self.cameraMonitors:
+            if camSerial in newVideoWriteEnables:
+                newVideoWriteEnable = newVideoWriteEnables[camSerial]
+                if updateTextField:
+                    # Update text field
+                    self.cameraMonitors[camSerial].setWriteEnable(newVideoWriteEnable)
+                if camSerial in self.videoWriteProcesses:
+                    # Notify VideoWriter child process of new write enable state
+                    print('setVideoWriteEnable for {s}'.format(s=camSerial))
+                    self.sendMessage(self.videoWriteProcesses[camSerial], (VideoWriter.SETPARAMS, dict(enableWrite=newVideoWriteEnable)))
 
     def setVideoBaseFileNames(self, newVideoBaseFileNames, *args, updateTextField=True):
         # Expects videoBaseFileNames to be a dictionary of camserial:videoBaseFileNames, which will be used

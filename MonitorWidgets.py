@@ -41,9 +41,9 @@ class AudioMonitor(ttk.LabelFrame):
             text="Audio Writing"
             )
 
-        self.enableVar = tk.BooleanVar(); self.enableVar.set(True); self.enableVar.trace('w', self.updateEnableCheckbutton)
-        self.enableCheckButton = tk.Checkbutton(self, text="Enable viewer", variable=self.enableVar, offvalue=False, onvalue=True)
-        self.updateEnableCheckbutton()
+        self.enableViewerVar = tk.BooleanVar(); self.enableViewerVar.set(True); self.enableViewerVar.trace('w', self.updateEnableViewerCheckButton)
+        self.enableViewerCheckButton = tk.Checkbutton(self, text="Enable viewer", variable=self.enableViewerVar, offvalue=False, onvalue=True)
+        self.updateEnableViewerCheckButton()
 
         self.masterDisplayFrame = ttk.Frame(self)
 
@@ -55,13 +55,13 @@ class AudioMonitor(ttk.LabelFrame):
         self.updateWidgets()
 
     def viewerEnabled(self):
-        return self.enableVar.get()
+        return self.enableViewerVar.get()
 
-    def updateEnableCheckbutton(self, *args):
+    def updateEnableViewerCheckButton(self, *args):
         if self.viewerEnabled():
-            self.enableCheckButton["fg"] = 'green'
+            self.enableViewerCheckButton["fg"] = 'green'
         else:
-            self.enableCheckButton["fg"] = 'red'
+            self.enableViewerCheckButton["fg"] = 'red'
 
     def getDirectory(self):
         return self.fileWidget.getDirectory()
@@ -147,7 +147,7 @@ class AudioMonitor(ttk.LabelFrame):
             # No channels, it would look weird to display directory entry
             self.masterDisplayFrame.grid(row=0, column=0, columnspan=2)
             self.fileWidget.grid(row=1, column=0)
-            self.enableCheckButton.grid(row=1, column=1)
+            self.enableViewerCheckButton.grid(row=1, column=1)
         else:
             self.masterDisplayFrame.grid_forget()
             self.fileWidget.grid_forget()
@@ -202,23 +202,40 @@ class CameraMonitor(ttk.LabelFrame):
             text="Video Writing - {camSerial}".format(camSerial=self.camSerial)
             )
 
-        self.enableVar = tk.BooleanVar(); self.enableVar.set(True); self.enableVar.trace('w', self.updateEnableCheckbutton)
-        self.enableCheckButton = tk.Checkbutton(self, text="Enable viewer", variable=self.enableVar, offvalue=False, onvalue=True)
-        self.updateEnableCheckbutton()
+        self.enableViewerVar = tk.BooleanVar(); self.enableViewerVar.set(True); self.enableViewerVar.trace('w', self.updateEnableViewerCheckButton)
+        self.enableViewerCheckButton = tk.Checkbutton(self, text="Enable viewer", variable=self.enableViewerVar, offvalue=False, onvalue=True)
+        self.updateEnableViewerCheckButton()
+
+        self.enableWriteChangeHandler = lambda:None
+        self.enableWriteVar = tk.BooleanVar(); self.enableWriteVar.set(True); self.enableWriteVar.trace('w', self.updateEnableWriteCheckButton)
+        self.enableWriteCheckButton = tk.Checkbutton(self, text="Enable write", variable=self.enableWriteVar, offvalue=False, onvalue=True)
+        self.updateEnableWriteCheckButton()
 
         self.canvas.grid(row=0, column=0, columnspan=2)
-        self.fileWidget.grid(row=1, column=0, sticky=tk.NSEW)
-        self.enableCheckButton.grid(row=1, column=1)
+        self.fileWidget.grid(row=1, column=0, rowspan=2, sticky=tk.NSEW)
+        self.enableViewerCheckButton.grid(row=1, column=1)
+        self.enableWriteCheckButton.grid(row=2, column=1)
 
 #       self.cameraAttributeBrowserButton = ttk.Button(vFrame, text="Attribute browser", command=lambda:self.createCameraAttributeBrowser(camSerial))
 
-    def viewerEnabled(self):
-        return self.enableVar.get()
-    def updateEnableCheckbutton(self, *args):
-        if self.viewerEnabled():
-            self.enableCheckButton["fg"] = 'green'
+    def writeEnabled(self):
+        return self.enableWriteVar.get()
+    def updateEnableWriteCheckButton(self, *args):
+        print('enable state changed - running handler')
+        print(self.enableWriteChangeHandler)
+        self.enableWriteChangeHandler()
+        if self.writeEnabled():
+            self.enableWriteCheckButton["fg"] = 'green'
         else:
-            self.enableCheckButton["fg"] = 'red'
+            self.enableWriteCheckButton["fg"] = 'red'
+
+    def viewerEnabled(self):
+        return self.enableViewerVar.get()
+    def updateEnableViewerCheckButton(self, *args):
+        if self.viewerEnabled():
+            self.enableViewerCheckButton["fg"] = 'green'
+        else:
+            self.enableViewerCheckButton["fg"] = 'red'
 
     def createCameraAttributeBrowser(self, camSerial):
         main = tk.Toplevel()
@@ -288,6 +305,9 @@ class CameraMonitor(ttk.LabelFrame):
 
         return {'widgets':widgets, 'childWidgets':childWidgets, 'childCategoryWidgets':childCategoryWidgets, 'childCategoryHolder':childCategoryHolder}
 
+    def setEnableWriteChangeHandler(self, function):
+        self.enableWriteChangeHandler = function
+
     def setDirectoryChangeHandler(self, function):
         self.fileWidget.setDirectoryChangeHandler(function)
 
@@ -326,6 +346,9 @@ class CameraMonitor(ttk.LabelFrame):
 
     def getBaseFileName(self):
         return self.fileWidget.getBaseFileName()
+
+    def getEnableWrite(self):
+        return self.enableWriteVar.get()
 
     def destroy(self):
         ttk.LabelFrame.destroy(self)
