@@ -573,7 +573,17 @@ def queryAttributeNode(nodePtr, nodeType):
 def getAllCameraAttributes(cam=None):
     # cam must be initialized before being passed to this function
     try:
-        nodeData = {'type':'category', 'name':'Master', 'symbolic':'Master', 'displayName':'Master', 'value':None, 'tooltip':'Camera attributes', 'accessMode':'RO', 'options':{}, 'subcategories':[], 'children':[]}
+        nodeData = {
+            'type':'category',
+            'name':'Master',
+            'symbolic':'Master',
+            'displayName':'Master',
+            'value':None,
+            'tooltip':'Camera attributes',
+            'accessMode':'RO',
+            'options':{},
+            'subcategories':[],
+            'children':[]}
 
         nodemap_gentl = cam.GetTLDeviceNodeMap()
 

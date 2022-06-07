@@ -221,8 +221,6 @@ class CameraMonitor(ttk.LabelFrame):
     def writeEnabled(self):
         return self.enableWriteVar.get()
     def updateEnableWriteCheckButton(self, *args):
-        print('enable state changed - running handler')
-        print(self.enableWriteChangeHandler)
         self.enableWriteChangeHandler()
         if self.writeEnabled():
             self.enableWriteCheckButton["fg"] = 'green'

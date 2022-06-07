@@ -1653,7 +1653,6 @@ him know. Otherwise, I had nothing to do with it.
     def setVideoWriteEnable(self, newVideoWriteEnables, *args, updateTextField=True):
         # Expects newVideoWriteEnables to be a dictionary of camserial:writeEnable, which will be used
         #   to enable or disable video file writing for each camera.
-        print('setVideoWriteEnable')
         self.videoWriteEnable.set(newVideoWriteEnables)
         for camSerial in self.cameraMonitors:
             if camSerial in newVideoWriteEnables:
@@ -1663,7 +1662,6 @@ him know. Otherwise, I had nothing to do with it.
                     self.cameraMonitors[camSerial].setWriteEnable(newVideoWriteEnable)
                 if camSerial in self.videoWriteProcesses:
                     # Notify VideoWriter child process of new write enable state
-                    print('setVideoWriteEnable for {s}'.format(s=camSerial))
                     self.sendMessage(self.videoWriteProcesses[camSerial], (VideoWriter.SETPARAMS, dict(enableWrite=newVideoWriteEnable)))
 
     def setVideoBaseFileNames(self, newVideoBaseFileNames, *args, updateTextField=True):
