@@ -3696,14 +3696,18 @@ class SimpleVideoWriter(StateMachineProcess):
                     videoCount = 0                  # Initialize video count, used to number video files
                     numFramesInCurrentSeries = 0    # Initialize series-wide frame count, for estimating subsequent video times
 
-                    while self.frameRateVar.value == -1:
+                    self.frameRate = self.frameRateVar.value
+                    if self.frameRate == -1:
+                        # Frame rate var still hasn't been set
                         # Wait for shared value frameRate to be set by the Synchronizer process
                         time.sleep(0.1)
-                    self.frameRate = self.frameRateVar.value
-                    self.videoFrameCount = round(self.videoLength * self.frameRate)
-                    self.log("Video framerate = {f}".format(f=self.frameRate))
-                    self.log("Video length = {L}".format(L=self.videoLength))
-                    self.log("Video frame count = {n}".format(n=self.videoFrameCount))
+                    else:
+                        # Frame rate has been set by the synchronizer process - continue on
+                        self.frameRate = self.frameRateVar.value
+                        self.videoFrameCount = round(self.videoLength * self.frameRate)
+                        self.log("Video framerate = {f}".format(f=self.frameRate))
+                        self.log("Video length = {L}".format(L=self.videoLength))
+                        self.log("Video frame count = {n}".format(n=self.videoFrameCount))
 
                     # CHECK FOR MESSAGES
                     try:
@@ -3715,7 +3719,12 @@ class SimpleVideoWriter(StateMachineProcess):
                     if self.exitFlag:
                         nextState = SimpleVideoWriter.STOPPING
                     elif msg in ['', SimpleVideoWriter.START]:
-                        nextState = SimpleVideoWriter.VIDEOINIT
+                        if self.frameRate == -1:
+                            # Frame rate hasn't been set by synchronizer yet
+                            nextState = SimpleVideoWriter.INITIALIZING
+                        else:
+                            # Frame rate has been set by synchronizer
+                            nextState = SimpleVideoWriter.VIDEOINIT
                     elif msg == SimpleVideoWriter.STOP:
                         nextState = SimpleVideoWriter.STOPPING
                     elif msg == SimpleVideoWriter.EXIT:
