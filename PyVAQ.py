@@ -2329,6 +2329,9 @@ him know. Otherwise, I had nothing to do with it.
                 ready=ready,
                 stdoutQueue=self.StdoutManager.queue)
 
+        copyToMonitoringQueue = True
+        copyToAnalysisQueue = p["triggerMode"] != "SimpleContinuous"
+
         if len(p["audioDAQChannels"]) > 0:
             audioQueue = mp.Queue()
             self.audioAcquireProcess = AudioAcquirer(
@@ -2342,6 +2345,8 @@ him know. Otherwise, I had nothing to do with it.
                 syncChannel=p["audioSyncSource"],
                 verbose=self.audioAcquireVerbose,
                 ready=ready,
+                copyToMonitoringQueue=copyToMonitoringQueue,
+                copyToAnalysisQueue=copyToAnalysisQueue,
                 stdoutQueue=self.StdoutManager.queue)
             if p["triggerMode"] == "SimpleContinuous":
                 if mergeMsgQueue is not None:

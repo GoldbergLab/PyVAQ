@@ -1865,7 +1865,9 @@ class AudioAcquirer(StateMachineProcess):
 
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
-        'verbose'
+        'verbose',
+        'copyToMonitoringQueue',
+        'copyToAnalysisQueue'
     ]
 
     def __init__(self,
@@ -1879,10 +1881,14 @@ class AudioAcquirer(StateMachineProcess):
                 syncChannel = None,                 # Channel name for synchronization source
                 verbose = False,
                 ready=None,                         # Synchronization barrier to ensure everyone's ready before beginning
+                copyToMonitoringQueue=True,         # Should images be also sent to the monitoring queue?
+                copyToAnalysisQueue=True,           # Should images be also sent to the analysis queue?
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
         self.ID = "AA"
+        self.copyToMonitoringQueue = copyToMonitoringQueue
+        self.copyToAnalysisQueue = copyToAnalysisQueue
         self.startTimeSharedValue = startTime
         self.audioFrequencyVar = audioFrequency
         self.audioFrequency = None
@@ -2066,9 +2072,9 @@ class AudioAcquirer(StateMachineProcess):
                         # Copy audio data for monitoring queues
                         monitorDataCopy = np.copy(data)
 
-                        if self.monitorQueue is not None:
+                        if self.copyToMonitoringQueue and self.monitorQueue is not None:
                             self.monitorQueue.put((self.inputChannels, chunkStartTime, monitorDataCopy))      # If a monitoring queue is provided, queue up the data
-                        if self.analysisQueue is not None:
+                        if self.copyToAnalysisQueue and self.analysisQueue is not None:
                             self.analysisQueue.put((chunkStartTime, monitorDataCopy))
                     except nidaqmx.errors.DaqError:
 #                        traceback.print_exc()
