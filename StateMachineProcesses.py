@@ -3178,7 +3178,7 @@ class VideoAcquirer(StateMachineProcess):
         self.imageQueue = SharedImageSender(
             width=videoWidth,
             height=videoHeight,
-            verbose=False,
+            verbose=self.verbose,
             outputType='bytes',
             outputCopy=False,
             lockForOutput=False,
@@ -3193,7 +3193,7 @@ class VideoAcquirer(StateMachineProcess):
         self.monitorImageSender = SharedImageSender(
             width=videoWidth,
             height=videoHeight,
-            verbose=False,
+            verbose=self.verbose,
             outputType='PIL',
             outputCopy=False,
             lockForOutput=False,

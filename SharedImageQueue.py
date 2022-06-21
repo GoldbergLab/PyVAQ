@@ -17,7 +17,7 @@ class SharedImageSender():
                 pixelFormat=PySpin.PixelFormat_BGR8,  #PySpin.PixelFormat_BayerRG8,
                 offsetX=0,
                 offsetY=0,
-                verbose=False,
+                verbose=0,
                 channels=3,                    # Number of color channels in images (for example, 1 for grayscale, 3 for RGB, 4 for RGBA)
                 imageDataType=ctypes.c_uint8,       # ctype of data of each pixel's channel value
                 imageBitsPerPixel=8,                # Number of bits per pixel
@@ -44,7 +44,7 @@ class SharedImageSender():
 
         imageDataSize = self.width * self.height * imageBitsPerPixel * self.channels // 8
         if imageDataSize > 8000000000:
-            print("Warning, super big buffer! Do you have enough RAM? Buffer will be {f} frames and {b} GB".format(f=maxBufferSize, b=round(maxBufferSize*imageDataSize/8000000000, 2)))
+            if self.verbose >= 0: print("Warning, super big buffer! Do you have enough RAM? Buffer will be {f} frames and {b} GB".format(f=maxBufferSize, b=round(maxBufferSize*imageDataSize/8000000000, 2)))
 
         self.readLag = mp.Value(ctypes.c_uint32, 0)
         self.nextID = 0
@@ -119,20 +119,19 @@ class SharedImageSender():
             if readLag >= self.maxBufferSize:
                 if not self.allowOverflow:
                     raise qFull('Reader too far behind writer')
-                else:
+                elif self.verbose >= 1:
                     print('Warning, queue full. Overflow allowed - continuing...')
             self.readLag.value = readLag + 1
         nextID = self.getNextID()
         with self.bufferLocks[nextID % self.maxBufferSize]:
             np.copyto(self.npBuffers[nextID % self.maxBufferSize], imarray)
-        if self.verbose: print("PUT! name={name} buffer #{ID:03d} readlag={rl}, metadata_qsize={mqs}".format(name=self.name, ID=nextID % self.maxBufferSize, rl=readLag+1, mqs=self.metadataQueue.qsize())) #, "data=", imarray[0:5, 0, 0])
+        if self.verbose >= 3: print("PUT! name={name} buffer #{ID:03d} readlag={rl}, metadata_qsize={mqs}".format(name=self.name, ID=nextID % self.maxBufferSize, rl=readLag+1, mqs=self.metadataQueue.qsize())) #, "data=", imarray[0:5, 0, 0])
         try:
             self.metadataQueue.put(metadata, block=False)
         except qFull:
             if not self.allowOverflow:
                 raise qFull('Metadata queue overflow')
-            else:
-                print('Warning, metadata queue full. Overflow allowed - continuing...')
+            elif self.verbose >= 1: print('Warning, metadata queue full. Overflow allowed - continuing...')
 
 class SharedImageReceiver():
     def __init__(self,
@@ -140,7 +139,7 @@ class SharedImageReceiver():
                 height,
                 channels,
                 pixelFormat,
-                verbose=False,
+                verbose=0,
                 offsetX=0,
                 offsetY=0,
                 buffers=None,
@@ -192,7 +191,7 @@ class SharedImageReceiver():
         if self.outputType == 'PySpin':
             imarray = np.frombuffer(data, dtype=self.imageDataType).reshape(self.frameShape)
             output = PySpin.Image.Create(self.width, self.height, self.offsetX, self.offsetY, self.pixelFormat, imarray)
-            if self.verbose: print("Got image: ", imarray[0:5, 0, 0])
+            if self.verbose >= 3: print("Got image: ", imarray[0:5, 0, 0])
             if self.outputCopy:
                 pass # Do we need to copy this? Does PySpin.Image.Create already copy the buffer? Dunno, need to test to find out
         elif self.outputType == 'PIL':
@@ -206,7 +205,6 @@ class SharedImageReceiver():
                 output = Image.frombytes(format, (self.width, self.height), data, "raw", format, 0, 1)
             else:
                 output = Image.frombuffer(format, (self.width, self.height), data, "raw", format, 0, 1)
-            #if self.verbose: print("Got image: ", np.array(output)[0:5, 0, 0])
         elif self.outputType == 'numpy':
             output = np.frombuffer(data, dtype=self.imageDataType).reshape(self.frameShape)
             if self.outputCopy:
@@ -221,7 +219,7 @@ class SharedImageReceiver():
         # If given, apply the fileWriter function to the output
         if self.fileWriter:
             self.fileWriter(output)
-            print('Applied filewriter!')
+            if self.verbose >= 3: print('Applied filewriter!')
         return output
 
     def get(self, includeMetadata=False):
@@ -230,14 +228,13 @@ class SharedImageReceiver():
         with self.readLag.get_lock():
             readLag = self.readLag.value
             if readLag == 0:
-                # if self.verbose: print("NO GET!")
                 raise qEmpty('No images available')
             self.readLag.value = readLag - 1
         nextID = self.getNextID()
         output = None
         with self.bufferLocks[nextID % self.maxBufferSize]:
             data = self.buffers[nextID % self.maxBufferSize]
-            if self.verbose: print("GET! name={name} buffer #{ID:03d} readlag={rl}, metadata_qsize={mqs}".format(name=self.name, ID=nextID % self.maxBufferSize, rl=readLag+1, mqs=self.metadataQueue.qsize())) #, "data=", imarray[0:5, 0, 0])
+            if self.verbose >= 3: print("GET! name={name} buffer #{ID:03d} readlag={rl}, metadata_qsize={mqs}".format(name=self.name, ID=nextID % self.maxBufferSize, rl=readLag+1, mqs=self.metadataQueue.qsize())) #, "data=", imarray[0:5, 0, 0])
             if self.lockForOutput:
                 output = self.prepareOutput(data)
         if not self.lockForOutput:
