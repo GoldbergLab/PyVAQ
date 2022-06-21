@@ -39,19 +39,23 @@ class AnalogMultiChannelReader:
         self.nextReadTime = startTime
 
     def read_many_sample(self, buffer, number_of_samples_per_channel, timeout):
-        currentTime = time()
-        if currentTime > self.nextReadTime:
-            framePeriod = number_of_samples_per_channel/self.sampleRate
-            self.lastReadTime = self.nextReadTime
-            self.nextReadTime += framePeriod
-            for chan in range(self.num_channels):
-                fileNum = chan % length(self.data)
-                p = self.filePointers[fileNum]
-                n = self.numSamples[fileNum]
-                if p + s >= n:
-                    # Wrap around
-                    buffer[chan, :(n-p)] = self.data[fileNum][p:]
-                    buffer[chan, (n-p):] = self.data[fileNum][:(p+s-n)]
-                else:
-                    buffer[chan, :] = self.data[fileNum][p:(p+s)]
-                self.filePointers[fileNum] = (self.filePointers[fileNum] + s) % n
+        print('waiting for next simulated audio sample...')
+        while True:
+            currentTime = time()
+            if currentTime >= self.nextReadTime:
+                break
+        framePeriod = number_of_samples_per_channel/self.sampleRate
+        self.lastReadTime = self.nextReadTime
+        self.nextReadTime += framePeriod
+        for chan in range(self.num_channels):
+            fileNum = chan % length(self.data)
+            p = self.filePointers[fileNum]
+            n = self.numSamples[fileNum]
+            if p + s >= n:
+                # Wrap around
+                buffer[chan, :(n-p)] = self.data[fileNum][p:]
+                buffer[chan, (n-p):] = self.data[fileNum][:(p+s-n)]
+            else:
+                buffer[chan, :] = self.data[fileNum][p:(p+s)]
+            self.filePointers[fileNum] = (self.filePointers[fileNum] + s) % n
+        print('...latest simulated audio sample produced.')
