@@ -119,7 +119,7 @@ class SharedImageSender():
             if readLag >= self.maxBufferSize:
                 if not self.allowOverflow:
                     raise qFull('Reader too far behind writer')
-                elif self.verbose >= 1:
+                elif self.verbose >= 2:
                     print('Warning, queue full. Overflow allowed - continuing...')
             self.readLag.value = readLag + 1
         nextID = self.getNextID()
@@ -131,7 +131,7 @@ class SharedImageSender():
         except qFull:
             if not self.allowOverflow:
                 raise qFull('Metadata queue overflow')
-            elif self.verbose >= 1: print('Warning, metadata queue full. Overflow allowed - continuing...')
+            elif self.verbose >= 2: print('Warning, metadata queue full. Overflow allowed - continuing...')
 
 class SharedImageReceiver():
     def __init__(self,
