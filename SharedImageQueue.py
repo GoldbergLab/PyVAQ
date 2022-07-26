@@ -24,20 +24,20 @@ class SharedImageSender():
                 outputType='PySpin',                # Specify how to return data at receiver endpoint. Options are PySpin, numpy, PIL, bytes
                 outputCopy=True,                    # If true, the output data type references a copied buffer, rather than the original. Caution - the original buffer is not synchronized, and may be overwritten at any time!
                 fileWriter=None,                    # fileWriter must be either None or a function that takes the specified output type and writes it to a file.
-                lockForOutput=True,                # Should the shared memory buffer be locked during fileWriter call? If outputCopy=False and fileWriter is not None, it is recommended that lockForOutput=True
+                lockForOutput=True,                 # Should the shared memory buffer be locked during fileWriter call? If outputCopy=False and fileWriter is not None, it is recommended that lockForOutput=True
                 maxBufferSize=1,                    # Maximum number of images to allocate. Attempting to allocate more than that will raise an index error
-                name=None,                          # Identifying name for sender/receiver pair
+                name='unnamed_queue',               # Identifying name for sender/receiver pair
                 allowOverflow=False,                # Should an error be raised if the queue is filled up, or should old entries be overwritten?
                 ):
 
+        self.name = name
         self.verbose = verbose
         self.maxBufferSize = maxBufferSize
         if self.maxBufferSize < 1:
-            raise ValueError("maxBufferSize must be greater than 1")
+            raise ValueError("{name}: maxBufferSize must be greater than 1".format(name=self.name))
         self.width = width
         self.height = height
         self.channels = channels
-        self.name = name
         self.allowOverflow = allowOverflow
 
         self.metadataQueue = mp.Queue(maxsize=maxBufferSize)
@@ -108,7 +108,7 @@ class SharedImageSender():
         # Either pass a PySpin Image in the "image" argument
         #   or pass a numpy array in the "imarray" argument
         if not self.buffersReady:
-            raise IOError("setupBuffers must be called in the process where putting will happen before putting any images")
+            raise IOError("{name}: setupBuffers must be called in the process where putting will happen before putting any images".format(name=self.name))
         # image is a PySpin ImagePtr that must match the characteristics passed to the SharedImageSender constructor
         #   image = cam.GetNextImage()
         if image is not None:
@@ -118,9 +118,9 @@ class SharedImageSender():
             readLag = self.readLag.value
             if readLag >= self.maxBufferSize:
                 if not self.allowOverflow:
-                    raise qFull('Reader too far behind writer')
+                    raise qFull('{name}: Reader too far behind writer'.format(name=self.name))
                 elif self.verbose >= 2:
-                    print('Warning, queue full. Overflow allowed - continuing...')
+                    print('{name}: Warning, queue full. Overflow allowed - continuing...'.format(name=self.name))
             self.readLag.value = readLag + 1
         nextID = self.getNextID()
         with self.bufferLocks[nextID % self.maxBufferSize]:
@@ -130,8 +130,9 @@ class SharedImageSender():
             self.metadataQueue.put(metadata, block=False)
         except qFull:
             if not self.allowOverflow:
-                raise qFull('Metadata queue overflow')
-            elif self.verbose >= 2: print('Warning, metadata queue full. Overflow allowed - continuing...')
+                raise qFull('{name}: Metadata queue overflow'.format(name=self.name))
+            elif self.verbose >= 2:
+                print('{name}: Warning, metadata queue full. Overflow allowed - continuing...'.format(name=self.name))
 
 class SharedImageReceiver():
     def __init__(self,
@@ -200,7 +201,7 @@ class SharedImageReceiver():
             elif self.channels == 3:
                 format = "RGB"
             else:
-                raise ValueError('Invalid channel count: {c}. Must be 1 or 3.'.format(c=self.channels))
+                raise ValueError('{name}: Invalid channel count: {c}. Must be 1 or 3.'.format(name=self.name, c=self.channels))
             if self.outputCopy:
                 output = Image.frombytes(format, (self.width, self.height), data, "raw", format, 0, 1)
             else:
@@ -214,7 +215,7 @@ class SharedImageReceiver():
             if self.outputCopy:
                 output = output[:]
         else:
-            raise KeyError('Unrecognized output type: ', self.outputType)
+            raise KeyError('{name}: Unrecognized output type: '.format(name=self.name), self.outputType)
 
         # If given, apply the fileWriter function to the output
         if self.fileWriter:
@@ -228,7 +229,7 @@ class SharedImageReceiver():
         with self.readLag.get_lock():
             readLag = self.readLag.value
             if readLag == 0:
-                raise qEmpty('No images available')
+                raise qEmpty('{name}: No images available'.format(name=self.name))
             self.readLag.value = readLag - 1
         nextID = self.getNextID()
         output = None
