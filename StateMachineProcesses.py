@@ -446,23 +446,33 @@ class StateMachineProcess(mp.Process):
         self.PID = mp.Value('i', -1)                 # A thread-safe variable so other processes can query this process's PID
         self.exitFlag = False                        # A flag to set to ensure the process exits ASAP
         self.stdoutBuffer = []                       # A buffer to accumulate log messages before sending out
+        self.state = None
+        self.lastState = None
+        self.nextState = None
 
     def run(self):
         # Start run by recording this process's PID
         self.PID.value = os.getpid()
 
-    def updatePublishedState(self, state):
+    def updatePublishedState(self, newState=None):
         # Update the thread-safe variable holding the current state info
+        if newState is not None:
+            self.state = newState
         if self.publishedStateVar is not None:
             L = self.publishedStateVar.get_lock()
             locked = L.acquire(block=False)
             if locked:
-                self.publishedStateVar.value = state
+                self.publishedStateVar.value = self.state
                 L.release()
 
     def log(self, msg, *args, **kwargs):
         # Queue up another ID-tagged log message
         syncPrint('|| {ID} - {msg}'.format(ID=self.ID, msg=msg), *args, buffer=self.stdoutBuffer, **kwargs)
+
+    def logEnd(self):
+        timestamp = dt.datetime.now().strftime(TIME_FORMAT)
+        self.log(r'*** {timestamp} *** lastState={lastState}, state={state}, nextState={nextState} *** exitFlag={exitFlag}'.format(timestamp=timestamp, exitFlag=self.exitFlag, lastState=self.stateList[self.lastState], state=self.stateList[self.state], nextState=self.stateList[self.nextState]))
+        self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[self.state]))
 
     def flushStdout(self):
         # Send current accumulated log buffer out, clear buffer.
@@ -567,19 +577,19 @@ class AVMerger(StateMachineProcess):
     def run(self):
         self.PID.value = os.getpid()
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
-        state = AVMerger.STOPPED
-        nextState = AVMerger.STOPPED
-        lastState = AVMerger.STOPPED
+        self.state = AVMerger.STOPPED
+        self.nextState = AVMerger.STOPPED
+        self.lastState = AVMerger.STOPPED
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if state != lastState:
-                self.updatePublishedState(state)
+            if self.state != self.lastState:
+                self.updatePublishedState()
 
             try:
 # ********************************* STOPPPED *********************************
-                if state == AVMerger.STOPPED:
+                if self.state == AVMerger.STOPPED:
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
@@ -590,26 +600,26 @@ class AVMerger(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = AVMerger.EXITING
+                        self.nextState = AVMerger.EXITING
                     elif msg == '':
-                        nextState = state
+                        self.nextState = self.state
                     elif msg == AVMerger.STOP:
-                        nextState = AVMerger.STOPPED
+                        self.nextState = AVMerger.STOPPED
                     elif msg == AVMerger.CHILL:
                         self.ignoreFlag = True
-                        nextState = AVMerger.INITIALIZING
+                        self.nextState = AVMerger.INITIALIZING
                     elif msg == AVMerger.START:
                         self.ignoreFlag = False
-                        nextState = AVMerger.INITIALIZING
+                        self.nextState = AVMerger.INITIALIZING
                     elif msg == AVMerger.STOP:
-                        nextState = AVMerger.STOPPED
+                        self.nextState = AVMerger.STOPPED
                     elif msg == AVMerger.EXIT:
                         self.exitFlag = True
-                        nextState = AVMerger.EXITING
+                        self.nextState = AVMerger.EXITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* INITIALIZING *********************************
-                elif state == AVMerger.INITIALIZING:
+                elif self.state == AVMerger.INITIALIZING:
                     # DO STUFF
                     if self.numFilesPerTrigger < 2:
                         raise IOError("Can't merge less than two files at a time!")
@@ -625,24 +635,24 @@ class AVMerger(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = AVMerger.STOPPING
+                        self.nextState = AVMerger.STOPPING
                     elif msg == AVMerger.CHILL or self.ignoreFlag:
                         self.ignoreFlag = True
-                        nextState = AVMerger.IGNORING
+                        self.nextState = AVMerger.IGNORING
                     elif msg == AVMerger.START:
                         self.ignoreFlag = False
-                        nextState = AVMerger.WAITING
+                        self.nextState = AVMerger.WAITING
                     elif msg in '':
-                        nextState = AVMerger.WAITING
+                        self.nextState = AVMerger.WAITING
                     elif msg == AVMerger.STOP:
-                        nextState = AVMerger.STOPPING
+                        self.nextState = AVMerger.STOPPING
                     elif msg == AVMerger.EXIT:
                         self.exitFlag = True
-                        nextState = AVMerger.STOPPING
+                        self.nextState = AVMerger.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* IGNORING *********************************
-                elif state == AVMerger.IGNORING:    # ignoring merge requests
+                elif self.state == AVMerger.IGNORING:    # ignoring merge requests
                     # DO STUFF
                     if self.numFilesPerTrigger < 2:
                         raise IOError("Can't merge less than two files at a time!")
@@ -663,24 +673,24 @@ class AVMerger(StateMachineProcess):
                     # CHOOSE NEXT STATE
                     if msg == AVMerger.MERGE and arg is not None:
                         if self.verbose >= 1: self.log("Ignoring {streamType} file event for merging at {time}: {file}".format(file=arg['filePath'], streamType=arg['streamType'], time=arg['trigger'].triggerTime))
-                        nextState = AVMerger.IGNORING
+                        self.nextState = AVMerger.IGNORING
                     elif msg == AVMerger.CHILL:
                         self.ignoreFlag = True
-                        nextState = AVMerger.IGNORING
+                        self.nextState = AVMerger.IGNORING
                     elif msg == AVMerger.START:
                         self.ignoreFlag = False
-                        nextState = AVMerger.WAITING
+                        self.nextState = AVMerger.WAITING
                     elif msg == '':
-                        nextState = AVMerger.IGNORING
+                        self.nextState = AVMerger.IGNORING
                     elif msg == AVMerger.STOP:
-                        nextState = AVMerger.STOPPING
+                        self.nextState = AVMerger.STOPPING
                     elif msg == AVMerger.EXIT:
                         self.exitFlag = True
-                        nextState = AVMergers.STOPPING
+                        self.nextState = AVMergers.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* WAITING *********************************
-                elif state == AVMerger.WAITING:    # Waiting for files to merge
+                elif self.state == AVMerger.WAITING:    # Waiting for files to merge
                     # DO STUFF
                     if self.numFilesPerTrigger < 2:
                         raise IOError("Can't merge less than two files at a time!")
@@ -731,24 +741,24 @@ class AVMerger(StateMachineProcess):
                     if msg == AVMerger.MERGE and arg is not None:
                         receivedFileEventList.append(arg)
                         if self.verbose >= 1: self.log("Received {streamType} file event for merging at {time}: {file}".format(file=arg['filePath'], streamType=arg['streamType'], time=arg['trigger'].triggerTime))
-                        nextState = AVMerger.WAITING
+                        self.nextState = AVMerger.WAITING
                     elif msg == AVMerger.CHILL or self.ignoreFlag:
                         self.ignoreFlag = True
-                        nextState = AVMerger.IGNORING
+                        self.nextState = AVMerger.IGNORING
                     elif len(groupedFileEventList) > 0:
                         # At least one group of unmerged matching files - go to merge
-                        nextState = AVMerger.MERGING
+                        self.nextState = AVMerger.MERGING
                     elif msg in ['', AVMerger.START]:
-                        nextState = AVMerger.WAITING
+                        self.nextState = AVMerger.WAITING
                     elif msg == AVMerger.STOP:
-                        nextState = AVMerger.STOPPING
+                        self.nextState = AVMerger.STOPPING
                     elif msg == AVMerger.EXIT:
                         self.exitFlag = True
-                        nextState = AVMergers.STOPPING
+                        self.nextState = AVMergers.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* MERGING *********************************
-                elif state == AVMerger.MERGING:
+                elif self.state == AVMerger.MERGING:
                     # DO STUFF
                     if self.numFilesPerTrigger < 2:
                         raise IOError("Can't merge less than two files at a time!")
@@ -842,25 +852,25 @@ class AVMerger(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = AVMerger.STOPPING
+                        self.nextState = AVMerger.STOPPING
                     elif msg == AVMerger.MERGE:
                         if arg is not None:
                             receivedFileEventList.append(arg)
-                        nextState = AVMerger.WAITING
+                        self.nextState = AVMerger.WAITING
                     elif msg in ['', AVMerger.START]:
-                        nextState = AVMerger.WAITING
+                        self.nextState = AVMerger.WAITING
                     elif msg == AVMerger.CHILL:
                         self.ignoreFlag = True
-                        nextState = AVMerger.IGNORING
+                        self.nextState = AVMerger.IGNORING
                     elif msg == AVMerger.STOP:
-                        nextState = AVMerger.STOPPING
+                        self.nextState = AVMerger.STOPPING
                     elif msg == AVMerger.EXIT:
                         self.exitFlag = True
-                        nextState = AVMerger.STOPPING
+                        self.nextState = AVMerger.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* STOPPING *********************************
-                elif state == AVMerger.STOPPING:
+                elif self.state == AVMerger.STOPPING:
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
@@ -871,20 +881,20 @@ class AVMerger(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = AVMerger.STOPPED
+                        self.nextState = AVMerger.STOPPED
                     elif msg == '':
-                        nextState = AVMerger.STOPPED
+                        self.nextState = AVMerger.STOPPED
                     elif msg == AVMerger.START:
-                        nextState = AVMerger.INITIALIZING
+                        self.nextState = AVMerger.INITIALIZING
                     elif msg == AVMerger.STOP:
-                        nextState = AVMerger.STOPPED
+                        self.nextState = AVMerger.STOPPED
                     elif msg == AVMerger.EXIT:
                         self.exitFlag = True
-                        nextState = AVMerger.STOPPED
+                        self.nextState = AVMerger.STOPPED
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ERROR *********************************
-                elif state == AVMerger.ERROR:
+                elif self.state == AVMerger.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
@@ -898,51 +908,50 @@ class AVMerger(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if lastState == AVMerger.ERROR:
+                    if self.lastState == AVMerger.ERROR:
                         # Error ==> Error, let's just exit
-                        nextState = AVMerger.EXITING
+                        self.nextState = AVMerger.EXITING
                     elif msg == '':
-                        if lastState == AVMerger.STOPPING:
+                        if self.lastState == AVMerger.STOPPING:
                             # We got an error in stopping state? Better just stop.
-                            nextState = AVMerger.STOPPED
-                        elif lastState ==AVMerger.STOPPED:
+                            self.nextState = AVMerger.STOPPED
+                        elif self.lastState ==AVMerger.STOPPED:
                             # We got an error in the stopped state? Better just exit.
-                            nextState = AVMerger.EXITING
+                            self.nextState = AVMerger.EXITING
                         else:
-                            nextState = AVMerger.STOPPING
+                            self.nextState = AVMerger.STOPPING
                     elif msg == AVMerger.STOP:
-                        nextState = AVMerger.STOPPED
+                        self.nextState = AVMerger.STOPPED
                     elif msg == AVMerger.EXIT:
                         self.exitFlag = True
-                        if lastState == AVMerger.STOPPING:
-                            nextState = AVMerger.EXITING
+                        if self.lastState == AVMerger.STOPPING:
+                            self.nextState = AVMerger.EXITING
                         else:
-                            nextState = AVMerger.STOPPING
+                            self.nextState = AVMerger.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* EXIT *********************************
-                elif state == AVMerger.EXITING:
+                elif self.state == AVMerger.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateList[state])
+                    raise KeyError("Unknown state: "+self.stateList[self.state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
-                nextState = AVMerger.STOPPING
+                self.nextState = AVMerger.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
-                nextState = AVMerger.ERROR
+                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.nextState = AVMerger.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
-                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
+                self.log("msg={msg}".format(msg=msg))
+                self.logEnd()
 
             # Prepare to advance to next state
-            lastState = state
-            state = nextState
+            self.lastState = self.state
+            self.state = self.nextState
             self.flushStdout()
 
         clearQueue(self.msgQueue)
@@ -1036,19 +1045,19 @@ class Synchronizer(StateMachineProcess):
     def run(self):
         self.PID.value = os.getpid()
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
-        state = Synchronizer.STOPPED
-        nextState = Synchronizer.STOPPED
-        lastState = Synchronizer.STOPPED
+        self.state = Synchronizer.STOPPED
+        self.nextState = Synchronizer.STOPPED
+        self.lastState = Synchronizer.STOPPED
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if state != lastState:
-                self.updatePublishedState(state)
+            if self.state != self.lastState:
+                self.updatePublishedState()
 
             try:
 # ********************************* STOPPPED *********************************
-                if state == Synchronizer.STOPPED:
+                if self.state == Synchronizer.STOPPED:
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
@@ -1059,20 +1068,20 @@ class Synchronizer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = Synchronizer.EXITING
+                        self.nextState = Synchronizer.EXITING
                     elif msg == '':
-                        nextState = state
+                        self.nextState = self.state
                     elif msg == Synchronizer.STOP:
-                        nextState = Synchronizer.STOPPED
+                        self.nextState = Synchronizer.STOPPED
                     elif msg == Synchronizer.START:
-                        nextState = Synchronizer.INITIALIZING
+                        self.nextState = Synchronizer.INITIALIZING
                     elif msg == Synchronizer.EXIT:
                         self.exitFlag = True
-                        nextState = Synchronizer.EXITING
+                        self.nextState = Synchronizer.EXITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* INITIALIZING *********************************
-                elif state == Synchronizer.INITIALIZING:
+                elif self.state == Synchronizer.INITIALIZING:
                     # DO STUFF
 
                     # Configure and generate synchronization signal
@@ -1149,18 +1158,18 @@ class Synchronizer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = Synchronizer.STOPPING
+                        self.nextState = Synchronizer.STOPPING
                     elif msg in ['', Synchronizer.START]:
-                        nextState = Synchronizer.SYNC_READY
+                        self.nextState = Synchronizer.SYNC_READY
                     elif msg == Synchronizer.STOP:
-                        nextState = Synchronizer.STOPPING
+                        self.nextState = Synchronizer.STOPPING
                     elif msg == Synchronizer.EXIT:
                         self.exitFlag = True
-                        nextState = Synchronizer.STOPPING
+                        self.nextState = Synchronizer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* SYNC_READY *********************************
-                elif state == Synchronizer.SYNC_READY:
+                elif self.state == Synchronizer.SYNC_READY:
                     # DO STUFF
                     try:
                         if self.verbose >= 2:
@@ -1187,7 +1196,7 @@ class Synchronizer(StateMachineProcess):
                             startTask.stop()
                     except BrokenBarrierError:
                         if self.verbose >= 0: self.log("Simultaneous start failure")
-                        nextState = Synchronizer.STOPPING
+                        self.nextState = Synchronizer.STOPPING
 
                     # CHECK FOR MESSAGES
                     try:
@@ -1197,17 +1206,17 @@ class Synchronizer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if msg in ['', Synchronizer.START]:
-                        nextState = Synchronizer.SYNCHRONIZING
+                        self.nextState = Synchronizer.SYNCHRONIZING
                     elif msg == Synchronizer.STOP:
-                        nextState = Synchronizer.STOPPING
+                        self.nextState = Synchronizer.STOPPING
                     elif msg == Synchronizer.EXIT:
                         self.exitFlag = True
-                        nextState = Synchronizer.STOPPING
+                        self.nextState = Synchronizer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 
 # ********************************* SYNCHRONIZING *********************************
-                elif state == Synchronizer.SYNCHRONIZING:
+                elif self.state == Synchronizer.SYNCHRONIZING:
                     # DO STUFF
                     if trigTask.is_task_done():
                         raise RuntimeError('Warning, synchronizer trigger task stopped unexpectedly.')
@@ -1220,18 +1229,18 @@ class Synchronizer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = Synchronizer.STOPPING
+                        self.nextState = Synchronizer.STOPPING
                     elif msg in ['', Synchronizer.START]:
-                        nextState = state
+                        self.nextState = self.state
                     elif msg == Synchronizer.STOP:
-                        nextState = Synchronizer.STOPPING
+                        self.nextState = Synchronizer.STOPPING
                     elif msg == Synchronizer.EXIT:
                         self.exitFlag = True
-                        nextState = Synchronizer.STOPPING
+                        self.nextState = Synchronizer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* STOPPING *********************************
-                elif state == Synchronizer.STOPPING:
+                elif self.state == Synchronizer.STOPPING:
                     # DO STUFF
                     if trigTask is not None:
                         trigTask.close()
@@ -1248,20 +1257,20 @@ class Synchronizer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = Synchronizer.STOPPED
+                        self.nextState = Synchronizer.STOPPED
                     elif msg == '':
-                        nextState = Synchronizer.STOPPED
+                        self.nextState = Synchronizer.STOPPED
                     elif msg == Synchronizer.START:
-                        nextState = Synchronizer.INITIALIZING
+                        self.nextState = Synchronizer.INITIALIZING
                     elif msg == Synchronizer.STOP:
-                        nextState = Synchronizer.STOPPED
+                        self.nextState = Synchronizer.STOPPED
                     elif msg == Synchronizer.EXIT:
                         self.exitFlag = True
-                        nextState = Synchronizer.STOPPED
+                        self.nextState = Synchronizer.STOPPED
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ERROR *********************************
-                elif state == Synchronizer.ERROR:
+                elif self.state == Synchronizer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
@@ -1275,53 +1284,52 @@ class Synchronizer(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if lastState == Synchronizer.ERROR:
+                    if self.lastState == Synchronizer.ERROR:
                         # Error ==> Error, let's just exit
-                        nextState = Synchronizer.EXITING
+                        self.nextState = Synchronizer.EXITING
                     elif msg == '':
-                        if lastState == Synchronizer.STOPPING:
+                        if self.lastState == Synchronizer.STOPPING:
                             # We got an error in stopping state? Better just stop.
-                            nextState = Synchronizer.STOPPED
-                        elif lastState ==Synchronizer.STOPPED:
+                            self.nextState = Synchronizer.STOPPED
+                        elif self.lastState ==Synchronizer.STOPPED:
                             # We got an error in the stopped state? Better just exit.
-                            nextState = Synchronizer.EXITING
+                            self.nextState = Synchronizer.EXITING
                         else:
-                            nextState = Synchronizer.STOPPING
+                            self.nextState = Synchronizer.STOPPING
                     elif msg == Synchronizer.STOP:
-                        nextState = Synchronizer.STOPPED
+                        self.nextState = Synchronizer.STOPPED
                     elif msg == Synchronizer.EXIT:
                         self.exitFlag = True
-                        if lastState == Synchronizer.STOPPING:
-                            nextState = Synchronizer.EXITING
+                        if self.lastState == Synchronizer.STOPPING:
+                            self.nextState = Synchronizer.EXITING
                         else:
-                            nextState = Synchronizer.STOPPING
+                            self.nextState = Synchronizer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* EXIT *********************************
-                elif state == Synchronizer.EXITING:
+                elif self.state == Synchronizer.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateList[state])
+                    raise KeyError("Unknown state: "+self.stateList[self.state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
-                nextState = Synchronizer.STOPPING
+                self.nextState = Synchronizer.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
-                nextState = Synchronizer.ERROR
+                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.nextState = Synchronizer.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
-                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
+                self.log("msg={msg}".format(msg=msg))
+                self.logEnd()
 
             self.flushStdout()
 
             # Prepare to advance to next state
-            lastState = state
-            state = nextState
+            self.lastState = self.state
+            self.state = self.nextState
 
         clearQueue(self.msgQueue)
         if self.verbose >= 1: self.log("Synchronization process STOPPED")
@@ -1330,7 +1338,7 @@ class Synchronizer(StateMachineProcess):
 
 class AudioTriggerer(StateMachineProcess):
     '''
-    AudioTriggerer: A state machine class to generate audio-based for both audio
+    AudioTriggerer: A self.state machine class to generate audio-based for both audio
         and video writer processes.
     '''
     # States:
@@ -1495,19 +1503,19 @@ class AudioTriggerer(StateMachineProcess):
     def run(self):
         self.PID.value = os.getpid()
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
-        state = AudioTriggerer.STOPPED
-        nextState = AudioTriggerer.STOPPED
-        lastState = AudioTriggerer.STOPPED
+        self.state = AudioTriggerer.STOPPED
+        self.nextState = AudioTriggerer.STOPPED
+        self.lastState = AudioTriggerer.STOPPED
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if state != lastState:
-                self.updatePublishedState(state)
+            if self.state != self.lastState:
+                self.updatePublishedState()
 
             try:
 # ********************************* STOPPPED *********************************
-                if state == AudioTriggerer.STOPPED:
+                if self.state == AudioTriggerer.STOPPED:
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
@@ -1519,20 +1527,20 @@ class AudioTriggerer(StateMachineProcess):
                     # CHOOSE NEXT STATE
                     if msg == AudioTriggerer.EXIT or self.exitFlag:
                         self.exitFlag = True
-                        nextState = AudioTriggerer.EXITING
+                        self.nextState = AudioTriggerer.EXITING
                     elif msg == '':
-                        nextState = AudioTriggerer.STOPPED
+                        self.nextState = AudioTriggerer.STOPPED
                     elif msg == AudioTriggerer.STOP:
-                        nextState = AudioTriggerer.STOPPED
+                        self.nextState = AudioTriggerer.STOPPED
                     elif msg == AudioTriggerer.START:
-                        nextState = AudioTriggerer.INITIALIZING
+                        self.nextState = AudioTriggerer.INITIALIZING
                     elif msg == AudioTriggerer.STARTANALYZE:
                         self.analyzeFlag = True
-                        nextState = AudioTriggerer.INITIALIZING
+                        self.nextState = AudioTriggerer.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* INITIALIZING *****************************
-                elif state == AudioTriggerer.INITIALIZING:
+                elif self.state == AudioTriggerer.INITIALIZING:
                     # DO STUFF
                     activeTrigger = None
                     while self.audioFrequencyVar.value == -1:
@@ -1553,17 +1561,17 @@ class AudioTriggerer(StateMachineProcess):
                     # CHOOSE NEXT STATE
                     if msg == AudioTriggerer.EXIT or self.exitFlag:
                         self.exitFlag = True
-                        nextState = AudioTriggerer.STOPPING
+                        self.nextState = AudioTriggerer.STOPPING
                     elif msg == AudioTriggerer.STOP:
-                        nextState = AudioTriggerer.STOPPING
+                        self.nextState = AudioTriggerer.STOPPING
                     elif msg in ['', AudioTriggerer.START, AudioTriggerer.STOPANALYZE]:
-                        nextState = AudioTriggerer.WAITING
+                        self.nextState = AudioTriggerer.WAITING
                     elif msg == AudioTriggerer.STARTANALYZE or self.analyzeFlag:
-                        nextState = AudioTriggerer.ANALYZING
+                        self.nextState = AudioTriggerer.ANALYZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* WAITING ********************************
-                elif state == AudioTriggerer.WAITING:
+                elif self.state == AudioTriggerer.WAITING:
                     # DO STUFF
 
                     # Throw away received audio
@@ -1581,18 +1589,18 @@ class AudioTriggerer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if msg == AudioTriggerer.STOP:
-                        nextState = AudioTriggerer.STOPPING
+                        self.nextState = AudioTriggerer.STOPPING
                     elif msg == AudioTriggerer.EXIT:
                         self.exitFlag = True
-                        nextState = AudioTriggerer.STOPPING
+                        self.nextState = AudioTriggerer.STOPPING
                     elif msg == AudioTriggerer.STARTANALYZE or self.analyzeFlag:
-                        nextState = AudioTriggerer.ANALYZING
+                        self.nextState = AudioTriggerer.ANALYZING
                     elif msg in ['', AudioTriggerer.STOPANALYZE, AudioTriggerer.START]:
-                        nextState = AudioTriggerer.WAITING
+                        self.nextState = AudioTriggerer.WAITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ANALYZING *********************************
-                elif state == AudioTriggerer.ANALYZING:
+                elif self.state == AudioTriggerer.ANALYZING:
                     # DO STUFF
                     self.analyzeFlag = False
 
@@ -1706,17 +1714,17 @@ class AudioTriggerer(StateMachineProcess):
 #                    if self.verbose >= 3: self.log("|{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
                     if msg == AudioTriggerer.EXIT or self.exitFlag:
                         self.exitFlag = True
-                        nextState = AudioTriggerer.STOPPING
+                        self.nextState = AudioTriggerer.STOPPING
                     elif msg == AudioTriggerer.STOP:
-                        nextState = AudioTriggerer.STOPPING
+                        self.nextState = AudioTriggerer.STOPPING
                     elif msg == AudioTriggerer.STOPANALYZE:
-                        nextState = AudioTriggerer.WAITING
+                        self.nextState = AudioTriggerer.WAITING
                     elif msg in ['', AudioTriggerer.STARTANALYZE, AudioTriggerer.START]:
-                        nextState = state
+                        self.nextState = self.state
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* STOPPING *********************************
-                elif state == AudioTriggerer.STOPPING:
+                elif self.state == AudioTriggerer.STOPPING:
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
@@ -1727,20 +1735,20 @@ class AudioTriggerer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = AudioTriggerer.STOPPED
+                        self.nextState = AudioTriggerer.STOPPED
                     elif msg == '':
-                        nextState = AudioTriggerer.STOPPED
+                        self.nextState = AudioTriggerer.STOPPED
                     elif msg == AudioTriggerer.STOP:
-                        nextState = AudioTriggerer.STOPPED
+                        self.nextState = AudioTriggerer.STOPPED
                     elif msg == AudioTriggerer.EXIT:
                         self.exitFlag = True
-                        nextState = AudioTriggerer.STOPPED
+                        self.nextState = AudioTriggerer.STOPPED
                     elif msg == AudioTriggerer.START:
-                        nextState = AudioTriggerer.INITIALIZING
+                        self.nextState = AudioTriggerer.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ERROR *********************************
-                elif state == AudioTriggerer.ERROR:
+                elif self.state == AudioTriggerer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
@@ -1754,53 +1762,52 @@ class AudioTriggerer(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if lastState == AudioTriggerer.ERROR:
+                    if self.lastState == AudioTriggerer.ERROR:
                         # Error ==> Error, let's just exit
-                        nextState = AudioTriggerer.EXITING
+                        self.nextState = AudioTriggerer.EXITING
                     elif msg == '':
-                        if lastState == AudioTriggerer.STOPPING:
+                        if self.lastState == AudioTriggerer.STOPPING:
                             # We got an error in stopping state? Better just stop.
-                            nextState = AudioTriggerer.STOPPED
-                        elif lastState ==AudioTriggerer.STOPPED:
+                            self.nextState = AudioTriggerer.STOPPED
+                        elif self.lastState ==AudioTriggerer.STOPPED:
                             # We got an error in the stopped state? Better just exit.
-                            nextState = AudioTriggerer.EXITING
+                            self.nextState = AudioTriggerer.EXITING
                         else:
-                            nextState = AudioTriggerer.STOPPING
+                            self.nextState = AudioTriggerer.STOPPING
                     elif msg == AudioTriggerer.STOP:
-                        nextState = AudioTriggerer.STOPPED
+                        self.nextState = AudioTriggerer.STOPPED
                     elif msg == AudioTriggerer.EXIT:
                         self.exitFlag = True
-                        if lastState == AudioTriggerer.STOPPING:
-                            nextState = AudioTriggerer.EXITING
+                        if self.lastState == AudioTriggerer.STOPPING:
+                            self.nextState = AudioTriggerer.EXITING
                         else:
-                            nextState = AudioTriggerer.STOPPING
+                            self.nextState = AudioTriggerer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* EXIT *********************************
-                elif state == AudioTriggerer.EXITING:
+                elif self.state == AudioTriggerer.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateList[state])
+                    raise KeyError("Unknown state: "+self.stateList[self.state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
-                nextState = AudioTriggerer.STOPPING
+                self.nextState = AudioTriggerer.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
-                nextState = AudioTriggerer.ERROR
+                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.nextState = AudioTriggerer.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
-                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
+                self.log("msg={msg}".format(msg=msg))
+                self.logEnd()
 
             self.flushStdout()
 
             # Prepare to advance to next state
-            lastState = state
-            state = nextState
+            self.lastState = self.state
+            self.state = self.nextState
 
         clearQueue(self.msgQueue)
         clearQueue(self.analysisMonitorQueue)
@@ -1935,19 +1942,19 @@ class AudioAcquirer(StateMachineProcess):
     def run(self):
         self.PID.value = os.getpid()
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
-        state = AudioAcquirer.STOPPED
-        nextState = AudioAcquirer.STOPPED
-        lastState = AudioAcquirer.STOPPED
+        self.state = AudioAcquirer.STOPPED
+        self.nextState = AudioAcquirer.STOPPED
+        self.lastState = AudioAcquirer.STOPPED
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if state != lastState:
-                self.updatePublishedState(state)
+            if self.state != self.lastState:
+                self.updatePublishedState()
 
             try:
 # ********************************* STOPPPED *********************************
-                if state == AudioAcquirer.STOPPED:
+                if self.state == AudioAcquirer.STOPPED:
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
@@ -1958,20 +1965,20 @@ class AudioAcquirer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = AudioAcquirer.EXITING
+                        self.nextState = AudioAcquirer.EXITING
                     elif msg == '':
-                        nextState = state
+                        self.nextState = self.state
                     elif msg == AudioAcquirer.STOP:
-                        nextState = AudioAcquirer.STOPPED
+                        self.nextState = AudioAcquirer.STOPPED
                     elif msg == AudioAcquirer.START:
-                        nextState = AudioAcquirer.INITIALIZING
+                        self.nextState = AudioAcquirer.INITIALIZING
                     elif msg == AudioAcquirer.EXIT:
                         self.exitFlag = True
-                        nextState = AudioAcquirer.EXITING
+                        self.nextState = AudioAcquirer.EXITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* INITIALIZING *********************************
-                elif state == AudioAcquirer.INITIALIZING:
+                elif self.state == AudioAcquirer.INITIALIZING:
                     # DO STUFF
                     # Read actual audio frequency from the Synchronizer process
                     while self.audioFrequencyVar.value == -1:
@@ -2006,18 +2013,18 @@ class AudioAcquirer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = AudioAcquirer.STOPPING
+                        self.nextState = AudioAcquirer.STOPPING
                     elif msg in ['', AudioAcquirer.START]:
-                        nextState = AudioAcquirer.ACQUIRE_READY
+                        self.nextState = AudioAcquirer.ACQUIRE_READY
                     elif msg == AudioAcquirer.STOP:
-                        nextState = AudioAcquirer.STOPPING
+                        self.nextState = AudioAcquirer.STOPPING
                     elif msg == AudioAcquirer.EXIT:
                         self.exitFlag = True
-                        nextState = AudioAcquirer.STOPPING
+                        self.nextState = AudioAcquirer.STOPPING
                     else:
-                        raise SyntaxError("AA - Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("AA - Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ACQUIRE_READY *********************************
-                elif state == AudioAcquirer.ACQUIRE_READY:
+                elif self.state == AudioAcquirer.ACQUIRE_READY:
                     # DO STUFF
                     try:
                         if self.ready is not None:
@@ -2025,7 +2032,7 @@ class AudioAcquirer(StateMachineProcess):
                             self.ready.wait()
                     except BrokenBarrierError:
                         if self.verbose >= 0: self.log("Simultaneous start failure")
-                        nextState = AudioAcquirer.STOPPING
+                        self.nextState = AudioAcquirer.STOPPING
 
 #                    if self.verbose >= 1: self.log('passed barrier')
 
@@ -2037,16 +2044,16 @@ class AudioAcquirer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if msg in ['', AudioAcquirer.START]:
-                        nextState = AudioAcquirer.ACQUIRING
+                        self.nextState = AudioAcquirer.ACQUIRING
                     elif msg == AudioAcquirer.STOP:
-                        nextState = AudioAcquirer.STOPPING
+                        self.nextState = AudioAcquirer.STOPPING
                     elif msg == AudioAcquirer.EXIT:
                         self.exitFlag = True
-                        nextState = AudioAcquirer.STOPPING
+                        self.nextState = AudioAcquirer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ACQUIRING *********************************
-                elif state == AudioAcquirer.ACQUIRING:
+                elif self.state == AudioAcquirer.ACQUIRING:
                     # DO STUFF
                     try:
                         reader.read_many_sample(                            # Read a chunk of audio data
@@ -2091,18 +2098,18 @@ class AudioAcquirer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = AudioAcquirer.STOPPING
+                        self.nextState = AudioAcquirer.STOPPING
                     elif msg in ['', AudioAcquirer.START]:
-                        nextState = AudioAcquirer.ACQUIRING
+                        self.nextState = AudioAcquirer.ACQUIRING
                     elif msg == AudioAcquirer.STOP:
-                        nextState = AudioAcquirer.STOPPING
+                        self.nextState = AudioAcquirer.STOPPING
                     elif msg == AudioAcquirer.EXIT:
                         self.exitFlag = True
-                        nextState = AudioAcquirer.STOPPING
+                        self.nextState = AudioAcquirer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* STOPPING *********************************
-                elif state == AudioAcquirer.STOPPING:
+                elif self.state == AudioAcquirer.STOPPING:
                     # DO STUFF
                     if readTask is not None:
                         readTask.close()
@@ -2115,20 +2122,20 @@ class AudioAcquirer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = AudioAcquirer.STOPPED
+                        self.nextState = AudioAcquirer.STOPPED
                     elif msg == '':
-                        nextState = AudioAcquirer.STOPPED
+                        self.nextState = AudioAcquirer.STOPPED
                     elif msg == AudioAcquirer.STOP:
-                        nextState = AudioAcquirer.STOPPED
+                        self.nextState = AudioAcquirer.STOPPED
                     elif msg == AudioAcquirer.EXIT:
                         self.exitFlag = True
-                        nextState = AudioAcquirer.STOPPED
+                        self.nextState = AudioAcquirer.STOPPED
                     elif msg == AudioAcquirer.START:
-                        nextState = AudioAcquirer.INITIALIZING
+                        self.nextState = AudioAcquirer.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ERROR *********************************
-                elif state == AudioAcquirer.ERROR:
+                elif self.state == AudioAcquirer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
@@ -2142,54 +2149,53 @@ class AudioAcquirer(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if lastState == AudioAcquirer.ERROR:
+                    if self.lastState == AudioAcquirer.ERROR:
                         # Error ==> Error, let's just exit
-                        nextState = AudioAcquirer.EXITING
+                        self.nextState = AudioAcquirer.EXITING
                     elif msg == '':
-                        if lastState == AudioAcquirer.STOPPING:
+                        if self.lastState == AudioAcquirer.STOPPING:
                             # We got an error in stopping state? Better just stop.
-                            nextState = AudioAcquirer.STOPPED
-                        elif lastState ==AudioAcquirer.STOPPED:
+                            self.nextState = AudioAcquirer.STOPPED
+                        elif self.lastState ==AudioAcquirer.STOPPED:
                             # We got an error in the stopped state? Better just exit.
-                            nextState = AudioAcquirer.EXITING
+                            self.nextState = AudioAcquirer.EXITING
                         else:
-                            nextState = AudioAcquirer.STOPPING
+                            self.nextState = AudioAcquirer.STOPPING
                     elif msg == AudioAcquirer.STOP:
-                        nextState = AudioAcquirer.STOPPING
+                        self.nextState = AudioAcquirer.STOPPING
                     elif msg == AudioAcquirer.EXIT:
                         self.exitFlag = True
-                        if lastState == AudioAcquirer.STOPPING:
-                            nextState = AudioAcquirer.EXITING
+                        if self.lastState == AudioAcquirer.STOPPING:
+                            self.nextState = AudioAcquirer.EXITING
                         else:
-                            nextState = AudioAcquirer.STOPPING
+                            self.nextState = AudioAcquirer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* EXIT *********************************
-                elif state == AudioAcquirer.EXITING:
+                elif self.state == AudioAcquirer.EXITING:
                     if self.verbose >= 1: self.log('Exiting!')
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateList[state])
+                    raise KeyError("Unknown state: "+self.stateList[self.state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 1: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
-                nextState = AudioAcquirer.STOPPING
+                self.nextState = AudioAcquirer.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
-                nextState = AudioAcquirer.ERROR
+                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.nextState = AudioAcquirer.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
-                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
+                self.log("msg={msg}".format(msg=msg))
+                self.logEnd()
 
             self.flushStdout()
 
             # Prepare to advance to next state
-            lastState = state
-            state = nextState
+            self.lastState = self.state
+            self.state = self.nextState
 
         clearQueue(self.msgQueue)
         clearQueue(self.monitorQueue)
@@ -2282,19 +2288,19 @@ class SimpleAudioWriter(StateMachineProcess):
     def run(self):
         self.PID.value = os.getpid()
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
-        state = SimpleAudioWriter.STOPPED
-        nextState = SimpleAudioWriter.STOPPED
-        lastState = SimpleAudioWriter.STOPPED
+        self.state = SimpleAudioWriter.STOPPED
+        self.nextState = SimpleAudioWriter.STOPPED
+        self.lastState = SimpleAudioWriter.STOPPED
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if state != lastState:
-                self.updatePublishedState(state)
+            if self.state != self.lastState:
+                self.updatePublishedState()
 
             try:
 # ********************************* STOPPPED *********************************
-                if state == SimpleAudioWriter.STOPPED:
+                if self.state == SimpleAudioWriter.STOPPED:
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
@@ -2305,20 +2311,20 @@ class SimpleAudioWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = SimpleAudioWriter.EXITING
+                        self.nextState = SimpleAudioWriter.EXITING
                     elif msg == '':
-                        nextState = SimpleAudioWriter.STOPPED
+                        self.nextState = SimpleAudioWriter.STOPPED
                     elif msg == SimpleAudioWriter.STOP:
-                        nextState = SimpleAudioWriter.STOPPED
+                        self.nextState = SimpleAudioWriter.STOPPED
                     elif msg == SimpleAudioWriter.START:
-                        nextState = SimpleAudioWriter.INITIALIZING
+                        self.nextState = SimpleAudioWriter.INITIALIZING
                     elif msg == SimpleAudioWriter.EXIT:
                         self.exitFlag = True
-                        nextState = SimpleAudioWriter.EXITING
+                        self.nextState = SimpleAudioWriter.EXITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* INITIALIZING *****************************
-                elif state == SimpleAudioWriter.INITIALIZING:
+                elif self.state == SimpleAudioWriter.INITIALIZING:
                     # DO STUFF
                     audioFile = None
                     seriesStartTime = time.time()   # Record approximate start time (in seconds since epoch) of series for filenaming purposes
@@ -2360,18 +2366,18 @@ class SimpleAudioWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = SimpleAudioWriter.STOPPING
+                        self.nextState = SimpleAudioWriter.STOPPING
                     elif msg in ['', SimpleAudioWriter.START]:
-                        nextState = SimpleAudioWriter.AUDIOINIT
+                        self.nextState = SimpleAudioWriter.AUDIOINIT
                     elif msg == SimpleAudioWriter.STOP:
-                        nextState = SimpleAudioWriter.STOPPING
+                        self.nextState = SimpleAudioWriter.STOPPING
                     elif msg == SimpleAudioWriter.EXIT:
                         self.exitFlag = True
-                        nextState = SimpleAudioWriter.STOPPING
+                        self.nextState = SimpleAudioWriter.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* AUDIOINIT ********************************
-                elif state == SimpleAudioWriter.AUDIOINIT:
+                elif self.state == SimpleAudioWriter.AUDIOINIT:
                     # Start a new audio file
                     # DO STUFF
                     audioFileStartTime = seriesStartTime + numSamplesInCurrentSeries / self.audioFrequency
@@ -2410,18 +2416,18 @@ class SimpleAudioWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = SimpleAudioWriter.STOPPING
+                        self.nextState = SimpleAudioWriter.STOPPING
                     elif msg == SimpleAudioWriter.STOP:
-                        nextState = SimpleAudioWriter.STOPPING
+                        self.nextState = SimpleAudioWriter.STOPPING
                     elif msg == SimpleAudioWriter.EXIT:
                         self.exitFlag = True
-                        nextState = SimpleAudioWriter.STOPPING
+                        self.nextState = SimpleAudioWriter.STOPPING
                     elif msg in ['', SimpleAudioWriter.START]:
-                        nextState = SimpleAudioWriter.WRITING
+                        self.nextState = SimpleAudioWriter.WRITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* WRITING *********************************
-                elif state == SimpleAudioWriter.WRITING:
+                elif self.state == SimpleAudioWriter.WRITING:
                     # DO STUFF
                     if self.verbose >= 3:
                         self.log("Audio queue size: ", self.audioQueue.qsize())
@@ -2471,16 +2477,16 @@ class SimpleAudioWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = SimpleAudioWriter.STOPPING
+                        self.nextState = SimpleAudioWriter.STOPPING
                     elif msg == SimpleAudioWriter.STOP:
-                        nextState = SimpleAudioWriter.STOPPING
+                        self.nextState = SimpleAudioWriter.STOPPING
                     elif msg == SimpleAudioWriter.EXIT:
                         self.exitFlag = True
-                        nextState = SimpleAudioWriter.STOPPING
+                        self.nextState = SimpleAudioWriter.STOPPING
                     elif msg in ['', SimpleAudioWriter.START]:
                         if numSamplesInCurrentFile == numSamplesPerFile:
                             # We've reached the desired sample count. Start a new audio file.
-                            nextState = SimpleAudioWriter.AUDIOINIT
+                            self.nextState = SimpleAudioWriter.AUDIOINIT
                             # If requested, merge with video
                             if self.mergeMessageQueue is not None:
                                 # Send file for AV merging:
@@ -2502,14 +2508,14 @@ class SimpleAudioWriter(StateMachineProcess):
                                     self.log('No merge message queue available, cannot send to AVMerger')
                         elif numSamplesInCurrentFile < numSamplesPerFile:
                             # Not enough audio samples written to this file yet. Keep writing.
-                            nextState = SimpleAudioWriter.WRITING
+                            self.nextState = SimpleAudioWriter.WRITING
                         else:
                             # Uh oh, too many audio samples in this file? Something went wrong.
                             raise IOError('More audio samples ({k}) than requested ({n}) in file!'.format(k=numSamplesInCurrentFile, n=numSamplesPerFile))
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* STOPPING *********************************
-                elif state == SimpleAudioWriter.STOPPING:
+                elif self.state == SimpleAudioWriter.STOPPING:
                     # DO STUFF
                     if audioFile is not None:
                         audioFile.writeframes(b'')  # Recompute header info?
@@ -2541,20 +2547,20 @@ class SimpleAudioWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = SimpleAudioWriter.STOPPED
+                        self.nextState = SimpleAudioWriter.STOPPED
                     elif msg == '':
-                        nextState = SimpleAudioWriter.STOPPED
+                        self.nextState = SimpleAudioWriter.STOPPED
                     elif msg == SimpleAudioWriter.STOP:
-                        nextState = SimpleAudioWriter.STOPPED
+                        self.nextState = SimpleAudioWriter.STOPPED
                     elif msg == SimpleAudioWriter.EXIT:
                         self.exitFlag = True
-                        nextState = SimpleAudioWriter.STOPPED
+                        self.nextState = SimpleAudioWriter.STOPPED
                     elif msg == SimpleAudioWriter.START:
-                        nextState = SimpleAudioWriter.INITIALIZING
+                        self.nextState = SimpleAudioWriter.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ERROR *********************************
-                elif state == SimpleAudioWriter.ERROR:
+                elif self.state == SimpleAudioWriter.ERROR:
                     # DO STUFF
 
                     if self.verbose >= 0:
@@ -2569,53 +2575,52 @@ class SimpleAudioWriter(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if lastState == SimpleAudioWriter.ERROR:
+                    if self.lastState == SimpleAudioWriter.ERROR:
                         # Error ==> Error, let's just exit
-                        nextState = SimpleAudioWriter.EXITING
+                        self.nextState = SimpleAudioWriter.EXITING
                     elif msg == '':
-                        if lastState == SimpleAudioWriter.STOPPING:
+                        if self.lastState == SimpleAudioWriter.STOPPING:
                             # We got an error in stopping state? Better just stop.
-                            nextState = SimpleAudioWriter.STOPPED
-                        elif lastState ==SimpleAudioWriter.STOPPED:
+                            self.nextState = SimpleAudioWriter.STOPPED
+                        elif self.lastState ==SimpleAudioWriter.STOPPED:
                             # We got an error in the stopped state? Better just exit.
-                            nextState = SimpleAudioWriter.EXITING
+                            self.nextState = SimpleAudioWriter.EXITING
                         else:
-                            nextState = SimpleAudioWriter.STOPPING
+                            self.nextState = SimpleAudioWriter.STOPPING
                     elif msg == SimpleAudioWriter.STOP:
-                        nextState = SimpleAudioWriter.STOPPED
+                        self.nextState = SimpleAudioWriter.STOPPED
                     elif msg == SimpleAudioWriter.EXIT:
                         self.exitFlag = True
-                        if lastState == SimpleAudioWriter.STOPPING:
-                            nextState = SimpleAudioWriter.EXITING
+                        if self.lastState == SimpleAudioWriter.STOPPING:
+                            self.nextState = SimpleAudioWriter.EXITING
                         else:
-                            nextState = SimpleAudioWriter.STOPPING
+                            self.nextState = SimpleAudioWriter.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* EXIT *********************************
-                elif state == SimpleAudioWriter.EXITING:
+                elif self.state == SimpleAudioWriter.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateList[state])
+                    raise KeyError("Unknown state: "+self.stateList[self.state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
-                nextState = SimpleAudioWriter.STOPPING
+                self.nextState = SimpleAudioWriter.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
-                nextState = SimpleAudioWriter.ERROR
+                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.nextState = SimpleAudioWriter.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
-                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
+                self.log("msg={msg}".format(msg=msg))
+                self.logEnd()
 
             self.flushStdout()
 
             # Prepare to advance to next state
-            lastState = state
-            state = nextState
+            self.lastState = self.state
+            self.state = self.nextState
 
         clearQueue(self.msgQueue)
         if self.verbose >= 1: self.log("Audio write process STOPPED")
@@ -2717,19 +2722,19 @@ class AudioWriter(StateMachineProcess):
     def run(self):
         self.PID.value = os.getpid()
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
-        state = AudioWriter.STOPPED
-        nextState = AudioWriter.STOPPED
-        lastState = AudioWriter.STOPPED
+        self.state = AudioWriter.STOPPED
+        self.nextState = AudioWriter.STOPPED
+        self.lastState = AudioWriter.STOPPED
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if state != lastState:
-                self.updatePublishedState(state)
+            if self.state != self.lastState:
+                self.updatePublishedState()
 
             try:
 # ********************************* STOPPPED *********************************
-                if state == AudioWriter.STOPPED:
+                if self.state == AudioWriter.STOPPED:
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
@@ -2740,20 +2745,20 @@ class AudioWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = AudioWriter.EXITING
+                        self.nextState = AudioWriter.EXITING
                     elif msg == '':
-                        nextState = AudioWriter.STOPPED
+                        self.nextState = AudioWriter.STOPPED
                     elif msg == AudioWriter.STOP:
-                        nextState = AudioWriter.STOPPED
+                        self.nextState = AudioWriter.STOPPED
                     elif msg == AudioWriter.START:
-                        nextState = AudioWriter.INITIALIZING
+                        self.nextState = AudioWriter.INITIALIZING
                     elif msg == AudioWriter.EXIT:
                         self.exitFlag = True
-                        nextState = AudioWriter.EXITING
+                        self.nextState = AudioWriter.EXITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* INITIALIZING *****************************
-                elif state == AudioWriter.INITIALIZING:
+                elif self.state == AudioWriter.INITIALIZING:
                     # DO STUFF
                     triggers = []
                     audioChunk = None
@@ -2779,18 +2784,18 @@ class AudioWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = AudioWriter.STOPPING
+                        self.nextState = AudioWriter.STOPPING
                     elif msg in ['', AudioWriter.START]:
-                        nextState = AudioWriter.BUFFERING
+                        self.nextState = AudioWriter.BUFFERING
                     elif msg == AudioWriter.STOP:
-                        nextState = AudioWriter.STOPPING
+                        self.nextState = AudioWriter.STOPPING
                     elif msg == AudioWriter.EXIT:
                         self.exitFlag = True
-                        nextState = AudioWriter.STOPPING
+                        self.nextState = AudioWriter.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* BUFFERING ********************************
-                elif state == AudioWriter.BUFFERING:
+                elif self.state == AudioWriter.BUFFERING:
                     # DO STUFF
                     if self.verbose >= 3:
                         self.log("Audio queue size: ", self.audioQueue.qsize())
@@ -2827,10 +2832,10 @@ class AudioWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if msg == AudioWriter.STOP:
-                        nextState = AudioWriter.STOPPING
+                        self.nextState = AudioWriter.STOPPING
                     elif msg == AudioWriter.EXIT:
                         self.exitFlag = True
-                        nextState = AudioWriter.STOPPING
+                        self.nextState = AudioWriter.STOPPING
                     elif len(triggers) > 0:
                         # We have triggers - next state will depend on them
                         if self.verbose >= 2: self.log("{N} triggers in line".format(N=len(triggers)))
@@ -2842,34 +2847,34 @@ class AudioWriter(StateMachineProcess):
                             if chunkStartTriggerState < 0 and chunkEndTriggerState < 0:
                                 # Entire chunk is before trigger range. Continue buffering until we get to trigger start time.
                                 if self.verbose >= 2: self.log("Active trigger {id}, but haven't gotten to start time yet, continue buffering.".format(id=triggers[0].id))
-                                nextState = AudioWriter.BUFFERING
+                                self.nextState = AudioWriter.BUFFERING
                             elif chunkEndTriggerState >= 0 and ((chunkStartTriggerState < 0) or (delta < (1/self.audioFrequency))):
                                 # Chunk overlaps start of trigger, or starts within one sample duration of the start of the trigger
                                 if self.verbose >= 1: self.log("Got trigger {id} start!".format(id=triggers[0].id))
                                 timeWrote = 0
-                                nextState = AudioWriter.WRITING
+                                self.nextState = AudioWriter.WRITING
                             elif chunkStartTriggerState == 0 or (chunkStartTriggerState < 0 and chunkStartTriggerState > 0):
                                 # Chunk overlaps trigger, but not the start of the trigger
                                 if self.verbose >= 0:
                                     self.log("Partially missed audio trigger {id} by {t} seconds, which is {s} samples and {c} chunks!".format(t=delta, s=delta * self.audioFrequency, c=delta * self.audioFrequency / self.chunkSize, id=triggers[0].id))
                                 timeWrote = 0
-                                nextState = AudioWriter.WRITING
+                                self.nextState = AudioWriter.WRITING
                             else:
                                 # Time is after trigger range...
                                 if self.verbose >= 0: self.log("Warning, completely missed entire audio trigger {id}!".format(id=triggers[0].id))
                                 timeWrote = 0
-                                nextState = AudioWriter.BUFFERING
+                                self.nextState = AudioWriter.BUFFERING
                                 triggers.pop(0)   # Pop off trigger that we missed
                         else:
                             # No audio chunks have been received yet, can't evaluate if trigger time has begun yet
                             if self.verbose >= 1: self.log("No audio chunks yet, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.bufferSize))
-                            nextState = AudioWriter.BUFFERING
+                            self.nextState = AudioWriter.BUFFERING
                     elif msg in ['', AudioWriter.START]:
-                        nextState = AudioWriter.BUFFERING
+                        self.nextState = AudioWriter.BUFFERING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* WRITING *********************************
-                elif state == AudioWriter.WRITING:
+                elif self.state == AudioWriter.WRITING:
                     # DO STUFF
                     if self.verbose >= 3:
                         self.log("Audio queue size: ", self.audioQueue.qsize())
@@ -2940,21 +2945,21 @@ class AudioWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = AudioWriter.STOPPING
+                        self.nextState = AudioWriter.STOPPING
                     elif msg == AudioWriter.STOP:
-                        nextState = AudioWriter.STOPPING
+                        self.nextState = AudioWriter.STOPPING
                     elif msg == AudioWriter.EXIT:
                         self.exitFlag = True
-                        nextState = AudioWriter.STOPPING
+                        self.nextState = AudioWriter.STOPPING
                     elif msg in ['', AudioWriter.START]:
-                        nextState = AudioWriter.WRITING
+                        self.nextState = AudioWriter.WRITING
                         if len(triggers) > 0 and audioChunk is not None:
                             chunkStartTriggerState, chunkEndTriggerState = audioChunk.getTriggerState(triggers[0])
                             if self.verbose >= 3: self.log("Chunk {cid} trigger {tid} state: |{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState, tid=triggers[0].id, cid=audioChunk.id))
                             if chunkStartTriggerState * chunkEndTriggerState > 0:
                                 # Trigger period does not overlap the chunk at all - return to buffering
                                 if self.verbose >= 2: self.log("Audio chunk {cid} does not overlap trigger {tid}. Switching to buffering.".format(cid=audioChunk.id, tid=triggers[0].id))
-                                nextState = AudioWriter.BUFFERING
+                                self.nextState = AudioWriter.BUFFERING
                                 if audioFile is not None:
                                     # Done with trigger, close file and clear audioFile
                                     audioFile.writeframes(b'')  # Causes recompute of header info?
@@ -2991,9 +2996,9 @@ class AudioWriter(StateMachineProcess):
                                 # Audio chunk does overlap with trigger period. Continue writing.
                                 pass
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* STOPPING *********************************
-                elif state == AudioWriter.STOPPING:
+                elif self.state == AudioWriter.STOPPING:
                     # DO STUFF
                     if audioFile is not None:
                         audioFile.writeframes(b'')  # Recompute header info?
@@ -3019,20 +3024,20 @@ class AudioWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = AudioWriter.STOPPED
+                        self.nextState = AudioWriter.STOPPED
                     elif msg == '':
-                        nextState = AudioWriter.STOPPED
+                        self.nextState = AudioWriter.STOPPED
                     elif msg == AudioWriter.STOP:
-                        nextState = AudioWriter.STOPPED
+                        self.nextState = AudioWriter.STOPPED
                     elif msg == AudioWriter.EXIT:
                         self.exitFlag = True
-                        nextState = AudioWriter.STOPPED
+                        self.nextState = AudioWriter.STOPPED
                     elif msg == AudioWriter.START:
-                        nextState = AudioWriter.INITIALIZING
+                        self.nextState = AudioWriter.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ERROR *********************************
-                elif state == AudioWriter.ERROR:
+                elif self.state == AudioWriter.ERROR:
                     # DO STUFF
 
                     if self.verbose >= 0:
@@ -3047,53 +3052,52 @@ class AudioWriter(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if lastState == AudioWriter.ERROR:
+                    if self.lastState == AudioWriter.ERROR:
                         # Error ==> Error, let's just exit
-                        nextState = AudioWriter.EXITING
+                        self.nextState = AudioWriter.EXITING
                     elif msg == '':
-                        if lastState == AudioWriter.STOPPING:
+                        if self.lastState == AudioWriter.STOPPING:
                             # We got an error in stopping state? Better just stop.
-                            nextState = AudioWriter.STOPPED
-                        elif lastState ==AudioWriter.STOPPED:
+                            self.nextState = AudioWriter.STOPPED
+                        elif self.lastState ==AudioWriter.STOPPED:
                             # We got an error in the stopped state? Better just exit.
-                            nextState = AudioWriter.EXITING
+                            self.nextState = AudioWriter.EXITING
                         else:
-                            nextState = AudioWriter.STOPPING
+                            self.nextState = AudioWriter.STOPPING
                     elif msg == AudioWriter.STOP:
-                        nextState = AudioWriter.STOPPED
+                        self.nextState = AudioWriter.STOPPED
                     elif msg == AudioWriter.EXIT:
                         self.exitFlag = True
-                        if lastState == AudioWriter.STOPPING:
-                            nextState = AudioWriter.EXITING
+                        if self.lastState == AudioWriter.STOPPING:
+                            self.nextState = AudioWriter.EXITING
                         else:
-                            nextState = AudioWriter.STOPPING
+                            self.nextState = AudioWriter.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* EXIT *********************************
-                elif state == AudioWriter.EXITING:
+                elif self.state == AudioWriter.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateList[state])
+                    raise KeyError("Unknown state: "+self.stateList[self.state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
-                nextState = AudioWriter.STOPPING
+                self.nextState = AudioWriter.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
-                nextState = AudioWriter.ERROR
+                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.nextState = AudioWriter.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
-                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
+                self.log("msg={msg}".format(msg=msg))
+                self.logEnd()
 
             self.flushStdout()
 
             # Prepare to advance to next state
-            lastState = state
-            state = nextState
+            self.lastState = self.state
+            self.state = self.nextState
 
         clearQueue(self.msgQueue)
         if self.verbose >= 1: self.log("Audio write process STOPPED")
@@ -3123,7 +3127,7 @@ class AudioWriter(StateMachineProcess):
 
 class VideoAcquirer(StateMachineProcess):
     '''
-    VideoAcquirer: A state machine class to pull frames from a camera and pass
+    VideoAcquirer: A self.state machine class to pull frames from a camera and pass
         to a VideoWriter process, when a received trigger becomes active.
     '''
     # States:
@@ -3240,19 +3244,19 @@ class VideoAcquirer(StateMachineProcess):
         self.imageQueue.setupBuffers()
         self.monitorImageSender.setupBuffers()
 
-        state = VideoAcquirer.STOPPED
-        nextState = VideoAcquirer.STOPPED
-        lastState = VideoAcquirer.STOPPED
+        self.state = VideoAcquirer.STOPPED
+        self.nextState = VideoAcquirer.STOPPED
+        self.lastState = VideoAcquirer.STOPPED
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if state != lastState:
-                self.updatePublishedState(state)
+            if self.state != self.lastState:
+                self.updatePublishedState()
 
             try:
 # ********************************* STOPPPED *********************************
-                if state == VideoAcquirer.STOPPED:
+                if self.state == VideoAcquirer.STOPPED:
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
@@ -3263,20 +3267,20 @@ class VideoAcquirer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = VideoAcquirer.EXITING
+                        self.nextState = VideoAcquirer.EXITING
                     elif msg == '':
-                        nextState = state
+                        self.nextState = self.state
                     elif msg == VideoAcquirer.STOP:
-                        nextState = VideoAcquirer.STOPPED
+                        self.nextState = VideoAcquirer.STOPPED
                     elif msg == VideoAcquirer.START:
-                        nextState = VideoAcquirer.INITIALIZING
+                        self.nextState = VideoAcquirer.INITIALIZING
                     elif msg == VideoAcquirer.EXIT:
                         self.exitFlag = True
-                        nextState = VideoAcquirer.EXITING
+                        self.nextState = VideoAcquirer.EXITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* INITIALIZING *********************************
-                elif state == VideoAcquirer.INITIALIZING:
+                elif self.state == VideoAcquirer.INITIALIZING:
                     # DO STUFF
                     if self.verbose > 2: self.log("Initializing camera...")
                     system = PySpin.System.GetInstance()
@@ -3312,18 +3316,18 @@ class VideoAcquirer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = VideoAcquirer.STOPPING
+                        self.nextState = VideoAcquirer.STOPPING
                     elif msg in ['', VideoAcquirer.START]:
-                        nextState = VideoAcquirer.ACQUIRE_READY
+                        self.nextState = VideoAcquirer.ACQUIRE_READY
                     elif msg == VideoAcquirer.STOP:
-                        nextState = VideoAcquirer.STOPPING
+                        self.nextState = VideoAcquirer.STOPPING
                     elif msg == VideoAcquirer.EXIT:
                         self.exitFlag = True
-                        nextState = VideoAcquirer.STOPPING
+                        self.nextState = VideoAcquirer.STOPPING
                     else:
-                        raise SyntaxError(self.ID + " Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError(self.ID + " Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ACQUIRE_READY *********************************
-                elif state == VideoAcquirer.ACQUIRE_READY:
+                elif self.state == VideoAcquirer.ACQUIRE_READY:
                     # DO STUFF
                     cam.BeginAcquisition()
                     try:
@@ -3332,7 +3336,7 @@ class VideoAcquirer(StateMachineProcess):
                             self.ready.wait()
                     except BrokenBarrierError:
                         if self.verbose >= 0: self.log("Simultaneous start failure")
-                        nextState = VideoAcquirer.STOPPING
+                        self.nextState = VideoAcquirer.STOPPING
 
                     if self.verbose >= 3: self.log('{ID} passed barrier'.format(ID=self.ID))
 
@@ -3344,16 +3348,16 @@ class VideoAcquirer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if msg in ['', VideoAcquirer.START]:
-                        nextState = VideoAcquirer.ACQUIRING
+                        self.nextState = VideoAcquirer.ACQUIRING
                     elif msg == VideoAcquirer.STOP:
-                        nextState = VideoAcquirer.STOPPING
+                        self.nextState = VideoAcquirer.STOPPING
                     elif msg == VideoAcquirer.EXIT:
                         self.exitFlag = True
-                        nextState = VideoAcquirer.STOPPING
+                        self.nextState = VideoAcquirer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ACQUIRING *********************************
-                elif state == VideoAcquirer.ACQUIRING:
+                elif self.state == VideoAcquirer.ACQUIRING:
 #                    if self.verbose > 1: profiler.enable()
                     # DO STUFF
                     try:
@@ -3430,19 +3434,19 @@ class VideoAcquirer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = VideoAcquirer.STOPPING
+                        self.nextState = VideoAcquirer.STOPPING
                     elif msg in ['', VideoAcquirer.START]:
-                        nextState = VideoAcquirer.ACQUIRING
+                        self.nextState = VideoAcquirer.ACQUIRING
                     elif msg == VideoAcquirer.STOP:
-                        nextState = VideoAcquirer.STOPPING
+                        self.nextState = VideoAcquirer.STOPPING
                     elif msg == VideoAcquirer.EXIT:
                         self.exitFlag = True
-                        nextState = VideoAcquirer.STOPPING
+                        self.nextState = VideoAcquirer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 #                    if self.verbose > 1: profiler.disable()
 # ********************************* STOPPING *********************************
-                elif state == VideoAcquirer.STOPPING:
+                elif self.state == VideoAcquirer.STOPPING:
                     # DO STUFF
                     if cam is not None:
                         camList.Clear()
@@ -3460,20 +3464,20 @@ class VideoAcquirer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = VideoAcquirer.STOPPED
+                        self.nextState = VideoAcquirer.STOPPED
                     elif msg == '':
-                        nextState = VideoAcquirer.STOPPED
+                        self.nextState = VideoAcquirer.STOPPED
                     elif msg == AudioWriter.STOP:
-                        nextState = VideoAcquirer.STOPPED
+                        self.nextState = VideoAcquirer.STOPPED
                     elif msg == VideoAcquirer.EXIT:
                         self.exitFlag = True
-                        nextState = VideoAcquirer.STOPPED
+                        self.nextState = VideoAcquirer.STOPPED
                     elif msg == VideoAcquirer.START:
-                        nextState = VideoAcquirer.INITIALIZING
+                        self.nextState = VideoAcquirer.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ERROR *********************************
-                elif state == VideoAcquirer.ERROR:
+                elif self.state == VideoAcquirer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
@@ -3487,53 +3491,52 @@ class VideoAcquirer(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if lastState == VideoAcquirer.ERROR:
+                    if self.lastState == VideoAcquirer.ERROR:
                         # Error ==> Error, let's just exit
-                        nextState = VideoAcquirer.EXITING
+                        self.nextState = VideoAcquirer.EXITING
                     elif msg == '':
-                        if lastState == VideoAcquirer.STOPPING:
+                        if self.lastState == VideoAcquirer.STOPPING:
                             # We got an error in stopping state? Better just stop.
-                            nextState = VideoAcquirer.STOPPED
-                        elif lastState ==VideoAcquirer.STOPPED:
+                            self.nextState = VideoAcquirer.STOPPED
+                        elif self.lastState ==VideoAcquirer.STOPPED:
                             # We got an error in the stopped state? Better just exit.
-                            nextState = VideoAcquirer.EXITING
+                            self.nextState = VideoAcquirer.EXITING
                         else:
-                            nextState = VideoAcquirer.STOPPING
+                            self.nextState = VideoAcquirer.STOPPING
                     elif msg == VideoAcquirer.STOP:
-                        nextState = VideoAcquirer.STOPPING
+                        self.nextState = VideoAcquirer.STOPPING
                     elif msg == VideoAcquirer.EXIT:
                         self.exitFlag = True
-                        if lastState == VideoAcquirer.STOPPING:
-                            nextState = VideoAcquirer.EXITING
+                        if self.lastState == VideoAcquirer.STOPPING:
+                            self.nextState = VideoAcquirer.EXITING
                         else:
-                            nextState = VideoAcquirer.STOPPING
+                            self.nextState = VideoAcquirer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* EXIT *********************************
-                elif state == VideoAcquirer.EXITING:
+                elif self.state == VideoAcquirer.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateList[state])
+                    raise KeyError("Unknown state: "+self.stateList[self.state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
-                nextState = VideoAcquirer.STOPPING
+                self.nextState = VideoAcquirer.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
-                nextState = VideoAcquirer.ERROR
+                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.nextState = VideoAcquirer.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
-                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
+                self.log("msg={msg}".format(msg=msg))
+                self.logEnd()
 
             self.flushStdout()
 
             # Prepare to advance to next state
-            lastState = state
-            state = nextState
+            self.lastState = self.state
+            self.state = self.nextState
 
         clearQueue(self.msgQueue)
         # clearQueue(self.imageQueue)
@@ -3661,19 +3664,19 @@ class SimpleVideoWriter(StateMachineProcess):
 #        if self.verbose >= 1: profiler = cProfile.Profile()
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
 
-        state = SimpleVideoWriter.STOPPED
-        nextState = SimpleVideoWriter.STOPPED
-        lastState = SimpleVideoWriter.STOPPED
+        self.state = SimpleVideoWriter.STOPPED
+        self.nextState = SimpleVideoWriter.STOPPED
+        self.lastState = SimpleVideoWriter.STOPPED
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if state != lastState:
-                self.updatePublishedState(state)
+            if self.state != self.lastState:
+                self.updatePublishedState()
 
             try:
 # ********************************* STOPPPED *********************************
-                if state == SimpleVideoWriter.STOPPED:
+                if self.state == SimpleVideoWriter.STOPPED:
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
@@ -3684,20 +3687,20 @@ class SimpleVideoWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = SimpleVideoWriter.EXITING
+                        self.nextState = SimpleVideoWriter.EXITING
                     elif msg == '':
-                        nextState = SimpleVideoWriter.STOPPED
+                        self.nextState = SimpleVideoWriter.STOPPED
                     elif msg == SimpleVideoWriter.STOP:
-                        nextState = SimpleVideoWriter.STOPPED
+                        self.nextState = SimpleVideoWriter.STOPPED
                     elif msg == SimpleVideoWriter.START:
-                        nextState = SimpleVideoWriter.INITIALIZING
+                        self.nextState = SimpleVideoWriter.INITIALIZING
                     elif msg == SimpleVideoWriter.EXIT:
                         self.exitFlag = True
-                        nextState = SimpleVideoWriter.EXITING
+                        self.nextState = SimpleVideoWriter.EXITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* INITIALIZING *********************************
-                elif state == SimpleVideoWriter.INITIALIZING:
+                elif self.state == SimpleVideoWriter.INITIALIZING:
                     # DO STUFF
                     videoFileInterface = None
                     seriesStartTime = time.time()   # Record approximate start time (in seconds since epoch) of series for filenaming purposes
@@ -3721,18 +3724,18 @@ class SimpleVideoWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = SimpleVideoWriter.STOPPING
+                        self.nextState = SimpleVideoWriter.STOPPING
                     elif msg in ['', SimpleVideoWriter.START]:
-                        nextState = SimpleVideoWriter.VIDEOINIT
+                        self.nextState = SimpleVideoWriter.VIDEOINIT
                     elif msg == SimpleVideoWriter.STOP:
-                        nextState = SimpleVideoWriter.STOPPING
+                        self.nextState = SimpleVideoWriter.STOPPING
                     elif msg == SimpleVideoWriter.EXIT:
                         self.exitFlag = True
-                        nextState = SimpleVideoWriter.STOPPING
+                        self.nextState = SimpleVideoWriter.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* VIDEOINIT *********************************
-                elif state == SimpleVideoWriter.VIDEOINIT:
+                elif self.state == SimpleVideoWriter.VIDEOINIT:
                     # Start a new video file
                     # DO STUFF
                     im = None
@@ -3792,19 +3795,19 @@ class SimpleVideoWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = SimpleVideoWriter.STOPPING
+                        self.nextState = SimpleVideoWriter.STOPPING
                     elif msg == SimpleVideoWriter.STOP:
-                        nextState = SimpleVideoWriter.STOPPING
+                        self.nextState = SimpleVideoWriter.STOPPING
                     elif msg == SimpleVideoWriter.EXIT:
                         self.exitFlag = True
-                        nextState = SimpleVideoWriter.STOPPING
+                        self.nextState = SimpleVideoWriter.STOPPING
                     elif msg in ['', SimpleVideoWriter.START]:
-                        nextState = SimpleVideoWriter.WRITING
+                        self.nextState = SimpleVideoWriter.WRITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
                     # if self.verbose >= 1: profiler.disable()
 # ********************************* WRITING *********************************
-                elif state == SimpleVideoWriter.WRITING:
+                elif self.state == SimpleVideoWriter.WRITING:
                     # if self.verbose >= 1: profiler.enable()
                     # DO STUFF
                     if self.verbose >= 3: self.log("Image queue size: ", self.imageQueue.qsize())
@@ -3857,16 +3860,16 @@ class SimpleVideoWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = SimpleVideoWriter.STOPPING
+                        self.nextState = SimpleVideoWriter.STOPPING
                     elif msg == SimpleVideoWriter.STOP:
-                        nextState = SimpleVideoWriter.STOPPING
+                        self.nextState = SimpleVideoWriter.STOPPING
                     elif msg == SimpleVideoWriter.EXIT:
                         self.exitFlag = True
-                        nextState = SimpleVideoWriter.STOPPING
+                        self.nextState = SimpleVideoWriter.STOPPING
                     elif msg in ['', SimpleVideoWriter.START]:
                         if numFramesInCurrentVideo == self.videoFrameCount:
                             # We've reached desired video frame count. Start a new video.
-                            nextState = SimpleVideoWriter.VIDEOINIT
+                            self.nextState = SimpleVideoWriter.VIDEOINIT
                             # If requested, merge with audio.
                             #   This doesn't really work with SimpleVideoWriter right now. For potential future use.
                             if self.mergeMessageQueue is not None:
@@ -3899,15 +3902,15 @@ class SimpleVideoWriter(StateMachineProcess):
                                     self.log('No merge message queue available, cannot send to AVMerger')
                         elif numFramesInCurrentVideo < self.videoFrameCount:
                             # Not enough frames yet. Keep writing.
-                            nextState = SimpleVideoWriter.WRITING
+                            self.nextState = SimpleVideoWriter.WRITING
                         else:
                             # Uh oh, too many frames? Something went wrong.
                             raise IOError('More frames ({k}) than requested ({n}) in video!'.format(k=numFramesInCurrentVideo, n=self.videoFrameCount))
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
                     # if self.verbose >= 1: profiler.disable()
 # ********************************* STOPPING *********************************
-                elif state == SimpleVideoWriter.STOPPING:
+                elif self.state == SimpleVideoWriter.STOPPING:
                     # DO STUFF
                     if videoFileInterface is not None:
                         if self.videoWriteMethod == "PySpin":
@@ -3948,20 +3951,20 @@ class SimpleVideoWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = SimpleVideoWriter.STOPPED
+                        self.nextState = SimpleVideoWriter.STOPPED
                     elif msg == '':
-                        nextState = SimpleVideoWriter.STOPPED
+                        self.nextState = SimpleVideoWriter.STOPPED
                     elif msg == SimpleVideoWriter.STOP:
-                        nextState = SimpleVideoWriter.STOPPED
+                        self.nextState = SimpleVideoWriter.STOPPED
                     elif msg == SimpleVideoWriter.EXIT:
                         self.exitFlag = True
-                        nextState = SimpleVideoWriter.STOPPED
+                        self.nextState = SimpleVideoWriter.STOPPED
                     elif msg == SimpleVideoWriter.START:
-                        nextState = SimpleVideoWriter.INITIALIZING
+                        self.nextState = SimpleVideoWriter.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ERROR *********************************
-                elif state == SimpleVideoWriter.ERROR:
+                elif self.state == SimpleVideoWriter.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
@@ -3975,53 +3978,52 @@ class SimpleVideoWriter(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if lastState == SimpleVideoWriter.ERROR:
+                    if self.lastState == SimpleVideoWriter.ERROR:
                         # Error ==> Error, let's just exit
-                        nextState = SimpleVideoWriter.EXITING
+                        self.nextState = SimpleVideoWriter.EXITING
                     elif msg == '':
-                        if lastState == SimpleVideoWriter.STOPPING:
+                        if self.lastState == SimpleVideoWriter.STOPPING:
                             # We got an error in stopping state? Better just stop.
-                            nextState = SimpleVideoWriter.STOPPED
-                        elif lastState ==SimpleVideoWriter.STOPPED:
+                            self.nextState = SimpleVideoWriter.STOPPED
+                        elif self.lastState ==SimpleVideoWriter.STOPPED:
                             # We got an error in the stopped state? Better just exit.
-                            nextState = SimpleVideoWriter.EXITING
+                            self.nextState = SimpleVideoWriter.EXITING
                         else:
-                            nextState = SimpleVideoWriter.STOPPING
+                            self.nextState = SimpleVideoWriter.STOPPING
                     elif msg == SimpleVideoWriter.STOP:
-                        nextState = SimpleVideoWriter.STOPPED
+                        self.nextState = SimpleVideoWriter.STOPPED
                     elif msg == SimpleVideoWriter.EXIT:
                         self.exitFlag = True
-                        if lastState == SimpleVideoWriter.STOPPING:
-                            nextState = SimpleVideoWriter.EXITING
+                        if self.lastState == SimpleVideoWriter.STOPPING:
+                            self.nextState = SimpleVideoWriter.EXITING
                         else:
-                            nextState = SimpleVideoWriter.STOPPING
+                            self.nextState = SimpleVideoWriter.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* EXIT *********************************
-                elif state == SimpleVideoWriter.EXITING:
+                elif self.state == SimpleVideoWriter.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateList[state])
+                    raise KeyError("Unknown state: "+self.stateList[self.state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
-                nextState = SimpleVideoWriter.STOPPING
+                self.nextState = SimpleVideoWriter.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
-                nextState = SimpleVideoWriter.ERROR
+                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.nextState = SimpleVideoWriter.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
-                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
+                self.log("msg={msg}".format(msg=msg))
+                self.logEnd()
 
             self.flushStdout()
 
             # Prepare to advance to next state
-            lastState = state
-            state = nextState
+            self.lastState = self.state
+            self.state = self.nextState
 
         if self.verbose >= 1: self.log("Video write process STOPPED")
         # if self.verbose > 1:
@@ -4133,19 +4135,19 @@ class VideoWriter(StateMachineProcess):
 #        if self.verbose >= 1: profiler = cProfile.Profile()
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
 
-        state = VideoWriter.STOPPED
-        nextState = VideoWriter.STOPPED
-        lastState = VideoWriter.STOPPED
+        self.state = VideoWriter.STOPPED
+        self.nextState = VideoWriter.STOPPED
+        self.lastState = VideoWriter.STOPPED
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if state != lastState:
-                self.updatePublishedState(state)
+            if self.state != self.lastState:
+                self.updatePublishedState()
 
             try:
 # ********************************* STOPPPED *********************************
-                if state == VideoWriter.STOPPED:
+                if self.state == VideoWriter.STOPPED:
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
@@ -4156,20 +4158,20 @@ class VideoWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = VideoWriter.EXITING
+                        self.nextState = VideoWriter.EXITING
                     elif msg == '':
-                        nextState = VideoWriter.STOPPED
+                        self.nextState = VideoWriter.STOPPED
                     elif msg == VideoWriter.STOP:
-                        nextState = VideoWriter.STOPPED
+                        self.nextState = VideoWriter.STOPPED
                     elif msg == VideoWriter.START:
-                        nextState = VideoWriter.INITIALIZING
+                        self.nextState = VideoWriter.INITIALIZING
                     elif msg == VideoWriter.EXIT:
                         self.exitFlag = True
-                        nextState = VideoWriter.EXITING
+                        self.nextState = VideoWriter.EXITING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* INITIALIZING *********************************
-                elif state == VideoWriter.INITIALIZING:
+                elif self.state == VideoWriter.INITIALIZING:
                     # DO STUFF
                     triggers = []
                     im = None
@@ -4190,18 +4192,18 @@ class VideoWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = VideoWriter.STOPPING
+                        self.nextState = VideoWriter.STOPPING
                     elif msg in ['', VideoWriter.START]:
-                        nextState = VideoWriter.BUFFERING
+                        self.nextState = VideoWriter.BUFFERING
                     elif msg == VideoWriter.STOP:
-                        nextState = VideoWriter.STOPPING
+                        self.nextState = VideoWriter.STOPPING
                     elif msg == VideoWriter.EXIT:
                         self.exitFlag = True
-                        nextState = VideoWriter.STOPPING
+                        self.nextState = VideoWriter.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* BUFFERING *********************************
-                elif state == VideoWriter.BUFFERING:
+                elif self.state == VideoWriter.BUFFERING:
                     # DO STUFF
                     if self.verbose >= 3:
                         self.log("Image queue size: ", self.imageQueue.qsize())
@@ -4218,10 +4220,10 @@ class VideoWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if msg == VideoWriter.STOP:
-                        nextState = VideoWriter.STOPPING
+                        self.nextState = VideoWriter.STOPPING
                     elif msg == VideoWriter.EXIT:
                         self.exitFlag = True
-                        nextState = VideoWriter.STOPPING
+                        self.nextState = VideoWriter.STOPPING
                     elif len(triggers) > 0:
                         # We have triggers - next state will depend on them
                         if self.verbose >= 2: self.log("" + str(len(triggers)) + " trigger(s) exist:")
@@ -4231,7 +4233,7 @@ class VideoWriter(StateMachineProcess):
                             if self.verbose >= 2: self.log("Trigger state: {state}".format(state=triggerState))
                             if triggerState < 0:        # Time is before trigger range
                                 if self.verbose >= 2: self.log("Active trigger, but haven't gotten to start time yet, continue buffering.")
-                                nextState = VideoWriter.BUFFERING
+                                self.nextState = VideoWriter.BUFFERING
                             elif triggerState == 0:     # Time is now in trigger range
                                 if self.verbose >= 0:
                                     delta = frameTime - triggers[0].startTime
@@ -4242,23 +4244,23 @@ class VideoWriter(StateMachineProcess):
                                         # More than one frame after trigger start - we missed some
                                         self.log("Partially missed video trigger start by {t} seconds, which is {f} frames!".format(t=delta, f=delta * self.frameRate))
                                 timeWrote = 0
-                                nextState = VideoWriter.WRITING
+                                self.nextState = VideoWriter.WRITING
                             else:                       # Time is after trigger range
                                 if self.verbose >= 0: self.log("Missed entire trigger by {triggerState} seconds!".format(triggerState=triggerState))
                                 timeWrote = 0
-                                nextState = VideoWriter.BUFFERING
+                                self.nextState = VideoWriter.BUFFERING
                                 triggers.pop(0)
                         else:
                             # No video frames have been received yet, can't evaluate if trigger time has begun yet
                             if self.verbose >= 2: self.log("No frames at the moment, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.bufferSize))
-                            nextState = VideoWriter.BUFFERING
+                            self.nextState = VideoWriter.BUFFERING
 
                     elif msg in ['', VideoWriter.START]:
-                        nextState = VideoWriter.BUFFERING
+                        self.nextState = VideoWriter.BUFFERING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* WRITING *********************************
-                elif state == VideoWriter.WRITING:
+                elif self.state == VideoWriter.WRITING:
                     # if self.verbose >= 1: profiler.enable()
                     # DO STUFF
                     if self.verbose >= 3:
@@ -4320,20 +4322,20 @@ class VideoWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = VideoWriter.STOPPING
+                        self.nextState = VideoWriter.STOPPING
                     elif msg == VideoWriter.STOP:
-                        nextState = VideoWriter.STOPPING
+                        self.nextState = VideoWriter.STOPPING
                     elif msg == VideoWriter.EXIT:
                         self.exitFlag = True
-                        nextState = VideoWriter.STOPPING
+                        self.nextState = VideoWriter.STOPPING
                     elif msg in ['', VideoWriter.START]:
-                        nextState = VideoWriter.WRITING
+                        self.nextState = VideoWriter.WRITING
                         if len(triggers) > 0 and im is not None:
                             triggerState = triggers[0].state(frameTime)
                             if triggerState != 0:
                                 # Frame is not in trigger period - return to buffering
                                 if self.verbose >= 2: self.log("Frame does not overlap trigger. Switching to buffering.")
-                                nextState = VideoWriter.BUFFERING
+                                self.nextState = VideoWriter.BUFFERING
                                 # Remove current trigger
                                 if videoFileInterface is not None:
                                     # Done with trigger, close file and clear video file
@@ -4369,10 +4371,10 @@ class VideoWriter(StateMachineProcess):
                                 # Frame is in trigger period - continue writing
                                 pass
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
                     # if self.verbose >= 1: profiler.disable()
 # ********************************* STOPPING *********************************
-                elif state == VideoWriter.STOPPING:
+                elif self.state == VideoWriter.STOPPING:
                     # DO STUFF
                     if videoFileInterface is not None:
                         if self.videoWriteMethod == "PySpin":
@@ -4409,20 +4411,20 @@ class VideoWriter(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = VideoWriter.STOPPED
+                        self.nextState = VideoWriter.STOPPED
                     elif msg == '':
-                        nextState = VideoWriter.BUFFERING
+                        self.nextState = VideoWriter.BUFFERING
                     elif msg == VideoWriter.STOP:
-                        nextState = VideoWriter.STOPPED
+                        self.nextState = VideoWriter.STOPPED
                     elif msg == VideoWriter.EXIT:
                         self.exitFlag = True
-                        nextState = VideoWriter.STOPPED
+                        self.nextState = VideoWriter.STOPPED
                     elif msg == VideoWriter.START:
-                        nextState = VideoWriter.INITIALIZING
+                        self.nextState = VideoWriter.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ERROR *********************************
-                elif state == VideoWriter.ERROR:
+                elif self.state == VideoWriter.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
@@ -4436,53 +4438,52 @@ class VideoWriter(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if lastState == VideoWriter.ERROR:
+                    if self.lastState == VideoWriter.ERROR:
                         # Error ==> Error, let's just exit
-                        nextState = VideoWriter.EXITING
+                        self.nextState = VideoWriter.EXITING
                     elif msg == '':
-                        if lastState == VideoWriter.STOPPING:
+                        if self.lastState == VideoWriter.STOPPING:
                             # We got an error in stopping state? Better just stop.
-                            nextState = VideoWriter.STOPPED
-                        elif lastState ==VideoWriter.STOPPED:
+                            self.nextState = VideoWriter.STOPPED
+                        elif self.lastState ==VideoWriter.STOPPED:
                             # We got an error in the stopped state? Better just exit.
-                            nextState = VideoWriter.EXITING
+                            self.nextState = VideoWriter.EXITING
                         else:
-                            nextState = VideoWriter.STOPPING
+                            self.nextState = VideoWriter.STOPPING
                     elif msg == VideoWriter.STOP:
-                        nextState = VideoWriter.STOPPED
+                        self.nextState = VideoWriter.STOPPED
                     elif msg == VideoWriter.EXIT:
                         self.exitFlag = True
-                        if lastState == VideoWriter.STOPPING:
-                            nextState = VideoWriter.EXITING
+                        if self.lastState == VideoWriter.STOPPING:
+                            self.nextState = VideoWriter.EXITING
                         else:
-                            nextState = VideoWriter.STOPPING
+                            self.nextState = VideoWriter.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* EXIT *********************************
-                elif state == VideoWriter.EXITING:
+                elif self.state == VideoWriter.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateList[state])
+                    raise KeyError("Unknown state: "+self.stateList[self.state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
-                nextState = VideoWriter.STOPPING
+                self.nextState = VideoWriter.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
-                nextState = VideoWriter.ERROR
+                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.nextState = VideoWriter.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
-                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
+                self.log("msg={msg}".format(msg=msg))
+                self.logEnd()
 
             self.flushStdout()
 
             # Prepare to advance to next state
-            lastState = state
-            state = nextState
+            self.lastState = self.state
+            self.state = self.nextState
 
         if self.verbose >= 1: self.log("Video write process STOPPED")
         # if self.verbose > 1:
@@ -4558,7 +4559,7 @@ class VideoWriter(StateMachineProcess):
 
 class ContinuousTriggerer(StateMachineProcess):
     '''
-    ContinuousTriggerer: A state machine class to automatically generate a
+    ContinuousTriggerer: A self.state machine class to automatically generate a
         continuous train of triggers for both audio and video writer processes.
     '''
     # States:
@@ -4646,20 +4647,20 @@ class ContinuousTriggerer(StateMachineProcess):
     def run(self):
         self.PID.value = os.getpid()
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
-        state = ContinuousTriggerer.STOPPED
-        nextState = ContinuousTriggerer.STOPPED
-        lastState = ContinuousTriggerer.STOPPED
+        self.state = ContinuousTriggerer.STOPPED
+        self.nextState = ContinuousTriggerer.STOPPED
+        self.lastState = ContinuousTriggerer.STOPPED
         tagTriggers = []   # A list of triggers received from other processes that will be used to tag overlapping audio/video files
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if state != lastState:
-                self.updatePublishedState(state)
+            if self.state != self.lastState:
+                self.updatePublishedState()
 
             try:
 # ********************************* STOPPPED *********************************
-                if state == ContinuousTriggerer.STOPPED:
+                if self.state == ContinuousTriggerer.STOPPED:
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
@@ -4672,17 +4673,17 @@ class ContinuousTriggerer(StateMachineProcess):
                     # CHOOSE NEXT STATE
                     if msg == ContinuousTriggerer.EXIT or self.exitFlag:
                         self.exitFlag = True
-                        nextState = ContinuousTriggerer.EXITING
+                        self.nextState = ContinuousTriggerer.EXITING
                     elif msg == '':
-                        nextState = ContinuousTriggerer.STOPPED
+                        self.nextState = ContinuousTriggerer.STOPPED
                     elif msg == ContinuousTriggerer.STOP:
-                        nextState = ContinuousTriggerer.STOPPED
+                        self.nextState = ContinuousTriggerer.STOPPED
                     elif msg == ContinuousTriggerer.START:
-                        nextState = ContinuousTriggerer.INITIALIZING
+                        self.nextState = ContinuousTriggerer.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* INITIALIZING *****************************
-                elif state == ContinuousTriggerer.INITIALIZING:
+                elif self.state == ContinuousTriggerer.INITIALIZING:
                     # DO STUFF
                     triggerBufferSize = int(max([3,1/self.recordPeriod]))        # Number of triggers to send ahead of time, in case of latency, up to 1s
                     activeTriggers = deque(maxlen=triggerBufferSize)
@@ -4705,15 +4706,15 @@ class ContinuousTriggerer(StateMachineProcess):
                     # CHOOSE NEXT STATE
                     if msg == ContinuousTriggerer.EXIT or self.exitFlag:
                         self.exitFlag = True
-                        nextState = ContinuousTriggerer.STOPPING
+                        self.nextState = ContinuousTriggerer.STOPPING
                     elif msg == ContinuousTriggerer.STOP:
-                        nextState = ContinuousTriggerer.STOPPING
+                        self.nextState = ContinuousTriggerer.STOPPING
                     elif msg in ['', ContinuousTriggerer.START]:
-                        nextState = ContinuousTriggerer.TRIGGERING
+                        self.nextState = ContinuousTriggerer.TRIGGERING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* TRIGGERING *********************************
-                elif state == ContinuousTriggerer.TRIGGERING:
+                elif self.state == ContinuousTriggerer.TRIGGERING:
                     # DO STUFF
 
                     currentTimeOfDay = dt.datetime.now()
@@ -4769,15 +4770,15 @@ class ContinuousTriggerer(StateMachineProcess):
 #                    if self.verbose >= 3: self.log("|{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
                     if msg == ContinuousTriggerer.EXIT or self.exitFlag:
                         self.exitFlag = True
-                        nextState = ContinuousTriggerer.STOPPING
+                        self.nextState = ContinuousTriggerer.STOPPING
                     elif msg == ContinuousTriggerer.STOP:
-                        nextState = ContinuousTriggerer.STOPPING
+                        self.nextState = ContinuousTriggerer.STOPPING
                     elif msg in ['', ContinuousTriggerer.START]:
-                        nextState = state
+                        self.nextState = self.state
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* STOPPING *********************************
-                elif state == ContinuousTriggerer.STOPPING:
+                elif self.state == ContinuousTriggerer.STOPPING:
                     # DO STUFF
                     self.cancelTriggers(activeTriggers)
 
@@ -4790,20 +4791,20 @@ class ContinuousTriggerer(StateMachineProcess):
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
-                        nextState = ContinuousTriggerer.STOPPED
+                        self.nextState = ContinuousTriggerer.STOPPED
                     elif msg == '':
-                        nextState = ContinuousTriggerer.STOPPED
+                        self.nextState = ContinuousTriggerer.STOPPED
                     elif msg == ContinuousTriggerer.STOP:
-                        nextState = ContinuousTriggerer.STOPPED
+                        self.nextState = ContinuousTriggerer.STOPPED
                     elif msg == ContinuousTriggerer.EXIT:
                         self.exitFlag = True
-                        nextState = ContinuousTriggerer.STOPPED
+                        self.nextState = ContinuousTriggerer.STOPPED
                     elif msg == ContinuousTriggerer.START:
-                        nextState = ContinuousTriggerer.INITIALIZING
+                        self.nextState = ContinuousTriggerer.INITIALIZING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* ERROR *********************************
-                elif state == ContinuousTriggerer.ERROR:
+                elif self.state == ContinuousTriggerer.ERROR:
                     # DO STUFF
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
@@ -4818,53 +4819,52 @@ class ContinuousTriggerer(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if lastState == ContinuousTriggerer.ERROR:
+                    if self.lastState == ContinuousTriggerer.ERROR:
                         # Error ==> Error, let's just exit
-                        nextState = ContinuousTriggerer.EXITING
+                        self.nextState = ContinuousTriggerer.EXITING
                     elif msg == '':
-                        if lastState == ContinuousTriggerer.STOPPING:
+                        if self.lastState == ContinuousTriggerer.STOPPING:
                             # We got an error in stopping state? Better just stop.
-                            nextState = ContinuousTriggerer.STOPPED
-                        elif lastState ==ContinuousTriggerer.STOPPED:
+                            self.nextState = ContinuousTriggerer.STOPPED
+                        elif self.lastState ==ContinuousTriggerer.STOPPED:
                             # We got an error in the stopped state? Better just exit.
-                            nextState = ContinuousTriggerer.EXITING
+                            self.nextState = ContinuousTriggerer.EXITING
                         else:
-                            nextState = ContinuousTriggerer.STOPPING
+                            self.nextState = ContinuousTriggerer.STOPPING
                     elif msg == ContinuousTriggerer.STOP:
-                        nextState = ContinuousTriggerer.STOPPED
+                        self.nextState = ContinuousTriggerer.STOPPED
                     elif msg == ContinuousTriggerer.EXIT:
                         self.exitFlag = True
-                        if lastState == ContinuousTriggerer.STOPPING:
-                            nextState = ContinuousTriggerer.EXITING
+                        if self.lastState == ContinuousTriggerer.STOPPING:
+                            self.nextState = ContinuousTriggerer.EXITING
                         else:
-                            nextState = ContinuousTriggerer.STOPPING
+                            self.nextState = ContinuousTriggerer.STOPPING
                     else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[state] + " state")
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ********************************* EXIT *********************************
-                elif state == ContinuousTriggerer.EXITING:
+                elif self.state == ContinuousTriggerer.EXITING:
                     break
                 else:
-                    raise KeyError("Unknown state: "+self.stateList[state])
+                    raise KeyError("Unknown state: "+self.stateList[self.state])
             except KeyboardInterrupt:
                 # Handle user using keyboard interrupt
                 if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
                 self.exitFlag = True
-                nextState = ContinuousTriggerer.STOPPING
+                self.nextState = ContinuousTriggerer.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[state]+" state\n\n"+traceback.format_exc())
-                nextState = ContinuousTriggerer.ERROR
+                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.nextState = ContinuousTriggerer.ERROR
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
-                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
-                self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
+                self.log("msg={msg}".format(msg=msg))
+                self.logEnd()
 
             self.flushStdout()
 
             # Prepare to advance to next state
-            lastState = state
-            state = nextState
+            self.lastState = self.state
+            self.state = self.nextState
 
         clearQueue(self.msgQueue)
         if self.verbose >= 1: self.log("Audio write process STOPPED")
