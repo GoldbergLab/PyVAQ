@@ -2086,6 +2086,12 @@ class AudioAcquirer(StateMachineProcess):
                             self.monitorQueue.put((self.inputChannels, chunkStartTime, monitorDataCopy))      # If a monitoring queue is provided, queue up the data
                         if self.copyToAnalysisQueue and self.analysisQueue is not None:
                             self.analysisQueue.put((chunkStartTime, monitorDataCopy))
+
+                        if self.verbose >= 3:
+                            self.log('Queue sizes:')
+                            self.log('        Main:', self.audioQueue.qsize())
+                            self.log('  Monitoring:', self.monitorQueue.qsize())
+                            self.log('    Analysis:', self.analysisQueue.qsize())
                     except nidaqmx.errors.DaqError:
 #                        traceback.print_exc()
                         if self.verbose >= 0: self.log("Audio Chunk acquisition timed out.")
