@@ -937,6 +937,7 @@ class AVMerger(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
                 self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             # Prepare to advance to next state
@@ -1313,6 +1314,7 @@ class Synchronizer(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
                 self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
@@ -1791,6 +1793,7 @@ class AudioTriggerer(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
                 self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
@@ -2179,6 +2182,7 @@ class AudioAcquirer(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
                 self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
@@ -2604,6 +2608,7 @@ class SimpleAudioWriter(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
                 self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
@@ -3081,6 +3086,7 @@ class AudioWriter(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
                 self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
@@ -3328,7 +3334,7 @@ class VideoAcquirer(StateMachineProcess):
                         if self.verbose >= 0: self.log("Simultaneous start failure")
                         nextState = VideoAcquirer.STOPPING
 
-#                    if self.verbose >= 1: self.log('{ID} passed barrier'.format(ID=self.ID))
+                    if self.verbose >= 3: self.log('{ID} passed barrier'.format(ID=self.ID))
 
                     # CHECK FOR MESSAGES
                     try:
@@ -3381,6 +3387,7 @@ class VideoAcquirer(StateMachineProcess):
                             if lastImageID is not None and imageID != lastImageID + 1 and self.verbose >= 0:
                                 droppedFrameCount += 1
                                 self.log('WARNING - DROPPED FRAMES! Image ID {a} was followed by image ID {b}. {k} dropped frames total'.format(a=lastImageID, b=imageID, k=droppedFrameCount))
+                                raise IOError('DROPPED FRAMES!!!')
                             if self.verbose >= 3:
                                 self.log('# frames:'+str(imageCount))
                                 self.log('Frame ID:'+str(imageID))
@@ -3393,7 +3400,9 @@ class VideoAcquirer(StateMachineProcess):
                             # Put image into image queue
                             if self.verbose >= 3: self.log("bytes = "+str(imageResult.GetNDArray()[0:10, 0]))
                             self.imageQueue.put(imarray=imageResult.GetNDArray(), metadata={'frameTime':frameTime, 'imageID':imageID})
-                            if self.verbose >= 3: self.log("Pushed image into buffer")
+                            if self.verbose >= 3:
+                                self.log("Pushed image into buffer")
+                                self.log('Queue size={qsize}, maxsize={maxsize}'.format(qsize=self.imageQueue.qsize(), maxsize=self.imageQueue.maxBufferSize))
 
                             if self.monitorImageSender is not None:
                                 # Put the occasional image in the monitor queue for the UI
@@ -3517,6 +3526,7 @@ class VideoAcquirer(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
                 self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
@@ -3730,6 +3740,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     numFramesInCurrentVideo = 0
 
                     if videoFileInterface is not None:
+                        if self.verbose >= 2: self.log('Closing pre-existing video file interface.')
                         # Close file
                         if self.videoWriteMethod == "PySpin":
                             videoFileInterface.Close()
@@ -3744,7 +3755,11 @@ class SimpleVideoWriter(StateMachineProcess):
                     else:
                         videoDirectory = self.videoDirectory
                     videoFileName = generateFileName(directory=videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
+                    if self.verbose >= 2: self.log('New filename:', videoFileName)
+                    if self.verbose >= 3: self.log('Ensuring directory exists:', videoDirectory)
                     ensureDirectoryExists(videoDirectory)
+
+                    if self.verbose >= 3: self.log('Opening new file writing interface...')
 
                     # Initialize video writer interface
                     if self.videoWriteMethod == "PySpin":
@@ -3759,9 +3774,13 @@ class SimpleVideoWriter(StateMachineProcess):
                         stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
                         videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
                     elif self.videoWriteMethod == "ffmpeg":
+                        if self.verbose >= 3: self.log('Using ffmpeg writer')
                         if videoFileInterface is not None:
+                            if self.verbose >= 3: self.log('Closing previous file interface')
                             videoFileInterface.close()
                         videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", fps=self.frameRate, gpuVEnc=self.gpuVEnc)
+
+                    if self.verbose >= 3: self.log('...opened new file writing interface')
 
                     videoCount += 1
 
@@ -3788,8 +3807,7 @@ class SimpleVideoWriter(StateMachineProcess):
                 elif state == SimpleVideoWriter.WRITING:
                     # if self.verbose >= 1: profiler.enable()
                     # DO STUFF
-                    if self.verbose >= 3:
-                        self.log("Image queue size: ", self.imageQueue.qsize())
+                    if self.verbose >= 3: self.log("Image queue size: ", self.imageQueue.qsize())
 
                     im, frameTime, imageID, frameShape = self.getNextimage()
 
@@ -3996,6 +4014,7 @@ class SimpleVideoWriter(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
                 self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
@@ -4456,6 +4475,7 @@ class VideoWriter(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
                 self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()
@@ -4837,6 +4857,7 @@ class ContinuousTriggerer(StateMachineProcess):
 
             if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
                 self.log("msg={msg}, exitFlag={exitFlag}".format(msg=msg, exitFlag=self.exitFlag))
+                self.log("lastState={lastState}, state={state}, nextState={nextState}".format(lastState=self.stateList[lastState], state=self.stateList[state], nextState=self.stateList[nextState]))
                 self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=self.stateList[state]))
 
             self.flushStdout()

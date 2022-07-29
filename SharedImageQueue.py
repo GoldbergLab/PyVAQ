@@ -80,7 +80,7 @@ class SharedImageSender():
             name=self.name)
 
     def qsize(self):
-        return self.readLag.value
+        return (self.readLag.value, self.metadataQueue.qsize())
 
     def setupBuffers(self):
         # Prepare numpy buffer views inside putter process
@@ -118,7 +118,7 @@ class SharedImageSender():
             readLag = self.readLag.value
             if readLag >= self.maxBufferSize:
                 if not self.allowOverflow:
-                    raise qFull('{name}: Reader too far behind writer'.format(name=self.name))
+                    raise qFull('{name}: Reader too far behind writer. qsize={qsize} max={maxsize}'.format(name=self.name, qsize=self.qsize(), maxsize=self.maxBufferSize))
                 elif self.verbose >= 2:
                     print('{name}: Warning, queue full. Overflow allowed - continuing...'.format(name=self.name))
             self.readLag.value = readLag + 1
@@ -130,7 +130,7 @@ class SharedImageSender():
             self.metadataQueue.put(metadata, block=False)
         except qFull:
             if not self.allowOverflow:
-                raise qFull('{name}: Metadata queue overflow'.format(name=self.name))
+                raise qFull('{name}: Metadata queue overflow. qsize={qsize} max={maxsize}'.format(name=self.name, qsize=self.qsize(), maxsize=self.maxBufferSize))
             elif self.verbose >= 2:
                 print('{name}: Warning, metadata queue full. Overflow allowed - continuing...'.format(name=self.name))
 
@@ -185,7 +185,7 @@ class SharedImageReceiver():
         return nextID
 
     def qsize(self):
-        return self.readLag.value
+        return (self.readLag.value, self.metadataQueue.qsize())
 
     def prepareOutput(self, data):
         # As specified, copies, converts, and/or writes data to a file
