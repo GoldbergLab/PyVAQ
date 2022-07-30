@@ -1,5 +1,6 @@
 import subprocess
 import shutil
+import warnings
 
 FFMPEG_EXE = shutil.which('ffmpeg')
 
@@ -75,10 +76,14 @@ class ffmpegWriter():
         elif self.frameType == 'bytes':
             bytes = frame
         self.ffmpegProc.stdin.write(bytes)    #'raw', 'RGB'))
+        self.ffmpegProc.stdin.flush()
 
     def close(self):
         if self.ffmpegProc is not None:
             self.ffmpegProc.stdin.close()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.ffmpegProc = None
 #            self.ffmpegProc.communicate()
 
 
