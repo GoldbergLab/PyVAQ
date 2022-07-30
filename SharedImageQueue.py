@@ -167,7 +167,7 @@ class SharedImageReceiver():
         self.outputCopy = outputCopy
         self.fileWriter = fileWriter
         self.imageDataType = imageDataType
-        self.channels = channels;
+        self.channels = channels
         self.lockForOutput = lockForOutput
         self.metadataQueue = metadataQueue
         self.verbose = verbose
