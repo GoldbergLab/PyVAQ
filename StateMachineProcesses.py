@@ -469,6 +469,10 @@ class StateMachineProcess(mp.Process):
         # Queue up another ID-tagged log message
         syncPrint('|| {ID} - {msg}'.format(ID=self.ID, msg=msg), *args, buffer=self.stdoutBuffer, **kwargs)
 
+    def logTime(self, *args, **kwargs):
+        timestamp = dt.datetime.now().strftime(TIME_FORMAT)
+        self.log('| {timestamp} | '.format(timestamp=timestamp), *args, **kwargs)
+
     def logEnd(self):
         timestamp = dt.datetime.now().strftime(TIME_FORMAT)
         self.log(r'*** {timestamp} *** lastState={lastState}, state={state}, nextState={nextState} *** exitFlag={exitFlag}'.format(timestamp=timestamp, exitFlag=self.exitFlag, lastState=self.stateList[self.lastState], state=self.stateList[self.state], nextState=self.stateList[self.nextState]))
@@ -3816,16 +3820,23 @@ class SimpleVideoWriter(StateMachineProcess):
                 elif self.state == SimpleVideoWriter.WRITING:
                     # if self.verbose >= 1: profiler.enable()
                     # DO STUFF
-                    if self.verbose >= 3: self.log("Image queue size: ", self.imageQueue.qsize())
+                    if self.verbose >= 3:
+                        self.logTime("Image queue size: ", self.imageQueue.qsize(), ". Getting next image...")
 
                     im, frameTime, imageID, frameShape = self.getNextimage()
 
                     if im is None:
                         # No images available. To avoid hosing the processor, sleep a bit before continuing
+                        if self.verbose >= 3:
+                            self.logTime("...no image yet. Waiting...")
+
                         time.sleep(0.5/self.requestedFrameRate)
                     else:
                         if videoFileInterface is None:
                             raise IOError('Attempted to write but writer interface does not exist')
+
+                        if self.verbose >= 3:
+                            self.logTime("...got image. Sending to writer...")
 
                         if len(self.imageQueue.frameShape) == 3:
                             width, height, channels = frameShape
@@ -3839,7 +3850,7 @@ class SimpleVideoWriter(StateMachineProcess):
                             # im = PySpin.Image.Create(imp.width, imp.height, imp.offsetX, imp.offsetY, imp.pixelFormat, imp.data)
                             # Convert image to desired format
                             videoFileInterface.Append(im.Convert(PySpin.PixelFormat_RGB8, PySpin.HQ_LINEAR))
-                            if self.verbose >= 2: self.log("wrote frame using PySpin!")
+                            if self.verbose >= 2: self.logTime("wrote frame using PySpin!")
                             # try:
                             #     im.Release()
                             # except PySpin.SpinnakerException:
@@ -3849,14 +3860,14 @@ class SimpleVideoWriter(StateMachineProcess):
                             del im
                         elif self.videoWriteMethod == "ffmpeg":
                             videoFileInterface.write(im, shape=(height, width))
-                            if self.verbose >= 2: self.log("wrote frame using ffmpeg!")
+                            if self.verbose >= 2: self.logTime("wrote frame using ffmpeg!")
                             if self.verbose >= 3: self.log("bytes=", str(im[0:10]))
 
                         numFramesInCurrentVideo += 1
                         numFramesInCurrentSeries += 1
 
                         if self.verbose >= 3:
-                            self.log("Wrote image ID " + str(imageID))
+                            self.logTime("...wrote image ID " + str(imageID))
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
