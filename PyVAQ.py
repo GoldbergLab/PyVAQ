@@ -747,7 +747,7 @@ class PyVAQ:
         self.gainEntry.bind('<FocusOut>', self.validateGain)
 
         self.preTriggerTimeFrame =  ttk.LabelFrame(self.acquisitionFrame, text="Pre-trigger record time (s)", style='SingleContainer.TLabelframe')
-        self.preTriggerTimeVar =    tk.StringVar(); self.preTriggerTimeVar.set("2.0")
+        self.preTriggerTimeVar =    tk.StringVar(); self.preTriggerTimeVar.set("4.5")
         self.preTriggerTimeEntry =  ttk.Entry(self.preTriggerTimeFrame, width=26, textvariable=self.preTriggerTimeVar)
 
         self.recordTimeFrame =      ttk.LabelFrame(self.acquisitionFrame, text="Record time (s)", style='SingleContainer.TLabelframe')
