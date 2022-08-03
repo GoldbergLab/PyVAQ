@@ -440,14 +440,14 @@ class StateMachineProcess(mp.Process):
     # and other conveniences.
     def __init__(self, *args, stdoutQueue=None, daemon=True, **kwargs):
         mp.Process.__init__(self, *args, daemon=daemon, **kwargs)
-        self.ID = "X"                                # An ID for logging purposes to identify the source of log messages
-        self.msgQueue = mp.Queue()                   # Queue for receiving messages/requests from other processes
-        self.stdoutQueue = stdoutQueue               # Queue for pushing output message groups to for printing
-        self.publishedStateVar = mp.Value('i', -1)   # A thread-safe variable so other processes can query this process's state
-        self.PID = mp.Value('i', -1)                 # A thread-safe variable so other processes can query this process's PID
-        self.publishedInfoVar = mp.Value(c_char_p, "No info available")
-        self.exitFlag = False                        # A flag to set to ensure the process exits ASAP
-        self.stdoutBuffer = []                       # A buffer to accumulate log messages before sending out
+        self.ID = "X"                                   # An ID for logging purposes to identify the source of log messages
+        self.msgQueue = mp.Queue()                      # Queue for receiving messages/requests from other processes
+        self.stdoutQueue = stdoutQueue                  # Queue for pushing output message groups to for printing
+        self.publishedStateVar = mp.Value('i', -1)      # A thread-safe variable so other processes can query this process's state
+        self.PID = mp.Value('i', -1)                    # A thread-safe variable so other processes can query this process's PID
+        self.publishedInfoVar = mp.Value(c_char_p, "")  # A thread-safe variable so other processes can query this process's latest info
+        self.exitFlag = False                           # A flag to set to ensure the process exits ASAP
+        self.stdoutBuffer = []                          # A buffer to accumulate log messages before sending out
 
     def run(self):
         # Start run by recording this process's PID
@@ -2420,8 +2420,13 @@ class SimpleAudioWriter(StateMachineProcess):
                     audioFile.audioFileName = audioFileName
                     # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
                     audioFile.setparams((self.numChannels, self.audioDepthBytes, self.audioFrequency, 0, 'NONE', 'not compressed'))
-                    if self.verbose >= 3:
-                        self.log('Opened audio file {name} with {n} channels, {b} bitdepth, and {f} audio frequency'.format(name=audioFileName, n=self.numChannels, b=self.audioDepthBytes, f=self.audioFrequency))
+
+                    newFileInfo = 'Opened audio file {name} with {n} channels, {b} bitdepth, and {f} Hz sample rate'.format(name=audioFileName, n=self.numChannels, b=self.audioDepthBytes, f=self.audioFrequency);
+                    self.updatePublishedInfo(newFileInfo)
+
+                    if self.verbose >= 2:
+                        self.log(newFileInfo)
+
 
                     audioFileCount += 1
 
@@ -3799,6 +3804,9 @@ class SimpleVideoWriter(StateMachineProcess):
                             if self.verbose >= 3: self.log('Closing previous file interface')
                             videoFileInterface.close()
                         videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", fps=self.frameRate, gpuVEnc=self.gpuVEnc)
+
+                    newFileInfo = 'Opened video file {name} at {f} fps, gpu encoding={gpu}'.format(name=videoFileName, f=self.frameRate, gpu=self.gpuVEnc);
+                    self.updatePublishedInfo(newFileInfo)
 
                     if self.verbose >= 3: self.log('...opened new file writing interface')
 
