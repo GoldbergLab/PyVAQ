@@ -727,6 +727,8 @@ class PyVAQ:
 
         self.controlFrame = ttk.Frame(self.mainFrame)
 
+        self.statusFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Status", expandText="Status", borderwidth=3, relief=tk.SUNKEN)
+
         self.acquisitionControlFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Control", expandText="Acquisition Control", borderwidth=3, relief=tk.SUNKEN)
         # self.acquisitionFrame = ttk.LabelFrame(self.controlFrame, text="Acquisition")
         self.startChildProcessesButton = ttk.Button(self.acquisitionControlFrame, text="Start acquisition", command=self.acquireButtonClick)
@@ -2686,14 +2688,14 @@ him know. Otherwise, I had nothing to do with it.
         # self.controlFrame.rowconfigure(0, weight=1)
         # self.controlFrame.rowconfigure(1, weight=1)
 
-
-        self.acquisitionControlFrame.grid(row=0, column=0, sticky=tk.NSEW)
-        self.acquisitionParametersFrame.grid(row=1, column=0, sticky=tk.NSEW)
-        self.acquisitionControlFrame.grid(row=2, column=0, sticky=tk.NSEW)
-        self.mergeFrame.grid(row=3, column=0, sticky=tk.NSEW)
-        self.fileSettingsFrame.grid(row=4, column=0, sticky=tk.NSEW)
-        self.scheduleFrame.grid(row=5, column=0, sticky=tk.NSEW)
-        self.triggerFrame.grid(row=6, column=0, sticky=tk.NSEW)
+        self.statusFrame.grid(row=0, column=0, stick=tk.NSEW)
+        self.acquisitionControlFrame.grid(row=1, column=0, sticky=tk.NSEW)
+        self.acquisitionParametersFrame.grid(row=2, column=0, sticky=tk.NSEW)
+        self.acquisitionControlFrame.grid(row=3, column=0, sticky=tk.NSEW)
+        self.mergeFrame.grid(row=4, column=0, sticky=tk.NSEW)
+        self.fileSettingsFrame.grid(row=5, column=0, sticky=tk.NSEW)
+        self.scheduleFrame.grid(row=6, column=0, sticky=tk.NSEW)
+        self.triggerFrame.grid(row=7, column=0, sticky=tk.NSEW)
 
         # for c in range(3):
         #     self.acquisitionFrame.columnconfigure(c, weight=1)

@@ -19,6 +19,7 @@ from SharedImageQueue import SharedImageSender
 import traceback
 import unicodedata
 import re
+from ctypes import c_char_p
 try:
     import PySpin
 except ModuleNotFoundError:
@@ -444,20 +445,26 @@ class StateMachineProcess(mp.Process):
         self.stdoutQueue = stdoutQueue               # Queue for pushing output message groups to for printing
         self.publishedStateVar = mp.Value('i', -1)   # A thread-safe variable so other processes can query this process's state
         self.PID = mp.Value('i', -1)                 # A thread-safe variable so other processes can query this process's PID
+        self.publishedInfoVar = mp.Value(c_char_p, "No info available")
         self.exitFlag = False                        # A flag to set to ensure the process exits ASAP
         self.stdoutBuffer = []                       # A buffer to accumulate log messages before sending out
-        self.state = None
-        self.lastState = None
-        self.nextState = None
 
     def run(self):
         # Start run by recording this process's PID
         self.PID.value = os.getpid()
 
+    def updatePublishedInfo(self, info):
+        if self.publishedInfoVar is not None:
+            L = self.publishedInfoVar.get_lock()
+            locked = L.acquire(block=False)
+            if locked:
+                self.publishedInfoVar.value = info
+                L.release()
+
     def updatePublishedState(self, newState=None):
-        # Update the thread-safe variable holding the current state info
         if newState is not None:
             self.state = newState
+        # Update the thread-safe variable holding the current state info
         if self.publishedStateVar is not None:
             L = self.publishedStateVar.get_lock()
             locked = L.acquire(block=False)
