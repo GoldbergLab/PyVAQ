@@ -4,7 +4,7 @@ import tkinter.ttk as ttk
 class CollapsableFrame(tk.Frame):
     def __init__(self, parent, *args, collapseSymbol='/\\', collapseText=None,
         expandSymbol='\\/', expandText=None, collapseFunction=None,
-        expandFunction=None, **kwargs):
+        expandFunction=None, collapsed=True, **kwargs):
         # CollapsableFrame: A class that provides a "collapsable" frame, meaning
         #   a Tkinter frame that can be "collapsed" such that all its children
         #   are hidden and the frame becomes shorted, and "expanded" again.
@@ -51,15 +51,20 @@ class CollapsableFrame(tk.Frame):
         self.expandText = expandText
 
         # Set boolean isCollapsed flag to True
-        self._isCollapsed = False
+        self._isCollapsed = collapsed
 
         # Create collapse/expand button
-        self.stateChangeButton = ttk.Button(self.outerFrame)
+        self.stateChangeButton = tk.Button(self.outerFrame, relief=tk.FLAT, pady=-2)
         self.updateStateChangeButton()
 
         # Lay out widgets
-        self.stateChangeButton.grid(row=0, column=0, sticky=tk.NSEW)
+        self.stateChangeButton.grid(row=0, column=0, sticky=tk.NW)
         self.grid(row=1, column=0, sticky=tk.NSEW, collapsableInner=True)
+
+        if collapsed:
+            self.collapse()
+        else:
+            self.expand()
 
     def updateStateChangeButton(self):
         if self.isCollapsed():

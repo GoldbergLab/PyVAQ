@@ -41,6 +41,7 @@ from MonitorWidgets import AudioMonitor, CameraMonitor
 from DockableFrame import Docker
 from StateMachineProcesses import Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, nodeAccessorFunctions, nodeAccessorTypes, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter
 import inspect
+import CollapsableFrame as cf
 
 VERSION='0.2.0'
 
@@ -610,6 +611,7 @@ class PyVAQ:
     def __init__(self, master, settingsFilePath=None):
         self.master = master
         self.master.resizable(height=False, width=False)  # Disallow resizing window
+        self.master.minsize(500, 0)
         self.customTitleBar = False
         if self.customTitleBar:
             self.master.overrideredirect(True) # Disable title bar
@@ -725,40 +727,44 @@ class PyVAQ:
 
         self.controlFrame = ttk.Frame(self.mainFrame)
 
-        self.acquisitionFrame = ttk.LabelFrame(self.controlFrame, text="Acquisition")
-        self.startChildProcessesButton = ttk.Button(self.acquisitionFrame, text="Start acquisition", command=self.acquireButtonClick)
+        self.acquisitionControlFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Control", expandText="Acquisition Control", borderwidth=3, relief=tk.SUNKEN)
+        # self.acquisitionFrame = ttk.LabelFrame(self.controlFrame, text="Acquisition")
+        self.startChildProcessesButton = ttk.Button(self.acquisitionControlFrame, text="Start acquisition", command=self.acquireButtonClick)
 
-        self.audioFrequencyFrame =  ttk.LabelFrame(self.acquisitionFrame, text="Audio freq. (Hz)", style='SingleContainer.TLabelframe')
+        self.updateInputsButton =   ttk.Button(self.acquisitionControlFrame, text="Select audio/video inputs", command=self.selectInputs)
+
+        self.acquisitionParametersFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Parameters", expandText="Acquisition Parameters", borderwidth=3, relief=tk.SUNKEN)
+
+        self.audioFrequencyFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Audio freq. (Hz)", style='SingleContainer.TLabelframe')
         self.audioFrequencyVar =    tk.StringVar(); self.audioFrequencyVar.set("44100")
         self.audioFrequencyEntry =  ttk.Entry(self.audioFrequencyFrame, width=15, textvariable=self.audioFrequencyVar);
 
-        self.videoFrequencyFrame =  ttk.LabelFrame(self.acquisitionFrame, text="Video freq (fps)", style='SingleContainer.TLabelframe')
+        self.videoFrequencyFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Video freq (fps)", style='SingleContainer.TLabelframe')
         self.videoFrequencyVar =    tk.StringVar(); self.videoFrequencyVar.set("30")
         self.videoFrequencyEntry =  ttk.Entry(self.videoFrequencyFrame, width=15, textvariable=self.videoFrequencyVar)
 
-        self.videoExposureTimeFrame =    ttk.LabelFrame(self.acquisitionFrame, text="Video exposure time (ms):", style='SingleContainer.TLabelframe')
+        self.videoExposureTimeFrame =    ttk.LabelFrame(self.acquisitionParametersFrame, text="Video exposure time (ms):", style='SingleContainer.TLabelframe')
         self.videoExposureTimeVar =      tk.StringVar(); self.videoExposureTimeVar.set("3")
         self.videoExposureTimeEntry =    ttk.Entry(self.videoExposureTimeFrame, width=18, textvariable=self.videoExposureTimeVar)
         self.videoExposureTimeEntry.bind('<FocusOut>', self.validateVideoExposureTime)
 
-        self.gainFrame =    ttk.LabelFrame(self.acquisitionFrame, text="Gain", style='SingleContainer.TLabelframe')
+        self.gainFrame =    ttk.LabelFrame(self.acquisitionParametersFrame, text="Gain", style='SingleContainer.TLabelframe')
         self.gainVar =      tk.StringVar(); self.gainVar.set("10")
         self.gainEntry =    ttk.Entry(self.gainFrame, width=18, textvariable=self.gainVar)
         self.gainEntry.bind('<FocusOut>', self.validateGain)
 
-        self.preTriggerTimeFrame =  ttk.LabelFrame(self.acquisitionFrame, text="Pre-trigger record time (s)", style='SingleContainer.TLabelframe')
+        self.preTriggerTimeFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Pre-trigger record time (s)", style='SingleContainer.TLabelframe')
         self.preTriggerTimeVar =    tk.StringVar(); self.preTriggerTimeVar.set("4.5")
         self.preTriggerTimeEntry =  ttk.Entry(self.preTriggerTimeFrame, width=26, textvariable=self.preTriggerTimeVar)
 
-        self.recordTimeFrame =      ttk.LabelFrame(self.acquisitionFrame, text="Record time (s)", style='SingleContainer.TLabelframe')
+        self.recordTimeFrame =      ttk.LabelFrame(self.acquisitionParametersFrame, text="Record time (s)", style='SingleContainer.TLabelframe')
         self.recordTimeVar =        tk.StringVar(); self.recordTimeVar.set("10.0")
         self.recordTimeEntry =      ttk.Entry(self.recordTimeFrame, width=14, textvariable=self.recordTimeVar)
 
         self.chunkSizeVar =         tk.StringVar(); self.chunkSizeVar.set(1000)
 
-        self.updateInputsButton =   ttk.Button(self.acquisitionFrame, text="Select audio/video inputs", command=self.selectInputs)
-
-        self.mergeFrame = ttk.LabelFrame(self.acquisitionFrame, text="AV File merging")
+        self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", expandText="AV File Merging", borderwidth=3, relief=tk.SUNKEN)
+        # self.mergeFrame = ttk.LabelFrame(self.acquisitionFrame, text="AV File merging")
 
         self.mergeFileWidget = FileWritingEntry(
             self.mergeFrame,
@@ -793,7 +799,9 @@ class PyVAQ:
         self.mergeCompression = ttk.Combobox(self.mergeCompressionFrame, textvariable=self.mergeCompressionVar, values=AVMerger.COMPRESSION_OPTIONS, width=12)
         self.mergeCompressionVar.trace('w', lambda *args: self.changeAVMergerParams(compression=self.mergeCompressionVar.get()))
 
-        self.fileSettingsFrame = ttk.LabelFrame(self.acquisitionFrame, text="File settings")
+        self.fileSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="File settings", expandText="File settings", borderwidth=3, relief=tk.SUNKEN)
+        # self.fileSettingsFrame = ttk.LabelFrame(self.acquisitionFrame, text="File settings")
+
         self.daySubfoldersVar = tk.BooleanVar(); self.daySubfoldersVar.set(True)
         self.daySubfoldersCheckbutton = ttk.Checkbutton(self.fileSettingsFrame, text="File in day subfolders", variable=self.daySubfoldersVar)
         self.daySubfoldersVar.trace('w', lambda *args: self.updateDaySubfolderSetting())
@@ -803,7 +811,8 @@ class PyVAQ:
         self.maxGPUVEncVar = tk.StringVar(); self.maxGPUVEncVar.set(str(DEFAULT_NUM_GPU_VENC_SESSIONS))
         self.maxGPUVEncEntry = ttk.Entry(self.maxGPUVencFrame, width=10, textvariable=self.maxGPUVEncVar)
 
-        self.scheduleFrame = ttk.LabelFrame(self.acquisitionFrame, text="Trigger enable schedule")
+        self.scheduleFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Recording Schedule", expandText="Recording Schedule", borderwidth=3, relief=tk.SUNKEN)
+
         self.scheduleEnabledVar = tk.BooleanVar(); self.scheduleEnabledVar.set(False)
         self.scheduleEnabledCheckbutton = ttk.Checkbutton(self.scheduleFrame, text="Restrict trigger to schedule", variable=self.scheduleEnabledVar)
         self.scheduleStartVar = TimeVar()
@@ -811,7 +820,9 @@ class PyVAQ:
         self.scheduleStopVar = TimeVar()
         self.scheduleStopTimeEntry = TimeEntry(self.scheduleFrame, text="Stop time")
 
-        self.triggerFrame = ttk.LabelFrame(self.controlFrame, text='Triggering')
+        self.triggerFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Triggering", expandText="Triggering", borderwidth=3, relief=tk.SUNKEN)
+        # self.triggerFrame = ttk.LabelFrame(self.controlFrame, text='Triggering')
+
         self.triggerModes = ['Manual', 'Audio', 'Continuous', 'SimpleContinuous', 'None']
         self.triggerModeChooserFrame = ttk.Frame(self.triggerFrame)
         self.triggerModeVar = tk.StringVar(); self.triggerModeVar.set(self.triggerModes[0])
@@ -2669,17 +2680,31 @@ him know. Otherwise, I had nothing to do with it.
 #        self.audioMonitor.grid(row=1, column=0, sticky=tk.NSEW)
 
         self.controlFrame.grid(row=0, column=1, sticky=tk.NSEW)
-        # self.controlFrame.columnconfigure(0, weight=1)
+        self.controlFrame.columnconfigure(0, weight=1)
+        self.controlFrame.columnconfigure(1, weight=1)
         # self.controlFrame.columnconfigure(1, weight=1)
         # self.controlFrame.rowconfigure(0, weight=1)
         # self.controlFrame.rowconfigure(1, weight=1)
 
-        self.acquisitionFrame.grid(row=0, column=0, sticky=tk.NSEW)
+
+        self.acquisitionControlFrame.grid(row=0, column=0, sticky=tk.NSEW)
+        self.acquisitionParametersFrame.grid(row=1, column=0, sticky=tk.NSEW)
+        self.acquisitionControlFrame.grid(row=2, column=0, sticky=tk.NSEW)
+        self.mergeFrame.grid(row=3, column=0, sticky=tk.NSEW)
+        self.fileSettingsFrame.grid(row=4, column=0, sticky=tk.NSEW)
+        self.scheduleFrame.grid(row=5, column=0, sticky=tk.NSEW)
+        self.triggerFrame.grid(row=6, column=0, sticky=tk.NSEW)
+
         # for c in range(3):
         #     self.acquisitionFrame.columnconfigure(c, weight=1)
         # for r in range(4):
         #     self.acquisitionFrame.rowconfigure(r, weight=1)
+
+        #### Children of self.acquisitionControlFrame
         self.startChildProcessesButton.grid(row=0, column=0, columnspan=5, sticky=tk.NSEW)
+        self.updateInputsButton.grid(row=3, column=0, stick=tk.NSEW)
+
+        #### Children of self.acquisitionParametersFrame
         self.audioFrequencyFrame.grid(row=1, column=0, sticky=tk.EW)
         self.audioFrequencyEntry.grid()
         self.videoFrequencyFrame.grid(row=1, column=1, sticky=tk.EW)
@@ -2693,9 +2718,7 @@ him know. Otherwise, I had nothing to do with it.
         self.gainFrame.grid(row=2, column=2, sticky=tk.EW)
         self.gainEntry.grid()
 
-        self.updateInputsButton.grid(row=3, column=0)
-
-        self.mergeFrame.grid(row=4, rowspan=2, column=0, sticky=tk.NSEW)
+        #### Children of self.mergeFrame
         self.mergeFilesCheckbutton.grid(row=1, column=0, sticky=tk.NW)
         self.deleteMergedFilesFrame.grid(row=2, column=0, sticky=tk.NW)
         self.mergeCompressionFrame.grid(row=2, column=1, sticky=tk.NW)
@@ -2706,17 +2729,17 @@ him know. Otherwise, I had nothing to do with it.
 
         self.mergeFileWidget.grid(row=4, column=0, columnspan=2)
 
-        self.fileSettingsFrame.grid(row=4, column=1, columnspan=2, sticky=tk.NSEW)
+        #### Children of self.fileSettingsFrame
         self.daySubfoldersCheckbutton.grid(row=0, column=0)
         self.maxGPUVencFrame.grid(row=0, column=1)
         self.maxGPUVEncEntry.grid()
 
-        self.scheduleFrame.grid(row=5, column=1, columnspan=2, sticky=tk.NSEW)
+        #### Children of self.scheduleFrame
         self.scheduleEnabledCheckbutton.grid(row=0, column=0, sticky=tk.NW)
         self.scheduleStartTimeEntry.grid(row=1, column=0, sticky=tk.NW)
         self.scheduleStopTimeEntry.grid(row=2, column=0, sticky=tk.NW)
 
-        self.triggerFrame.grid(row=1, column=0, sticky=tk.NSEW)
+        #### Children of self.triggerFrame
         self.triggerModeChooserFrame.grid(row=0, column=0, sticky=tk.NW)
         self.triggerModeLabel.grid(row=0, column=0)
         for k, mode in enumerate(self.triggerModes):
