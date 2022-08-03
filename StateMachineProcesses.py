@@ -12,39 +12,40 @@ from collections import defaultdict, deque
 from threading import BrokenBarrierError
 import itertools
 import ffmpegWriter as fw
-import nidaqmx
-from nidaqmx.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
-from nidaqmx.constants import Edge, TriggerType
 from SharedImageQueue import SharedImageSender
 import traceback
 import unicodedata
 import re
 from ctypes import c_char_p
+import PySpinUtilities as psu
 try:
     import PySpin
 except ModuleNotFoundError:
     # pip seems to install PySpin as pyspin sometimes...
     import pyspin as PySpin
 
-nodeAccessorFunctions = {
-    PySpin.intfIString:('string', PySpin.CStringPtr),
-    PySpin.intfIInteger:('integer', PySpin.CIntegerPtr),
-    PySpin.intfIFloat:('float', PySpin.CFloatPtr),
-    PySpin.intfIBoolean:('boolean', PySpin.CBooleanPtr),
-    PySpin.intfICommand:('command', PySpin.CEnumerationPtr),
-    PySpin.intfIEnumeration:('enum', PySpin.CEnumerationPtr),
-    PySpin.intfICategory:('category', PySpin.CCategoryPtr)
-}
+simulatedHardware = False
+for arg in sys.argv[1:]:
+    if arg == '-s' or arg == '--sim':
+        # Use simulated harddware instead of physical cameras and DAQs
+        simulatedHardware = True
 
-nodeAccessorTypes = {
-    'string':PySpin.CStringPtr,
-    'integer':PySpin.CIntegerPtr,
-    'float':PySpin.CFloatPtr,
-    'boolean':PySpin.CBooleanPtr,
-    'command':PySpin.CEnumerationPtr,
-    'enum':PySpin.CEnumerationPtr,
-    'category':PySpin.CCategoryPtr
-}
+if simulatedHardware:
+    # Use simulated harddware instead of physical cameras and DAQs
+    import PySpinSim.PySpinSim as PySpin
+    import nidaqmxSim as nidaqmx
+    from nidaqmxSim.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
+    from nidaqmxSim.constants import Edge, TriggerType
+else:
+    # Use physical cameras/DAQs
+    try:
+        import PySpin
+    except ModuleNotFoundError:
+        # pip seems to install PySpin as pyspin sometimes...
+        import pyspin as PySpin
+    import nidaqmx
+    from nidaqmx.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
+    from nidaqmx.constants import Edge, TriggerType
 
 def getFrameSize(camSerial):
     system = PySpin.System.GetInstance()
@@ -3207,9 +3208,12 @@ class VideoAcquirer(StateMachineProcess):
         self.requestedFrameRate = requestedFrameRate
         self.frameRateVar = frameRate
         self.frameRate = None
+        self.pixelFormat = None
         # self.imageQueue = mp.Queue()
         # self.imageQueue.cancel_join_thread()
         self.bufferSize = int(2*bufferSizeSeconds * self.requestedFrameRate)
+
+        self.nChannels = psu.getColorChannelCount(camSerial=self.camSerial)
 
         if self.verbose >= 3: self.log("Temporarily initializing camera to get image size...")
         videoWidth, videoHeight = getFrameSize(self.camSerial)
@@ -3221,7 +3225,7 @@ class VideoAcquirer(StateMachineProcess):
             outputCopy=False,
             lockForOutput=False,
             maxBufferSize=self.bufferSize,
-            channels=1,
+            channels=self.nChannels,
             name=self.camSerial+'____main',
             allowOverflow=False
         )
@@ -3236,7 +3240,7 @@ class VideoAcquirer(StateMachineProcess):
             outputCopy=False,
             lockForOutput=False,
             maxBufferSize=1,
-            channels=1,
+            channels=self.nChannels,
             name=self.camSerial+'_monitor',
             allowOverflow=True
         )
@@ -3313,6 +3317,10 @@ class VideoAcquirer(StateMachineProcess):
                     nodemap = cam.GetNodeMap()
                     self.setCameraAttributes(nodemap, self.acquireSettings)
                     if self.verbose > 2: self.log("...camera initialization complete")
+
+                    # Get current camera pixel format
+                    self.pixelFormat = psu.getCameraAttribute('PixelFormat', PySpin.CEnumerationPtr, nodemap=nodemap)[1]
+                    print('initializing - pixel format is:', self.pixelFormat)
 
                     monitorFramePeriod = 1.0/self.monitorMasterFrameRate
                     if self.verbose >= 1: self.log("Monitoring with period", monitorFramePeriod)
@@ -3436,7 +3444,7 @@ class VideoAcquirer(StateMachineProcess):
                                 actualMonitorFramePeriod = thisTime - lastTime
                                 if (thisTime - lastTime) >= monitorFramePeriod:
                                     try:
-                                        self.monitorImageSender.put(imageResult)
+                                        self.monitorImageSender.put(imageResult, metadata={'pixelFormat':self.pixelFormat})
                                         if self.verbose >= 3: self.log("Sent frame for monitoring")
                                         lastTime = thisTime
                                     except queue.Full:
@@ -3576,7 +3584,7 @@ class VideoAcquirer(StateMachineProcess):
     def setCameraAttribute(self, nodemap, attributeName, attributeValue, type='enum'):
         # Set camera attribute. ReturnRetrusn True if successful, False otherwise.
         if self.verbose >= 1: self.log('Setting', attributeName, 'to', attributeValue, 'as', type)
-        nodeAttribute = nodeAccessorTypes[type](nodemap.GetNode(attributeName))
+        nodeAttribute = psu.nodeAccessorTypes[type](nodemap.GetNode(attributeName))
         if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsWritable(nodeAttribute):
             if self.verbose >= 0: self.log('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (enum retrieval). Aborting...')
             return False
@@ -3637,7 +3645,9 @@ class SimpleVideoWriter(StateMachineProcess):
         'verbose',
         'videoBaseFileName',
         'videoDirectory',
-        'daySubfolders'
+        'daySubfolders',
+        'enableWrite',
+        'gpuVEnc'
         ]
 
     def __init__(self,
@@ -3652,6 +3662,7 @@ class SimpleVideoWriter(StateMachineProcess):
                 daySubfolders=True,
                 videoLength=2,   # Video length in seconds
                 gpuVEnc=False,   # Should we use GPU acceleration
+                enableWrite=True,
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.camSerial = camSerial
@@ -3672,6 +3683,7 @@ class SimpleVideoWriter(StateMachineProcess):
         self.videoLength = videoLength
         self.videoFrameCount = None   # Number of frames to save to each video. Wait until we get actual framerate from synchronizer
         self.gpuVEnc = gpuVEnc
+        self.enableWrite = enableWrite
 
     def setParams(self, **params):
         for key in params:
@@ -3729,14 +3741,18 @@ class SimpleVideoWriter(StateMachineProcess):
                     videoCount = 0                  # Initialize video count, used to number video files
                     numFramesInCurrentSeries = 0    # Initialize series-wide frame count, for estimating subsequent video times
 
-                    while self.frameRateVar.value == -1:
+                    self.frameRate = self.frameRateVar.value
+                    if self.frameRate == -1:
+                        # Frame rate var still hasn't been set
                         # Wait for shared value frameRate to be set by the Synchronizer process
                         time.sleep(0.1)
-                    self.frameRate = self.frameRateVar.value
-                    self.videoFrameCount = round(self.videoLength * self.frameRate)
-                    self.log("Video framerate = {f}".format(f=self.frameRate))
-                    self.log("Video length = {L}".format(L=self.videoLength))
-                    self.log("Video frame count = {n}".format(n=self.videoFrameCount))
+                    else:
+                        # Frame rate has been set by the synchronizer process - continue on
+                        self.frameRate = self.frameRateVar.value
+                        self.videoFrameCount = round(self.videoLength * self.frameRate)
+                        self.log("Video framerate = {f}".format(f=self.frameRate))
+                        self.log("Video length = {L}".format(L=self.videoLength))
+                        self.log("Video frame count = {n}".format(n=self.videoFrameCount))
 
                     # CHECK FOR MESSAGES
                     try:
@@ -3748,7 +3764,12 @@ class SimpleVideoWriter(StateMachineProcess):
                     if self.exitFlag:
                         self.nextState = SimpleVideoWriter.STOPPING
                     elif msg in ['', SimpleVideoWriter.START]:
-                        self.nextState = SimpleVideoWriter.VIDEOINIT
+                        if self.frameRate == -1:
+                            # Frame rate hasn't been set by synchronizer yet
+                            nextState = SimpleVideoWriter.INITIALIZING
+                        else:
+                            # Frame rate has been set by synchronizer
+                            nextState = SimpleVideoWriter.VIDEOINIT
                     elif msg == SimpleVideoWriter.STOP:
                         self.nextState = SimpleVideoWriter.STOPPING
                     elif msg == SimpleVideoWriter.EXIT:
@@ -3772,38 +3793,6 @@ class SimpleVideoWriter(StateMachineProcess):
                         elif self.videoWriteMethod == "ffmpeg":
                             videoFileInterface.close()
                         videoFileInterface = None
-
-                    # Generate new video file path
-                    videoFileNameTags = [self.camSerial, generateTimeString(timestamp=seriesStartTime), '{videoCount:03d}'.format(videoCount=videoCount)]
-                    if self.daySubfolders:
-                        videoDirectory = getDaySubfolder(self.videoDirectory, timestamp=videoFileStartTime)
-                    else:
-                        videoDirectory = self.videoDirectory
-                    videoFileName = generateFileName(directory=videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
-                    if self.verbose >= 2: self.log('New filename:', videoFileName)
-                    if self.verbose >= 3: self.log('Ensuring directory exists:', videoDirectory)
-                    ensureDirectoryExists(videoDirectory)
-
-                    if self.verbose >= 3: self.log('Opening new file writing interface...')
-
-                    # Initialize video writer interface
-                    if self.videoWriteMethod == "PySpin":
-                        if videoFileInterface is not None:
-                            videoFileInterface.Close()
-
-                        videoFileInterface = PySpin.SpinVideo()
-                        option = PySpin.AVIOption()
-                        option.frameRate = self.frameRate
-                        if self.verbose >= 2: self.log("Opening file to save video with frameRate ", option.frameRate)
-                        videoFileInterface.Open(videoFileName, option)
-                        stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
-                        videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
-                    elif self.videoWriteMethod == "ffmpeg":
-                        if self.verbose >= 3: self.log('Using ffmpeg writer')
-                        if videoFileInterface is not None:
-                            if self.verbose >= 3: self.log('Closing previous file interface')
-                            videoFileInterface.close()
-                        videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", fps=self.frameRate, gpuVEnc=self.gpuVEnc)
 
                     newFileInfo = 'Opened video file {name} at {f} fps, gpu encoding={gpu}'.format(name=videoFileName, f=self.frameRate, gpu=self.gpuVEnc);
                     self.updatePublishedInfo(newFileInfo)
