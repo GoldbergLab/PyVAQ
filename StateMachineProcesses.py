@@ -23,6 +23,7 @@ try:
 except ModuleNotFoundError:
     # pip seems to install PySpin as pyspin sometimes...
     import pyspin as PySpin
+import sys
 
 simulatedHardware = False
 for arg in sys.argv[1:]:
@@ -446,7 +447,7 @@ class StateMachineProcess(mp.Process):
         self.stdoutQueue = stdoutQueue                  # Queue for pushing output message groups to for printing
         self.publishedStateVar = mp.Value('i', -1)      # A thread-safe variable so other processes can query this process's state
         self.PID = mp.Value('i', -1)                    # A thread-safe variable so other processes can query this process's PID
-        self.publishedInfoVar = mp.Value(c_char_p, "")  # A thread-safe variable so other processes can query this process's latest info
+        self.publishedInfoVar = mp.Value(c_char_p, b'')  # A thread-safe variable so other processes can query this process's latest info
         self.exitFlag = False                           # A flag to set to ensure the process exits ASAP
         self.stdoutBuffer = []                          # A buffer to accumulate log messages before sending out
 
@@ -459,7 +460,7 @@ class StateMachineProcess(mp.Process):
             L = self.publishedInfoVar.get_lock()
             locked = L.acquire(block=False)
             if locked:
-                self.publishedInfoVar.value = info
+                self.publishedInfoVar.value = info.encode('utf-8')
                 L.release()
 
     def updatePublishedState(self, newState=None):
@@ -3766,10 +3767,11 @@ class SimpleVideoWriter(StateMachineProcess):
                     elif msg in ['', SimpleVideoWriter.START]:
                         if self.frameRate == -1:
                             # Frame rate hasn't been set by synchronizer yet
-                            nextState = SimpleVideoWriter.INITIALIZING
+                            self.nextState = SimpleVideoWriter.INITIALIZING
+                            self.log('Still waiting for frame rate from synchronizer: {f}'.format(f=self.frameRate))
                         else:
                             # Frame rate has been set by synchronizer
-                            nextState = SimpleVideoWriter.VIDEOINIT
+                            self.nextState = SimpleVideoWriter.VIDEOINIT
                     elif msg == SimpleVideoWriter.STOP:
                         self.nextState = SimpleVideoWriter.STOPPING
                     elif msg == SimpleVideoWriter.EXIT:
