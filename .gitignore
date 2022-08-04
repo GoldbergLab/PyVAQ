@@ -6,6 +6,11 @@ __pycache__/
 /logs/
 # Ignore specific files:
 /TODO.txt
+# Ignore wav files to avoid committing recordings
 *.wav
+# Include simulated audio
+!simAudioFeed0.wav
+!simAudioFeed1.wav
+!simAudioFeed2.wav
 *.avi
 *.pvs
