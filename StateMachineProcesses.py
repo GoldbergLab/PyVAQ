@@ -3795,6 +3795,25 @@ class SimpleVideoWriter(StateMachineProcess):
                             videoFileInterface.close()
                         videoFileInterface = None
 
+                    if self.verbose >= 3: self.log('Opening new file writing interface...')
+                    # Initialize video writer interface
+                    if self.videoWriteMethod == "PySpin":
+                        if videoFileInterface is not None:
+                            videoFileInterface.Close()
+                        videoFileInterface = PySpin.SpinVideo()
+                        option = PySpin.AVIOption()
+                        option.frameRate = self.frameRate
+                        if self.verbose >= 2: self.log("Opening file to save video with frameRate ", option.frameRate)
+                        videoFileInterface.Open(videoFileName, option)
+                        stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
+                        videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
+                    elif self.videoWriteMethod == "ffmpeg":
+                        if self.verbose >= 3: self.log('Using ffmpeg writer')
+                        if videoFileInterface is not None:
+                            if self.verbose >= 3: self.log('Closing previous file interface')
+                            videoFileInterface.close()
+                        videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", fps=self.frameRate, gpuVEnc=self.gpuVEnc)
+
                     newFileInfo = 'Opened video file {name} at {f} fps, gpu encoding={gpu}'.format(name=videoFileName, f=self.frameRate, gpu=self.gpuVEnc);
                     self.updatePublishedInfo(newFileInfo)
 
