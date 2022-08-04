@@ -3768,7 +3768,6 @@ class SimpleVideoWriter(StateMachineProcess):
                         if self.frameRate == -1:
                             # Frame rate hasn't been set by synchronizer yet
                             self.nextState = SimpleVideoWriter.INITIALIZING
-                            self.log('Still waiting for frame rate from synchronizer: {f}'.format(f=self.frameRate))
                         else:
                             # Frame rate has been set by synchronizer
                             self.nextState = SimpleVideoWriter.VIDEOINIT
