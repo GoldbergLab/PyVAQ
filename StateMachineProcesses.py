@@ -3310,6 +3310,7 @@ class VideoAcquirer(StateMachineProcess):
                     im = imp = imageResult = None
                     startTime = None
                     frameTime = None
+                    imageID = None
                     lastImageID = None
                     droppedFrameCount = 0
 
@@ -3397,6 +3398,7 @@ class VideoAcquirer(StateMachineProcess):
                         else:
 #                            imageConverted = imageResult.Convert(PySpin.PixelFormat_BGR8)
                             imageCount += 1
+                            lastImageID = imageID
                             imageID = imageResult.GetFrameID()
                             if lastImageID is not None and imageID != lastImageID + 1 and self.verbose >= 0:
                                 droppedFrameCount += 1
