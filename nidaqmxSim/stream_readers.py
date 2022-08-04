@@ -1,6 +1,6 @@
 from pathlib import Path
 from scipy.io import wavfile
-from time import time
+from time import time, sleep
 
 DEFAULT_AUDIO_FILENAMES = [
     'simAudioFeed0.wav',
@@ -39,12 +39,13 @@ class AnalogMultiChannelReader:
         self.nextReadTime = startTime
 
     def read_many_sample(self, buffer, number_of_samples_per_channel, timeout):
-        print('waiting for next simulated audio sample...')
+        framePeriod = number_of_samples_per_channel/self.sampleRate
         while True:
             currentTime = time()
             if currentTime >= self.nextReadTime:
                 break
-        framePeriod = number_of_samples_per_channel/self.sampleRate
+            else:
+                sleep(framePeriod/5)
         self.lastReadTime = self.nextReadTime
         self.nextReadTime += framePeriod
         for chan in range(self.num_channels):
@@ -58,4 +59,3 @@ class AnalogMultiChannelReader:
             else:
                 buffer[chan, :] = self.data[fileNum][p:(p+s)]
             self.filePointers[fileNum] = (self.filePointers[fileNum] + s) % n
-        print('...latest simulated audio sample produced.')
