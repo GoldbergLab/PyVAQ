@@ -450,6 +450,9 @@ class StateMachineProcess(mp.Process):
         self.publishedInfoVar = mp.Value(c_char_p, b'')  # A thread-safe variable so other processes can query this process's latest info
         self.exitFlag = False                           # A flag to set to ensure the process exits ASAP
         self.stdoutBuffer = []                          # A buffer to accumulate log messages before sending out
+        self.state = None
+        self.lastState = None
+        self.nextState = None
 
     def run(self):
         # Start run by recording this process's PID
@@ -464,6 +467,7 @@ class StateMachineProcess(mp.Process):
                 L.release()
 
     def updatePublishedState(self, newState=None):
+        # Update the thread-safe variable holding the current state info
         if newState is not None:
             self.state = newState
         # Update the thread-safe variable holding the current state info
@@ -3795,11 +3799,24 @@ class SimpleVideoWriter(StateMachineProcess):
                             videoFileInterface.close()
                         videoFileInterface = None
 
+                    # Generate new video file path
+                    videoFileNameTags = [self.camSerial, generateTimeString(timestamp=seriesStartTime), '{videoCount:03d}'.format(videoCount=videoCount)]
+                    if self.daySubfolders:
+                        videoDirectory = getDaySubfolder(self.videoDirectory, timestamp=videoFileStartTime)
+                    else:
+                        videoDirectory = self.videoDirectory
+                    videoFileName = generateFileName(directory=videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
+                    if self.verbose >= 2: self.log('New filename:', videoFileName)
+                    if self.verbose >= 3: self.log('Ensuring directory exists:', videoDirectory)
+                    ensureDirectoryExists(videoDirectory)
+
                     if self.verbose >= 3: self.log('Opening new file writing interface...')
+
                     # Initialize video writer interface
                     if self.videoWriteMethod == "PySpin":
                         if videoFileInterface is not None:
                             videoFileInterface.Close()
+
                         videoFileInterface = PySpin.SpinVideo()
                         option = PySpin.AVIOption()
                         option.frameRate = self.frameRate
