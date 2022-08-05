@@ -2551,8 +2551,9 @@ him know. Otherwise, I had nothing to do with it.
 
         self.sendMessage(self.audioTriggerProcess, (AudioTriggerer.STOP, None))
         self.sendMessage(self.continuousTriggerProcess, (ContinuousTriggerer.STOP, None))
-        for camSerial in self.getParams('camSerials'):
+        for camSerial in self.videoAcquireProcesses:
             self.sendMessage(self.videoAcquireProcesses[camSerial], (VideoAcquirer.STOP, None))
+        for camSerial in self.videoAcquireProcesses:
             self.sendMessage(self.videoWriteProcesses[camSerial], (VideoWriter.STOP, None))
         self.sendMessage(self.audioAcquireProcess, (AudioAcquirer.STOP, None))
         self.sendMessage(self.audioWriteProcess, (AudioWriter.STOP, None))
@@ -2564,6 +2565,7 @@ him know. Otherwise, I had nothing to do with it.
         self.sendMessage(self.continuousTriggerProcess, (ContinuousTriggerer.EXIT, None))
         for camSerial in self.videoAcquireProcesses:
             self.sendMessage(self.videoAcquireProcesses[camSerial], (VideoAcquirer.EXIT, None))
+        for camSerial in self.videoWriteProcesses:
             self.sendMessage(self.videoWriteProcesses[camSerial], (VideoWriter.EXIT, None))
         self.sendMessage(self.audioAcquireProcess, (AudioAcquirer.EXIT, None))
         self.sendMessage(self.audioWriteProcess, (AudioWriter.EXIT, None))
