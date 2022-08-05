@@ -395,10 +395,11 @@ class PyVAQ:
         self.scheduleFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Recording Schedule", expandText="Recording Schedule", borderwidth=3, relief=tk.SUNKEN)
 
         self.scheduleEnabledVar = tk.BooleanVar(); self.scheduleEnabledVar.set(False)
+        self.scheduleEnabledVar.trace('w', self.updateChildSchedulingState)
         self.scheduleEnabledCheckbutton = ttk.Checkbutton(self.scheduleFrame, text="Restrict trigger to schedule", variable=self.scheduleEnabledVar)
-        self.scheduleStartVar = TimeVar()
+        self.scheduleStartVar = TimeVar(); self.scheduleStartVar.trace('w', self.updateChildSchedulingState)
         self.scheduleStartTimeEntry = TimeEntry(self.scheduleFrame, text="Start time", style=self.style)
-        self.scheduleStopVar = TimeVar()
+        self.scheduleStopVar = TimeVar(); self.scheduleStopVar.trace('w', self.updateChildSchedulingState)
         self.scheduleStopTimeEntry = TimeEntry(self.scheduleFrame, text="Stop time")
 
         self.triggerFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Triggering", expandText="Triggering", borderwidth=3, relief=tk.SUNKEN)
@@ -1089,6 +1090,11 @@ him know. Otherwise, I had nothing to do with it.
             self.deleteMergedAudioFilesCheckbutton.config(state=tk.DISABLED)
             self.montageMergeCheckbutton.config(state=tk.DISABLED)
             self.sendMessage(self.mergeProcess, (AVMerger.CHILL, None))
+
+    def updateChildSchedulingState(self, *args):
+        scheduleParams = getParams(['scheduleEnabled', 'scheduleStart', 'scheduleStop'])
+        for camSerial in self.videoWriteProcesses:
+            self.sendMessage(SimpleVideoWriter.SETPARAMS, self.videoWriteProcesses[camSerial], scheduleParams)
 
     def changeAVMergerParams(self, **params):
         self.sendMessage(self.mergeProcess, (AVMerger.SETPARAMS, params))
@@ -2189,9 +2195,9 @@ him know. Otherwise, I had nothing to do with it.
 
         # Start other processes
         if self.syncProcess is not None:
-            if p["triggerMode"] != "SimpleContinuous":
-                # In SimpleContinuous mode, we need to start the sync proces manually to give user time to change settings
-                self.syncProcess.start()
+            # if p["triggerMode"] != "SimpleContinuous":
+            #     # In SimpleContinuous mode, we need to start the sync proces manually to give user time to change settings
+            self.syncProcess.start()
         if self.mergeProcess is not None: self.mergeProcess.start()
         if self.continuousTriggerProcess is not None: self.continuousTriggerProcess.start()
 
@@ -2200,7 +2206,7 @@ him know. Otherwise, I had nothing to do with it.
     def startChildProcesses(self):
         # Tell all child processes to start
 
-        p = self.getParams('audioDAQChannels', 'camSerials')
+        p = self.getParams('audioDAQChannels', 'camSerials', 'triggerMode')
 
         if len(p["audioDAQChannels"]) > 0:
             # Start audio trigger process
@@ -2225,8 +2231,11 @@ him know. Otherwise, I had nothing to do with it.
             self.sendMessage(self.videoAcquireProcesses[camSerial], (VideoAcquirer.START, None))
 
         if len(p["audioDAQChannels"]) + len(p["camSerials"]) >= 2:
-            # Start sync process
-            self.sendMessage(self.syncProcess, (Synchronizer.START, None))
+            if p["triggerMode"] != "SimpleContinuous":
+                # In SimpleContinuous mode, we need to start the sync proces manually to give user time to change settings
+
+                # Start sync process
+                self.sendMessage(self.syncProcess, (Synchronizer.START, None))
 
             # Start merge process
             self.updateAVMergerState()
@@ -2263,7 +2272,7 @@ him know. Otherwise, I had nothing to do with it.
         self.sendMessage(self.audioWriteProcess, (AudioWriter.EXIT, None))
         self.sendMessage(self.mergeProcess, (AVMerger.EXIT, None))
         self.sendMessage(self.syncProcess, (Synchronizer.EXIT, None))
-        self.StdoutManager.queue.put(StdoutManager.EXIT)
+        #self.StdoutManager.queue.put(StdoutManager.EXIT)
 
     def destroyChildProcesses(self):
         self.exitChildProcesses()

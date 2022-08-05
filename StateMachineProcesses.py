@@ -3654,7 +3654,10 @@ class SimpleVideoWriter(StateMachineProcess):
         'videoDirectory',
         'daySubfolders',
         'enableWrite',
-        'gpuVEnc'
+        'gpuVEnc',
+        'scheduleEnabled',
+        'scheduleStartTime',
+        'scheduleStopTime'
         ]
 
     def __init__(self,
@@ -3670,6 +3673,9 @@ class SimpleVideoWriter(StateMachineProcess):
                 videoLength=2,   # Video length in seconds
                 gpuVEnc=False,   # Should we use GPU acceleration
                 enableWrite=True,
+                scheduleEnabled=False,
+                scheduleStartTime=None,
+                scheduleStopTime=None,
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.camSerial = camSerial
@@ -3691,6 +3697,9 @@ class SimpleVideoWriter(StateMachineProcess):
         self.videoFrameCount = None   # Number of frames to save to each video. Wait until we get actual framerate from synchronizer
         self.gpuVEnc = gpuVEnc
         self.enableWrite = enableWrite
+        self.scheduleEnabled = scheduleEnabled
+        self.scheduleStartTime = scheduleStartTime
+        self.scheduleStopTime = scheduleStopTime
 
     def setParams(self, **params):
         for key in params:
@@ -3747,6 +3756,8 @@ class SimpleVideoWriter(StateMachineProcess):
                     seriesStartTime = time.time()   # Record approximate start time (in seconds since epoch) of series for filenaming purposes
                     videoCount = 0                  # Initialize video count, used to number video files
                     numFramesInCurrentSeries = 0    # Initialize series-wide frame count, for estimating subsequent video times
+                    videoWriteEnabledPrevious = True
+                    videoWriteEnabled = True
 
                     self.frameRate = self.frameRateVar.value
                     if self.frameRate == -1:
@@ -3788,55 +3799,73 @@ class SimpleVideoWriter(StateMachineProcess):
                 elif self.state == SimpleVideoWriter.VIDEOINIT:
                     # Start a new video file
                     # DO STUFF
-                    im = None
-                    videoFileStartTime = seriesStartTime + numFramesInCurrentSeries / self.frameRate
-                    numFramesInCurrentVideo = 0
 
-                    if videoFileInterface is not None:
-                        if self.verbose >= 2: self.log('Closing pre-existing video file interface.')
-                        # Close file
+                    # Check if
+                    #   1. Video write is manually enabled or not
+                    #   2. Video write is scheduled to be on or off
+                    currentTimeOfDay = dt.datetime.now()
+                    videoWriteEnabledPrevious = videoWriteEnabled
+                    videoWriteEnabled = (self.enableWrite and
+                                        (not self.scheduleEnabled or
+                                            (self.scheduleStartTime <= currentTimeOfDay and
+                                             self.scheduleStopTime <= currentTimeOfDay)))
+
+                    if self.verbose >= 1:
+                        if videoWriteEnabled and not videoWriteEnabledPrevious:
+                            self.logTime('Video write now enabled.')
+                        elif not videoWriteEnabled and videoWriteEnabledPrevious:
+                            self.logTime('Video write now disabled')
+
+                    if videoWriteEnabled:
+                        im = None
+                        videoFileStartTime = seriesStartTime + numFramesInCurrentSeries / self.frameRate
+                        numFramesInCurrentVideo = 0
+
+                        if videoFileInterface is not None:
+                            if self.verbose >= 2: self.log('Closing pre-existing video file interface.')
+                            # Close file
+                            if self.videoWriteMethod == "PySpin":
+                                videoFileInterface.Close()
+                            elif self.videoWriteMethod == "ffmpeg":
+                                videoFileInterface.close()
+                            videoFileInterface = None
+
+                        # Generate new video file path
+                        videoFileNameTags = [self.camSerial, generateTimeString(timestamp=seriesStartTime), '{videoCount:03d}'.format(videoCount=videoCount)]
+                        if self.daySubfolders:
+                            videoDirectory = getDaySubfolder(self.videoDirectory, timestamp=videoFileStartTime)
+                        else:
+                            videoDirectory = self.videoDirectory
+                        videoFileName = generateFileName(directory=videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
+                        if self.verbose >= 2: self.log('New filename:', videoFileName)
+                        if self.verbose >= 3: self.log('Ensuring directory exists:', videoDirectory)
+                        ensureDirectoryExists(videoDirectory)
+
+                        if self.verbose >= 3: self.log('Opening new file writing interface...')
+
+                        # Initialize video writer interface
                         if self.videoWriteMethod == "PySpin":
-                            videoFileInterface.Close()
+                            if videoFileInterface is not None:
+                                videoFileInterface.Close()
+
+                            videoFileInterface = PySpin.SpinVideo()
+                            option = PySpin.AVIOption()
+                            option.frameRate = self.frameRate
+                            if self.verbose >= 2: self.log("Opening file to save video with frameRate ", option.frameRate)
+                            videoFileInterface.Open(videoFileName, option)
+                            stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
+                            videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
                         elif self.videoWriteMethod == "ffmpeg":
-                            videoFileInterface.close()
-                        videoFileInterface = None
+                            if self.verbose >= 3: self.log('Using ffmpeg writer')
+                            if videoFileInterface is not None:
+                                if self.verbose >= 3: self.log('Closing previous file interface')
+                                videoFileInterface.close()
+                            videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", fps=self.frameRate, gpuVEnc=self.gpuVEnc)
 
-                    # Generate new video file path
-                    videoFileNameTags = [self.camSerial, generateTimeString(timestamp=seriesStartTime), '{videoCount:03d}'.format(videoCount=videoCount)]
-                    if self.daySubfolders:
-                        videoDirectory = getDaySubfolder(self.videoDirectory, timestamp=videoFileStartTime)
-                    else:
-                        videoDirectory = self.videoDirectory
-                    videoFileName = generateFileName(directory=videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
-                    if self.verbose >= 2: self.log('New filename:', videoFileName)
-                    if self.verbose >= 3: self.log('Ensuring directory exists:', videoDirectory)
-                    ensureDirectoryExists(videoDirectory)
+                        newFileInfo = 'Opened video file {name} at {f} fps, gpu encoding={gpu}'.format(name=videoFileName, f=self.frameRate, gpu=self.gpuVEnc);
+                        self.updatePublishedInfo(newFileInfo)
 
-                    if self.verbose >= 3: self.log('Opening new file writing interface...')
-
-                    # Initialize video writer interface
-                    if self.videoWriteMethod == "PySpin":
-                        if videoFileInterface is not None:
-                            videoFileInterface.Close()
-
-                        videoFileInterface = PySpin.SpinVideo()
-                        option = PySpin.AVIOption()
-                        option.frameRate = self.frameRate
-                        if self.verbose >= 2: self.log("Opening file to save video with frameRate ", option.frameRate)
-                        videoFileInterface.Open(videoFileName, option)
-                        stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
-                        videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
-                    elif self.videoWriteMethod == "ffmpeg":
-                        if self.verbose >= 3: self.log('Using ffmpeg writer')
-                        if videoFileInterface is not None:
-                            if self.verbose >= 3: self.log('Closing previous file interface')
-                            videoFileInterface.close()
-                        videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", fps=self.frameRate, gpuVEnc=self.gpuVEnc)
-
-                    newFileInfo = 'Opened video file {name} at {f} fps, gpu encoding={gpu}'.format(name=videoFileName, f=self.frameRate, gpu=self.gpuVEnc);
-                    self.updatePublishedInfo(newFileInfo)
-
-                    if self.verbose >= 3: self.log('...opened new file writing interface')
+                        if self.verbose >= 3: self.log('...opened new file writing interface')
 
                     videoCount += 1
 
@@ -3875,42 +3904,44 @@ class SimpleVideoWriter(StateMachineProcess):
 
                         time.sleep(0.5/self.requestedFrameRate)
                     else:
-                        if videoFileInterface is None:
-                            raise IOError('Attempted to write but writer interface does not exist')
+                        if videoWriteEnabled:
+                            if videoFileInterface is None:
+                                raise IOError('Attempted to write but writer interface does not exist')
 
-                        if self.verbose >= 3:
-                            self.logTime("...got image. Sending to writer...")
+                            if self.verbose >= 3:
+                                self.logTime("...got image. Sending to writer...")
 
-                        if len(self.imageQueue.frameShape) == 3:
-                            width, height, channels = frameShape
-                        else:
-                            width, height = frameShape
-                            channels = 1
+                            if len(self.imageQueue.frameShape) == 3:
+                                width, height, channels = frameShape
+                            else:
+                                width, height = frameShape
+                                channels = 1
 
-                        # Write video frame from queue to file
-                        if self.videoWriteMethod == "PySpin":
-                            # Reconstitute PySpin image from PickleableImage
-                            # im = PySpin.Image.Create(imp.width, imp.height, imp.offsetX, imp.offsetY, imp.pixelFormat, imp.data)
-                            # Convert image to desired format
-                            videoFileInterface.Append(im.Convert(PySpin.PixelFormat_RGB8, PySpin.HQ_LINEAR))
-                            if self.verbose >= 2: self.logTime("wrote frame using PySpin!")
-                            # try:
-                            #     im.Release()
-                            # except PySpin.SpinnakerException:
-                            #     if self.verbose >= 0:
-                            #         self.log("Error releasing unconverted PySpin image after appending to AVI.")
-                            #         self.log(traceback.format_exc())
-                            del im
-                        elif self.videoWriteMethod == "ffmpeg":
-                            videoFileInterface.write(im, shape=(height, width))
-                            if self.verbose >= 2: self.logTime("wrote frame using ffmpeg!")
-                            if self.verbose >= 3: self.log("bytes=", str(im[0:10]))
+                            # Write video frame from queue to file
+                            if self.videoWriteMethod == "PySpin":
+                                # Reconstitute PySpin image from PickleableImage
+                                # im = PySpin.Image.Create(imp.width, imp.height, imp.offsetX, imp.offsetY, imp.pixelFormat, imp.data)
+                                # Convert image to desired format
+                                videoFileInterface.Append(im.Convert(PySpin.PixelFormat_RGB8, PySpin.HQ_LINEAR))
+                                if self.verbose >= 2: self.logTime("wrote frame using PySpin!")
+                                # try:
+                                #     im.Release()
+                                # except PySpin.SpinnakerException:
+                                #     if self.verbose >= 0:
+                                #         self.log("Error releasing unconverted PySpin image after appending to AVI.")
+                                #         self.log(traceback.format_exc())
+                                del im
+                            elif self.videoWriteMethod == "ffmpeg":
+                                videoFileInterface.write(im, shape=(height, width))
+                                if self.verbose >= 2: self.logTime("wrote frame using ffmpeg!")
+                                if self.verbose >= 3: self.log("bytes=", str(im[0:10]))
+                            if self.verbose >= 3:
+                                self.logTime("...wrote image ID " + str(imageID))
+                        elif self.verbose >= 3:
+                            self.log('Skipped writing a frame because video write is disabled.')
 
                         numFramesInCurrentVideo += 1
                         numFramesInCurrentSeries += 1
-
-                        if self.verbose >= 3:
-                            self.logTime("...wrote image ID " + str(imageID))
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
@@ -3932,7 +3963,7 @@ class SimpleVideoWriter(StateMachineProcess):
                             self.nextState = SimpleVideoWriter.VIDEOINIT
                             # If requested, merge with audio.
                             #   This doesn't really work with SimpleVideoWriter right now. For potential future use.
-                            if self.mergeMessageQueue is not None:
+                            if self.mergeMessageQueue is not None and videoFileInterface is not None:
                                 # Send file for AV merging:
                                 if self.videoWriteMethod == "PySpin":
                                     fileEvent = dict(
