@@ -596,7 +596,7 @@ class AVMerger(StateMachineProcess):
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
         self.state = AVMerger.STOPPED
         self.nextState = AVMerger.STOPPED
-        self.lastState = AVMerger.STOPPED
+        self.lastState = -1
         msg = ''; arg = None
 
         while True:
@@ -1064,7 +1064,7 @@ class Synchronizer(StateMachineProcess):
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
         self.state = Synchronizer.STOPPED
         self.nextState = Synchronizer.STOPPED
-        self.lastState = Synchronizer.STOPPED
+        self.lastState = -1
         msg = ''; arg = None
 
         while True:
@@ -1522,7 +1522,7 @@ class AudioTriggerer(StateMachineProcess):
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
         self.state = AudioTriggerer.STOPPED
         self.nextState = AudioTriggerer.STOPPED
-        self.lastState = AudioTriggerer.STOPPED
+        self.lastState = -1
         msg = ''; arg = None
 
         while True:
@@ -1961,7 +1961,7 @@ class AudioAcquirer(StateMachineProcess):
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
         self.state = AudioAcquirer.STOPPED
         self.nextState = AudioAcquirer.STOPPED
-        self.lastState = AudioAcquirer.STOPPED
+        self.lastState = -1
         msg = ''; arg = None
 
         while True:
@@ -2313,7 +2313,7 @@ class SimpleAudioWriter(StateMachineProcess):
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
         self.state = SimpleAudioWriter.STOPPED
         self.nextState = SimpleAudioWriter.STOPPED
-        self.lastState = SimpleAudioWriter.STOPPED
+        self.lastState = -1
         msg = ''; arg = None
 
         while True:
@@ -2752,7 +2752,7 @@ class AudioWriter(StateMachineProcess):
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
         self.state = AudioWriter.STOPPED
         self.nextState = AudioWriter.STOPPED
-        self.lastState = AudioWriter.STOPPED
+        self.lastState = -1
         msg = ''; arg = None
 
         while True:
@@ -3277,7 +3277,7 @@ class VideoAcquirer(StateMachineProcess):
 
         self.state = VideoAcquirer.STOPPED
         self.nextState = VideoAcquirer.STOPPED
-        self.lastState = VideoAcquirer.STOPPED
+        self.lastState = -1
         msg = ''; arg = None
 
         while True:
@@ -3707,7 +3707,7 @@ class SimpleVideoWriter(StateMachineProcess):
 
         self.state = SimpleVideoWriter.STOPPED
         self.nextState = SimpleVideoWriter.STOPPED
-        self.lastState = SimpleVideoWriter.STOPPED
+        self.lastState = -1
         msg = ''; arg = None
 
         while True:
@@ -4197,7 +4197,7 @@ class VideoWriter(StateMachineProcess):
 
         self.state = VideoWriter.STOPPED
         self.nextState = VideoWriter.STOPPED
-        self.lastState = VideoWriter.STOPPED
+        self.lastState = -1
         msg = ''; arg = None
 
         while True:
@@ -4709,7 +4709,7 @@ class ContinuousTriggerer(StateMachineProcess):
         if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
         self.state = ContinuousTriggerer.STOPPED
         self.nextState = ContinuousTriggerer.STOPPED
-        self.lastState = ContinuousTriggerer.STOPPED
+        self.lastState = -1
         tagTriggers = []   # A list of triggers received from other processes that will be used to tag overlapping audio/video files
         msg = ''; arg = None
 

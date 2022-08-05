@@ -306,6 +306,7 @@ class PyVAQ:
         self.controlFrame = ttk.Frame(self.mainFrame)
 
         self.statusFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Status", expandText="Status", borderwidth=3, relief=tk.SUNKEN)
+        self.childStatusText = tk.Text(self.statusFrame, tabs=('7c',))
 
         self.acquisitionControlFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Control", expandText="Acquisition Control", borderwidth=3, relief=tk.SUNKEN)
         # self.acquisitionFrame = ttk.LabelFrame(self.controlFrame, text="Acquisition")
@@ -602,8 +603,8 @@ class PyVAQ:
         if self.triggerModeVar.get() == "Audio":
             self.autoUpdateAudioAnalysisMonitors()
 
-        self.autoDebugAllJob = None
-        self.autoDebugAll()
+        self.updateStateDisplayJob = None
+        self.updateStateDisplay()
 
         self.master.update_idletasks()
 
@@ -1196,20 +1197,26 @@ him know. Otherwise, I had nothing to do with it.
     def stopMonitors(self):
         if self.audioMonitorUpdateJob is not None:
             self.master.after_cancel(self.audioMonitorUpdateJob)
+            self.audioMonitorUpdateJob = None
         if self.videoMonitorUpdateJob is not None:
             self.master.after_cancel(self.videoMonitorUpdateJob)
+            self.videoMonitorUpdateJob = None
         if self.audioAnalysisMonitorUpdateJob is not None:
             self.master.after_cancel(self.audioAnalysisMonitorUpdateJob)
+            self.audioAnalysisMonitorUpdateJob = None
         if self.triggerIndicatorUpdateJob is not None:
             self.master.after_cancel(self.triggerIndicatorUpdateJob)
-        if self.autoDebugAllJob is not None:
-            self.master.after_cancel(self.autoDebugAllJob)
+            self.triggerIndicatorUpdateJob = None
+        if self.updateStateDisplayJob is not None:
+            self.master.after_cancel(self.updateStateDisplayJob)
+            self.updateStateDisplayJob = None
 
     def startMonitors(self):
         self.autoUpdateAudioMonitors()
         self.autoUpdateVideoMonitors()
         self.autoUpdateTriggerIndicator()
         self.autoUpdateAudioAnalysisMonitors()
+        self.updateStateDisplay()
 
     def startSyncProcess(self):
         self.syncProcess.start()
@@ -1428,124 +1435,134 @@ him know. Otherwise, I had nothing to do with it.
     def updateAllCamerasAttributes(self):
         self.cameraAttributes = psu.getAllCamerasAttributes()
 
-    def getQueueSizes(self):
-        self.log("Get qsizes...")
+    def getQueueSizes(self, verbose=True):
+        queueSizes = dict(
+            videoMonitorQueueSizes={},
+            imageQueueSizes={},
+            audioAnalysisQueueSize=None,
+            audioMonitorQueueSize=None,
+            audioQueueSize=None,
+            audioAnalysisMonitorQueueSize=None,
+            mergeQueueSize=None,
+            stdoutQueueSize=None,
+        )
+
         for camSerial in self.videoAcquireProcesses:
-            self.log("  videoMonitorQueues[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].monitorImageReceiver.qsize())
-            self.log("  imageQueues[", camSerial, "] size:", self.videoAcquireProcesses[camSerial].imageQueue.qsize())
+            queueSizes['videoMonitorQueueSizes'][camSerial] = self.videoAcquireProcesses[camSerial].monitorImageReceiver.qsize()
+            queueSizes['imageQueueSizes'][camSerial] = self.videoAcquireProcesses[camSerial].imageQueue.qsize()
         if self.audioAcquireProcess is not None:
-            self.log("  audioAcquireProcess.audioQueue size:", self.audioAcquireProcess.audioQueue.qsize())
-            self.log("  audioAnalysisQueue size:", self.audioAcquireProcess.analysisQueue.qsize())
-            self.log("  audioMonitorQueue size:", self.audioAcquireProcess.monitorQueue.qsize())
+            queueSizes['audioAnalysisQueueSize'] = self.audioAcquireProcess.audioQueue.qsize()
+            queueSizes['audioMonitorQueueSize'] = self.audioAcquireProcess.analysisQueue.qsize()
+            queueSizes['audioQueueSize'] = self.audioAcquireProcess.monitorQueue.qsize()
         if self.audioTriggerProcess is not None:
-            self.log("  audioAnalysisMonitorQueue size:", self.audioTriggerProcess.analysisMonitorQueue.qsize())
+            queueSizes['audioAnalysisMonitorQueueSize'] = self.audioTriggerProcess.analysisMonitorQueue.qsize()
         if self.mergeProcess is not None:
-            self.log("  mergeMessageQueue size:", self.mergeProcess.msgQueue.qsize())
+            queueSizes['mergeQueueSize'] = self.mergeProcess.msgQueue.qsize()
         if self.StdoutManager is not None:
-            self.log("  stdoutQueue size:", self.StdoutManager.queue.qsize())
-        self.log("...get qsizes")
-        self.endLog(inspect.currentframe().f_code.co_name)
+            queueSizes['stdoutQueueSize'] = self.StdoutManager.queue.qsize()
 
-    def getPIDs(self):
-        videoWritePIDs = {}
-        videoAcquirePIDs = {}
-        audioWritePID = None
-        audioAcquirePID = None
-        audioTriggerPID = None
-        continuousTriggerPID = None
-        syncPID = None
-        mergePID = None
+        if verbose:
+            self.log("Get qsizes...")
+            for camSerial in self.videoAcquireProcesses:
+                self.log("  videoMonitorQueues[", camSerial, "] size:", queueSizes['videoMonitorQueueSizes'][camSerial])
+                self.log("  imageQueues[", camSerial, "] size:", queueSizes['imageQueueSizes'][camSerial])
+            if self.audioAcquireProcess is not None:
+                self.log("  audioAcquireProcess.audioQueue size:", queueSizes['audioAnalysisQueueSize'])
+                self.log("  audioAnalysisQueue size:", queueSizes['audioMonitorQueueSize'])
+                self.log("  audioMonitorQueue size:", queueSizes['audioQueueSize'])
+            if self.audioTriggerProcess is not None:
+                self.log("  audioAnalysisMonitorQueue size:", queueSizes['audioAnalysisMonitorQueueSize'])
+            if self.mergeProcess is not None:
+                self.log("  mergeMessageQueue size:", queueSizes['mergeQueueSize'])
+            if self.StdoutManager is not None:
+                self.log("  stdoutQueue size:", queueSizes['stdoutQueueSize'])
+            self.log("...get qsizes")
+            self.endLog(inspect.currentframe().f_code.co_name)
 
-        self.log("PIDs...")
-        self.log("main thread:", os.getpid())
+        return queueSizes
+
+    def getPIDs(self, verbose=True):
+        PIDs = dict(
+            videoWritePIDs = {},
+            videoAcquirePIDs = {},
+            audioWritePID = 'None',
+            audioAcquirePID = 'None',
+            audioTriggerPID = 'None',
+            continuousTriggerPID = 'None',
+            syncPID = 'None',
+            mergePID = 'None'
+        )
+
         for camSerial in self.videoWriteProcesses:
             if self.videoWriteProcesses[camSerial] is not None:
-                videoWritePIDs[camSerial] = self.videoWriteProcesses[camSerial].PID.value
-                self.log("  videoWritePIDs["+camSerial+"]:", videoWritePIDs[camSerial])
+                PIDs['videoWritePIDs'][camSerial] = self.videoWriteProcesses[camSerial].PID.value
         for camSerial in self.videoAcquireProcesses:
             if self.videoAcquireProcesses[camSerial] is not None:
-                videoAcquirePIDs[camSerial] = self.videoAcquireProcesses[camSerial].PID.value
-                self.log("  videoAcquirePIDs["+camSerial+"]:", videoAcquirePIDs[camSerial])
+                PIDs['videoAcquirePIDs'][camSerial] = self.videoAcquireProcesses[camSerial].PID.value
         if self.audioWriteProcess is not None:
-            audioWritePID = self.audioWriteProcess.PID.value
-            self.log("  audioWritePID:", audioWritePID)
+            PIDs['audioWritePID'] = self.audioWriteProcess.PID.value
         if self.audioAcquireProcess is not None:
-            audioAcquirePID = self.audioAcquireProcess.PID.value
-            self.log("  audioAcquirePID:", audioAcquirePID)
+            PIDs['audioAcquirePID'] = self.audioAcquireProcess.PID.value
         if self.audioTriggerProcess is not None:
-            audioTriggerPID = self.audioTriggerProcess.PID.value
-            self.log("  audioTriggerPID:", audioTriggerPID)
+            PIDs['audioTriggerPID'] = self.audioTriggerProcess.PID.value
         if self.continuousTriggerProcess is not None:
-            continuousTriggerPID = self.continuousTriggerProcess.PID.value
-            self.log("  continuousTriggerPID:", continuousTriggerPID)
+            PIDs['continuousTriggerPID'] = self.continuousTriggerProcess.PID.value
         if self.syncProcess is not None:
-            syncPID = self.syncProcess.PID.value
-            self.log("  syncPID:", syncPID)
+            PIDs['syncPID'] = self.syncProcess.PID.value
         if self.mergeProcess is not None:
-            mergePID = self.mergeProcess.PID.value
-            self.log("  mergePID:", mergePID)
-        self.log("...PIDs:")
+            PIDs['mergePID'] = self.mergeProcess.PID.value
+
+        if verbose:
+            self.log("PIDs...")
+            self.log("main thread:", os.getpid())
+            for camSerial in self.videoWriteProcesses:
+                self.log("  videoWritePID["+camSerial+"]:", PIDs['videoWritePIDs'])[camSerial]
+            for camSerial in self.videoAcquireProcesses:
+                self.log("  videoAcquirePID["+camSerial+"]:", PIDs['videoAcquirePIDs'])[camSerial]
+            self.log("  audioWritePID:", PIDs['audioWritePID'])
+            self.log("  audioAcquirePID:", PIDs['audioAcquirePID'])
+            self.log("  audioTriggerPID:", PIDs['audioTriggerPID'])
+            self.log("  continuousTriggerPID:", PIDs['continuousTriggerPID'])
+            self.log("  syncPID:", PIDs['syncPID'])
+            self.log("  mergePID:", PIDs['mergePID'])
+            self.log("...PIDs:")
+
         self.endLog(inspect.currentframe().f_code.co_name)
+        return PIDs
 
     def checkStates(self, verbose=True):
         states = dict(
             videoWriteStates = {},
             videoAcquireStates = {},
-            audioWriteState = None,
-            audioAcquireState = None,
-            syncState = None,
-            mergeState = None
+            audioWriteState = 'None',
+            audioAcquireState = 'None',
+            syncState = 'None',
+            mergeState = 'None',
+            audioTriggerState = 'None',
+            continuousTriggerState = 'None'
         )
 
-        self.log("Check states...")
         for camSerial in self.videoWriteProcesses:
             if self.videoWriteProcesses[camSerial] is not None:
-                # self.log("Getting VideoWriter {camSerial} state...".format(camSerial=camSerial))
                 states['videoWriteStates'][camSerial] = VideoWriter.stateList[self.videoWriteProcesses[camSerial].publishedStateVar.value]
-                # self.log("...done getting VideoWriter {camSerial} state".format(camSerial=camSerial))
         for camSerial in self.videoAcquireProcesses:
             if self.videoAcquireProcesses[camSerial] is not None:
-                # self.log("Getting VideoAcquirer {camSerial} state...".format(camSerial=camSerial))
                 states['videoAcquireStates'][camSerial] = VideoAcquirer.stateList[self.videoAcquireProcesses[camSerial].publishedStateVar.value]
-                # self.log("...done getting VideoAcquirer {camSerial} state".format(camSerial=camSerial))
         if self.audioWriteProcess is not None:
-            # self.log("Getting AudioWriter state...")
             states['audioWriteState'] = AudioWriter.stateList[self.audioWriteProcess.publishedStateVar.value]
-            # self.log("...done getting AudioWriter state")
-        else:
-            states['audioWriteState'] = 'None'
         if self.audioAcquireProcess is not None:
-            # self.log("Getting AudioAcquirer state...")
             states['audioAcquireState'] = AudioAcquirer.stateList[self.audioAcquireProcess.publishedStateVar.value]
-            # self.log("...done getting AudioAcquirer state")
-        else:
-            states['audioAcquireState'] = 'None'
         if self.syncProcess is not None:
-            # self.log("Getting Synchronizer state...")
             states['syncState'] = Synchronizer.stateList[self.syncProcess.publishedStateVar.value]
-            # self.log("...done getting Synchronizer state...")
-        else:
-            states['syncState'] = 'None'
         if self.mergeProcess is not None:
-            # self.log("Getting AVMerger state...")
             states['mergeState'] = AVMerger.stateList[self.mergeProcess.publishedStateVar.value]
-            # self.log("...done getting AVMerger state")
-        else:
-            states['mergeState'] = 'None'
         if self.audioTriggerProcess is not None:
-            # self.log("Getting AudioTriggerer state...")
             states['audioTriggerState'] = AudioTriggerer.stateList[self.audioTriggerProcess.publishedStateVar.value]
-            # self.log("...done getting AVMerger state")
-        else:
-            states['audioTriggerState'] = 'None'
         if self.continuousTriggerProcess is not None:
-            # self.log("Getting AudioTriggerer state...")
             states['continuousTriggerState'] = ContinuousTriggerer.stateList[self.continuousTriggerProcess.publishedStateVar.value]
-            # self.log("...done getting AVMerger state")
-        else:
-            states['continuousTriggerState'] = 'None'
 
         if verbose:
+            self.log("Check states...")
             for camSerial in states['videoWriteStates']:
                 self.log("videoWriteStates[", camSerial, "]:", states['videoWriteStates'][camSerial])
             for camSerial in states['videoAcquireStates']:
@@ -1557,23 +1574,117 @@ him know. Otherwise, I had nothing to do with it.
             self.log("audioTriggerState:", states['audioTriggerState'])
             self.log("continuousTriggerState:", states['continuousTriggerState'])
             self.log("...check states")
-
-        self.endLog(inspect.currentframe().f_code.co_name)
+            self.endLog(inspect.currentframe().f_code.co_name)
 
         return states
 
-    def debugAll(self):
-#        self.log(r"main>> ****************************** \/ \/ DEBUG ALL \/ \/ *******************************")
-        self.getQueueSizes()
-        self.getPIDs()
-        self.checkStates()
-#        self.log(r"main>> ****************************** /\ /\ DEBUG ALL /\ /\ *******************************")
+    def checkInfo(self, verbose=True):
+        # Check supplementary status information variable shared by processes
+        # Note: All processes have this variable, but only the writers currently publish any info.
 
-    def autoDebugAll(self, *args, interval=10000, startAuto=True):
-        self.debugAll()
+        info = dict(
+            videoWriteInfo = {},
+            audioWriteInfo = 'None'
+        )
+        for camSerial in self.videoWriteProcesses:
+            if self.videoWriteProcesses[camSerial] is not None:
+                info['videoWriteInfo'][camSerial] = self.videoWriteProcesses[camSerial].publishedInfoVar.value.decode('utf-8')
+        if self.audioWriteProcess is not None:
+            info['audioWriteInfo'] = self.audioWriteProcess.publishedInfoVar.value.decode('utf-8')
 
-        if startAuto:
-            self.autoDebugAllJob = self.master.after(interval, self.autoDebugAll)
+        if verbose:
+            self.log("Check process info...")
+            for camSerial in info['videoWriteInfo']:
+                self.log("videoWriteInfo[", camSerial, "]:", info['videoWriteInfo'][camSerial])
+            self.log("audioWriteInfo:", info['audioWriteInfo'])
+            self.log("...check process info")
+            self.endLog(inspect.currentframe().f_code.co_name)
+
+        return info
+
+    def updateStateDisplay(self, log=False, interval=1000, repeat=True):
+        states = self.checkStates(verbose=log)
+        PIDs = self.getPIDs(verbose=log)
+        queueSizes = self.getQueueSizes(verbose=log)
+        info = self.checkInfo(verbose=log)
+
+        # PIDs = dict(
+        #     videoWritePID = {},
+        #     videoAcquirePID = {},
+        #     audioWritePID = None,
+        #     audioAcquirePID = None,
+        #     audioTriggerPID = None,
+        #     continuousTriggerPID = None,
+        #     syncPID = None,
+        #     mergePID = None
+        # )
+        # states = dict(
+        #     videoWriteStates = {},
+        #     videoAcquireStates = {},
+        #     audioWriteState = None,
+        #     audioAcquireState = None,
+        #     syncState = None,
+        #     mergeState = None
+        # )
+        # queueSizes = dict(
+        #     videoMonitorQueueSizes={},
+        #     imageQueueSizes={},
+        #     audioAnalysisQueueSize=None,
+        #     audioMonitorQueueSize=None,
+        #     audioQueueSize=None,
+        #     audioAnalysisMonitorQueueSize=None,
+        #     mergeQueueSize=None,
+        #     stdoutQueueSize=None,
+        # )
+        # info = dict(
+        #     videoWriteInfo = {},
+        #     audioWriteInfo = 'None'
+        # )
+
+        lines = []
+        lines.append(
+                    'VideoAcquirers:'
+        )
+        for camSerial in self.videoWriteProcesses:
+            if self.videoWriteProcesses[camSerial] is not None:
+                lines.extend([
+                    '   {camSerial} ({PID}):\t{state}'.format(camSerial=camSerial, PID=PIDs['videoAcquirePIDs'][camSerial], state=states['videoAcquireStates'][camSerial])
+                ])
+        lines.append(
+                    'VideoWriters:'
+        )
+        for camSerial in self.videoWriteProcesses:
+            if self.videoAcquireProcesses[camSerial] is not None:
+                lines.extend([
+                    '   {camSerial} ({PID}):\t{state}'.format(camSerial=camSerial, PID=PIDs['videoWritePIDs'][camSerial], state=states['videoWriteStates'][camSerial]),
+                    '       Image Queue: {qsize}'.format(qsize=queueSizes['videoMonitorQueueSizes'][camSerial]),
+                    '       Monitor Queue: {qsize}'.format(qsize=queueSizes['imageQueueSizes'][camSerial]),
+                    '       Info: {info}'.format(info=info['videoWriteInfo'][camSerial])
+                ])
+        lines.extend([
+            'AudioAcquirer ({PID}):\t{state}'.format(PID=PIDs['audioAcquirePID'], state=states['audioAcquireState']),
+            '   Audio Queue: {qsize}'.format(qsize=queueSizes['audioQueueSize']),
+            '   Analysis Queue: {qsize}'.format(qsize=queueSizes['audioAnalysisQueueSize']),
+            '   Monitor Queue: {qsize}'.format(qsize=queueSizes['audioMonitorQueueSize']),
+            '   Analysis Monitor Queue: {qsize}'.format(qsize=queueSizes['audioAnalysisMonitorQueueSize']),
+            'AudioWriter ({PID}):\t{state}'.format(PID=PIDs['audioWritePID'], state=states['audioWriteState']),
+            '   Info: {info}'.format(info=info['audioWriteInfo']),
+            'Synchronizer ({PID}):\t{state}'.format(PID=PIDs['syncPID'], state=states['syncState']),
+            'ContinuousTrigger ({PID}):\t{state}'.format(PID=PIDs['continuousTriggerPID'], state=states['continuousTriggerState']),
+            'AudioTriggerer ({PID}):\t{state}'.format(PID=PIDs['audioTriggerPID'], state=states['audioTriggerState']),
+            'AVMerger ({PID}):\t{state}'.format(PID=PIDs['mergePID'], state=states['mergeState']),
+            '   Merge Queue: {qsize}'.format(qsize=queueSizes['mergeQueueSize'])
+        ])
+
+        self.childStatusText.delete('1.0', tk.END)
+
+        self.childStatusText.insert(tk.END, '\n'.join(lines))
+
+        # for line in lines:
+        #     self.childStatusText.insert(tk.END, line)
+
+        if repeat:
+            self.updateStateDisplayJob = self.master.after(interval, self.updateStateDisplay)
 
     def acquisitionActive(self):
         # Check if at least one audio or video process is acquiring
@@ -2266,6 +2377,9 @@ him know. Otherwise, I had nothing to do with it.
         self.fileSettingsFrame.grid(row=5, column=0, sticky=tk.NSEW)
         self.scheduleFrame.grid(row=6, column=0, sticky=tk.NSEW)
         self.triggerFrame.grid(row=7, column=0, sticky=tk.NSEW)
+
+        #### Children of self.statusFrame
+        self.childStatusText.grid()
 
         # for c in range(3):
         #     self.acquisitionFrame.columnconfigure(c, weight=1)
