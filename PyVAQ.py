@@ -1684,7 +1684,7 @@ him know. Otherwise, I had nothing to do with it.
         ])
 
         self.childStatusText.delete('1.0', tk.END)
-
+        self.childStatusText['height'] = len(lines)
         self.childStatusText.insert(tk.END, '\n'.join(lines))
 
         # for line in lines:
