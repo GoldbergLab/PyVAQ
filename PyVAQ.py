@@ -1225,7 +1225,8 @@ him know. Otherwise, I had nothing to do with it.
         self.updateStateDisplay()
 
     def startSyncProcess(self):
-        self.syncProcess.start()
+        # self.syncProcess.start()
+        self.sendMessage(self.syncProcess, (Synchronizer.START, None))
 
     def autoUpdateAudioAnalysisMonitors(self, beginAuto=True):
         if self.audioTriggerProcess is not None:
