@@ -923,6 +923,9 @@ class AVMerger(StateMachineProcess):
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
+
+                    self.updatePublishedInfo("\n".join(self.errorMessages))
+
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
@@ -1299,6 +1302,9 @@ class Synchronizer(StateMachineProcess):
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
+
+                    self.updatePublishedInfo("\n".join(self.errorMessages))
+
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
@@ -1777,6 +1783,9 @@ class AudioTriggerer(StateMachineProcess):
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
+
+                    self.updatePublishedInfo("\n".join(self.errorMessages))
+
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
@@ -2170,6 +2179,9 @@ class AudioAcquirer(StateMachineProcess):
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
+
+                    self.updatePublishedInfo("\n".join(self.errorMessages))
+
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
@@ -2628,10 +2640,12 @@ class SimpleAudioWriter(StateMachineProcess):
 # ********************************* ERROR *********************************
                 elif self.state == SimpleAudioWriter.ERROR:
                     # DO STUFF
-
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
+
+                    self.updatePublishedInfo("\n".join(self.errorMessages))
+
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
@@ -3105,10 +3119,12 @@ class AudioWriter(StateMachineProcess):
 # ********************************* ERROR *********************************
                 elif self.state == AudioWriter.ERROR:
                     # DO STUFF
-
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
+
+                    self.updatePublishedInfo("\n".join(self.errorMessages))
+
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
@@ -3557,6 +3573,9 @@ class VideoAcquirer(StateMachineProcess):
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
+
+                    self.updatePublishedInfo("\n".join(self.errorMessages))
+
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
@@ -4098,6 +4117,9 @@ class SimpleVideoWriter(StateMachineProcess):
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
+
+                    self.updatePublishedInfo("\n".join(self.errorMessages))
+
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
@@ -4558,6 +4580,9 @@ class VideoWriter(StateMachineProcess):
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
+
+                    self.updatePublishedInfo("\n".join(self.errorMessages))
+
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
@@ -4938,6 +4963,9 @@ class ContinuousTriggerer(StateMachineProcess):
                     if self.verbose >= 0:
                         self.log("ERROR STATE. Error messages:\n\n")
                         self.log("\n\n".join(self.errorMessages))
+
+                    self.updatePublishedInfo("\n".join(self.errorMessages))
+
                     self.errorMessages = []
 
                     # CHECK FOR MESSAGES
