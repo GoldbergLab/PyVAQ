@@ -45,6 +45,11 @@ class AudioMonitor(ttk.LabelFrame):
         self.enableViewerCheckButton = tk.Checkbutton(self, text="Enable viewer", variable=self.enableViewerVar, offvalue=False, onvalue=True)
         self.updateEnableViewerCheckButton()
 
+        self.enableWriteChangeHandler = lambda:None
+        self.enableWriteVar = tk.BooleanVar(); self.enableWriteVar.set(True); self.enableWriteVar.trace('w', self.updateEnableWriteCheckButton)
+        self.enableWriteCheckButton = tk.Checkbutton(self, text="Enable write", variable=self.enableWriteVar, offvalue=False, onvalue=True)
+        self.updateEnableWriteCheckButton()
+
         self.masterDisplayFrame = ttk.Frame(self)
 
         self.data = None
@@ -53,6 +58,13 @@ class AudioMonitor(ttk.LabelFrame):
             self.createChannelDisplay(channel, index)
 
         self.updateWidgets()
+
+    def updateEnableWriteCheckButton(self, *args):
+        self.enableWriteChangeHandler()
+        if self.getEnableWrite():
+            self.enableWriteCheckButton["fg"] = 'green'
+        else:
+            self.enableWriteCheckButton["fg"] = 'red'
 
     def viewerEnabled(self):
         return self.enableViewerVar.get()
@@ -68,6 +80,12 @@ class AudioMonitor(ttk.LabelFrame):
 
     def getBaseFileName(self):
         return self.fileWidget.getBaseFileName()
+
+    def getEnableWrite(self):
+        return self.enableWriteVar.get()
+
+    def setEnableWriteChangeHandler(self, function):
+        self.enableWriteChangeHandler = function
 
     def setDirectoryChangeHandler(self, function):
         self.fileWidget.setDirectoryChangeHandler(function)
@@ -146,8 +164,9 @@ class AudioMonitor(ttk.LabelFrame):
         if len(self.channels) > 0:
             # No channels, it would look weird to display directory entry
             self.masterDisplayFrame.grid(row=0, column=0, columnspan=2)
-            self.fileWidget.grid(row=1, column=0)
+            self.fileWidget.grid(row=1, column=0, rowspan=2, sticky=tk.NSEW)
             self.enableViewerCheckButton.grid(row=1, column=1)
+            self.enableWriteCheckButton.grid(row=2, column=1)
         else:
             self.masterDisplayFrame.grid_forget()
             self.fileWidget.grid_forget()
@@ -218,11 +237,9 @@ class CameraMonitor(ttk.LabelFrame):
 
 #       self.cameraAttributeBrowserButton = ttk.Button(vFrame, text="Attribute browser", command=lambda:self.createCameraAttributeBrowser(camSerial))
 
-    def writeEnabled(self):
-        return self.enableWriteVar.get()
     def updateEnableWriteCheckButton(self, *args):
         self.enableWriteChangeHandler()
-        if self.writeEnabled():
+        if self.getEnableWrite():
             self.enableWriteCheckButton["fg"] = 'green'
         else:
             self.enableWriteCheckButton["fg"] = 'red'

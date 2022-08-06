@@ -1414,8 +1414,8 @@ class AudioTriggerer(StateMachineProcess):
         'multiChannelStopBehavior',
         'verbose',
         'scheduleEnabled',
-        'scheduleStartTime',
-        'scheduleStopTime',
+        'scheduleStart',
+        'scheduleStop',
         'tagTriggerEnabled',
         'writeTriggerEnabled'
         ]
@@ -2270,7 +2270,11 @@ class SimpleAudioWriter(StateMachineProcess):
         'verbose',
         'audioBaseFileName',
         'audioDirectory',
-        'daySubfolders'
+        'daySubfolders',
+        'enableWrite',
+        'scheduleEnabled',
+        'scheduleStart',
+        'scheduleStop'
         ]
 
     def __init__(self,
@@ -2286,6 +2290,10 @@ class SimpleAudioWriter(StateMachineProcess):
                 audioDepthBytes=2,
                 mergeMessageQueue=None, # Queue to put (filename, trigger) in for merging
                 daySubfolders=True,         # Create and write to subfolders labeled by day?
+                enableWrite=True,
+                scheduleEnabled=False,
+                scheduleStartTime=None,
+                scheduleStopTime=None,
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.ID = "SAW"
@@ -2306,6 +2314,10 @@ class SimpleAudioWriter(StateMachineProcess):
         self.verbose = verbose
         self.audioDepthBytes = audioDepthBytes
         self.daySubfolders = daySubfolders
+        self.enableWrite = enableWrite
+        self.scheduleEnabled = scheduleEnabled
+        self.scheduleStartTime = scheduleStartTime
+        self.scheduleStopTime = scheduleStopTime
 
     def setParams(self, **params):
         for key in params:
@@ -2363,30 +2375,31 @@ class SimpleAudioWriter(StateMachineProcess):
                     audioChunk = None
                     audioChunkLeftover = None
                     timeWrote = 0
+                    writeEnabledPrevious = True
+                    writeEnabled = True
 
                     # Read actual audio frequency from the Synchronizer process
-                    while self.audioFrequencyVar.value == -1:
+                    if self.audioFrequencyVar.value == -1 or self.frameRateVar.value == -1:
                         # Wait for shared value audioFrequency to be set by the Synchronizer process
-                        time.sleep(0.1)
-                    self.audioFrequency = self.audioFrequencyVar.value
-                    while self.frameRateVar.value == -1:
                         # Wait for shared value frameRate to be set by the Synchronizer process
                         time.sleep(0.1)
-                    self.frameRate = self.frameRateVar.value
+                    else:
+                        self.audioFrequency = self.audioFrequencyVar.value
+                        self.frameRate = self.frameRateVar.value
 
-                    # Calculate actual exact # of frames per video that SimpleVideoWriter will be recording
-                    actualFramesPerVideo = round(self.videoLength * self.frameRate)
-                    # Actual video length that SimpleVideoWriter will be using
-                    actualVideoLength = actualFramesPerVideo / self.frameRate
-                    # Actual # of samples per video we should record. Note thta this will have an accuracy of +/- 0.5 audio samples.
-                    #   At 44100 Hz, and 30 fps, the audio may be as much as whole frame de-synced after 2900 videos. This is acceptable for now.
-                    numSamplesPerFile = round(actualVideoLength * self.audioFrequency)
+                        # Calculate actual exact # of frames per video that SimpleVideoWriter will be recording
+                        actualFramesPerVideo = round(self.videoLength * self.frameRate)
+                        # Actual video length that SimpleVideoWriter will be using
+                        actualVideoLength = actualFramesPerVideo / self.frameRate
+                        # Actual # of samples per video we should record. Note thta this will have an accuracy of +/- 0.5 audio samples.
+                        #   At 44100 Hz, and 30 fps, the audio may be as much as whole frame de-synced after 2900 videos. This is acceptable for now.
+                        numSamplesPerFile = round(actualVideoLength * self.audioFrequency)
 
-                    if self.verbose >= 1:
-                        self.log('Audio writer initialized:')
-                        self.log('\tAudiofreq = {af} Hz'.format(af=self.audioFrequency))
-                        self.log('\tSamples per file = {spf}'.format(spf=numSamplesPerFile))
-                        self.log('\tTime per file = {t} s'.format(t=actualVideoLength))
+                        if self.verbose >= 1:
+                            self.log('Audio writer initialized:')
+                            self.log('\tAudiofreq = {af} Hz'.format(af=self.audioFrequency))
+                            self.log('\tSamples per file = {spf}'.format(spf=numSamplesPerFile))
+                            self.log('\tTime per file = {t} s'.format(t=actualVideoLength))
 
                     # CHECK FOR MESSAGES
                     try:
@@ -2398,7 +2411,12 @@ class SimpleAudioWriter(StateMachineProcess):
                     if self.exitFlag:
                         self.nextState = SimpleAudioWriter.STOPPING
                     elif msg in ['', SimpleAudioWriter.START]:
-                        self.nextState = SimpleAudioWriter.AUDIOINIT
+                        if self.audioFrequency is None or self.frameRate is None:
+                            # Haven't received audio frequency or frame rate from synchronizer - continue waiting
+                            self.nextState = SimpleAudioWriter.INITIALIZING
+                        else:
+                            # Ready to go
+                            self.nextState = SimpleAudioWriter.AUDIOINIT
                     elif msg == SimpleAudioWriter.STOP:
                         self.nextState = SimpleAudioWriter.STOPPING
                     elif msg == SimpleAudioWriter.EXIT:
@@ -2410,36 +2428,49 @@ class SimpleAudioWriter(StateMachineProcess):
                 elif self.state == SimpleAudioWriter.AUDIOINIT:
                     # Start a new audio file
                     # DO STUFF
-                    audioFileStartTime = seriesStartTime + numSamplesInCurrentSeries / self.audioFrequency
-                    numSamplesInCurrentFile = 0
+                    currentTimeOfDay = dt.datetime.now()
+                    writeEnabledPrevious = writeEnabled
+                    writeEnabled = (self.enableWrite and
+                                        (not self.scheduleEnabled or
+                                            (self.scheduleStartTime <= currentTimeOfDay and
+                                             self.scheduleStopTime <= currentTimeOfDay)))
 
-                    if audioFile is not None:
-                        # Close file
-                        audioFile.writeframes(b'')  # Causes recompute of header info?
-                        audioFile.close()
-                        audioFile = None
+                    if self.verbose >= 1:
+                        if writeEnabled and not writeEnabledPrevious:
+                            self.logTime('Audio write now enabled.')
+                        elif not writeEnabled and writeEnabledPrevious:
+                            self.logTime('Audio write now disabled')
 
-                    # Generate new audio file path
-                    audioFileNameTags = [','.join(self.channelNames), generateTimeString(timestamp=seriesStartTime), '{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
-                    if self.daySubfolders:
-                        audioDirectory = getDaySubfolder(self.audioDirectory, timestamp=audioFileStartTime)
-                    else:
-                        audioDirectory = self.audioDirectory
-                    audioFileName = generateFileName(directory=audioDirectory, baseName=self.audioBaseFileName, extension='.wav', tags=audioFileNameTags)
-                    ensureDirectoryExists(audioDirectory)
+                    if writeEnabled:
+                        audioFileStartTime = seriesStartTime + numSamplesInCurrentSeries / self.audioFrequency
+                        numSamplesInCurrentFile = 0
 
-                    # Open and initialize audio file
-                    audioFile = wave.open(audioFileName, 'w')
-                    audioFile.audioFileName = audioFileName
-                    # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
-                    audioFile.setparams((self.numChannels, self.audioDepthBytes, self.audioFrequency, 0, 'NONE', 'not compressed'))
+                        if audioFile is not None:
+                            # Close file
+                            audioFile.writeframes(b'')  # Causes recompute of header info?
+                            audioFile.close()
+                            audioFile = None
 
-                    newFileInfo = 'Opened audio file {name} ({n} channels, {b} bitdepth, {f:.2f} Hz sample rate)'.format(name=audioFileName, n=self.numChannels, b=self.audioDepthBytes, f=self.audioFrequency);
-                    self.updatePublishedInfo(newFileInfo)
+                        # Generate new audio file path
+                        audioFileNameTags = [','.join(self.channelNames), generateTimeString(timestamp=seriesStartTime), '{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
+                        if self.daySubfolders:
+                            audioDirectory = getDaySubfolder(self.audioDirectory, timestamp=audioFileStartTime)
+                        else:
+                            audioDirectory = self.audioDirectory
+                        audioFileName = generateFileName(directory=audioDirectory, baseName=self.audioBaseFileName, extension='.wav', tags=audioFileNameTags)
+                        ensureDirectoryExists(audioDirectory)
 
-                    if self.verbose >= 2:
-                        self.log(newFileInfo)
+                        # Open and initialize audio file
+                        audioFile = wave.open(audioFileName, 'w')
+                        audioFile.audioFileName = audioFileName
+                        # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
+                        audioFile.setparams((self.numChannels, self.audioDepthBytes, self.audioFrequency, 0, 'NONE', 'not compressed'))
 
+                        newFileInfo = 'Opened audio file {name} ({n} channels, {b} bytes, {f:.2f} Hz sample rate)'.format(name=audioFileName, n=self.numChannels, b=self.audioDepthBytes, f=self.audioFrequency);
+                        self.updatePublishedInfo(newFileInfo)
+
+                        if self.verbose >= 2:
+                            self.log(newFileInfo)
 
                     audioFileCount += 1
 
@@ -3660,11 +3691,11 @@ class SimpleVideoWriter(StateMachineProcess):
         'videoBaseFileName',
         'videoDirectory',
         'daySubfolders',
-        'enableWrite',
         'gpuVEnc',
+        'enableWrite',
         'scheduleEnabled',
-        'scheduleStartTime',
-        'scheduleStopTime'
+        'scheduleStart',
+        'scheduleStop'
         ]
 
     def __init__(self,
@@ -3763,8 +3794,8 @@ class SimpleVideoWriter(StateMachineProcess):
                     seriesStartTime = time.time()   # Record approximate start time (in seconds since epoch) of series for filenaming purposes
                     videoCount = 0                  # Initialize video count, used to number video files
                     numFramesInCurrentSeries = 0    # Initialize series-wide frame count, for estimating subsequent video times
-                    videoWriteEnabledPrevious = True
-                    videoWriteEnabled = True
+                    writeEnabledPrevious = True
+                    writeEnabled = True
 
                     self.frameRate = self.frameRateVar.value
                     if self.frameRate == -1:
@@ -3811,19 +3842,19 @@ class SimpleVideoWriter(StateMachineProcess):
                     #   1. Video write is manually enabled or not
                     #   2. Video write is scheduled to be on or off
                     currentTimeOfDay = dt.datetime.now()
-                    videoWriteEnabledPrevious = videoWriteEnabled
-                    videoWriteEnabled = (self.enableWrite and
+                    writeEnabledPrevious = writeEnabled
+                    writeEnabled = (self.enableWrite and
                                         (not self.scheduleEnabled or
                                             (self.scheduleStartTime <= currentTimeOfDay and
                                              self.scheduleStopTime <= currentTimeOfDay)))
 
                     if self.verbose >= 1:
-                        if videoWriteEnabled and not videoWriteEnabledPrevious:
+                        if writeEnabled and not writeEnabledPrevious:
                             self.logTime('Video write now enabled.')
-                        elif not videoWriteEnabled and videoWriteEnabledPrevious:
+                        elif not writeEnabled and writeEnabledPrevious:
                             self.logTime('Video write now disabled')
 
-                    if videoWriteEnabled:
+                    if writeEnabled:
                         im = None
                         videoFileStartTime = seriesStartTime + numFramesInCurrentSeries / self.frameRate
                         numFramesInCurrentVideo = 0
@@ -3911,7 +3942,7 @@ class SimpleVideoWriter(StateMachineProcess):
 
                         time.sleep(0.5/self.requestedFrameRate)
                     else:
-                        if videoWriteEnabled:
+                        if writeEnabled:
                             if videoFileInterface is None:
                                 raise IOError('Attempted to write but writer interface does not exist')
 
@@ -4692,8 +4723,8 @@ class ContinuousTriggerer(StateMachineProcess):
     settableParams = [
         'continuousTriggerPeriod',
         'scheduleEnabled',
-        'scheduleStartTime',
-        'scheduleStopTime'
+        'scheduleStart',
+        'scheduleStop'
         ]
 
     def __init__(self,

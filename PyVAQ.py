@@ -172,7 +172,7 @@ def getSharedString(sharedString, block=False):
     L = sharedString.get_lock()
     locked = L.acquire(block=block)
     if locked:
-        value = str.rstrip(sharedString[:])
+        value = str.strip(sharedString[:])
         L.release()
     else:
         value = None
@@ -247,6 +247,7 @@ class PyVAQ:
         self.audioSyncSource = GeneralVar(); self.audioSyncSource.set("PFI5")
         self.videoSyncSource = GeneralVar(); self.videoSyncSource.set("PFI4")
         self.videoWriteEnable = GeneralVar(); self.videoWriteEnable.set({})
+        self.audioWriteEnable = tk.BooleanVar(); self.audioWriteEnable.set(True)
         self.acquisitionStartTriggerSource = GeneralVar(); self.acquisitionStartTriggerSource.set(None)
         self.audioChannelConfiguration = GeneralVar(); self.audioChannelConfiguration.set(None)
 
@@ -597,6 +598,7 @@ class PyVAQ:
             "acquisitionStartTriggerSource":    dict(get=self.acquisitionStartTriggerSource.get,                set=self.acquisitionStartTriggerSource.set),
             "audioChannelConfiguration":        dict(get=self.audioChannelConfiguration.get,                    set=self.audioChannelConfiguration.set),
             "videoWriteEnable":                 dict(get=self.videoWriteEnable.get,                             set=self.setVideoWriteEnable),
+            "audioWriteEnable":                 dict(get=self.audioWriteEnable.get,                             set=self.setAudioWriteEnable),
         }
 
         self.createAudioAnalysisMonitor()
@@ -1034,6 +1036,7 @@ him know. Otherwise, I had nothing to do with it.
                 )
             self.audioMonitor.grid(row=1, column=0)
 
+            self.audioMonitor.setEnableWriteChangeHandler(self.audioWriteEnableChangeHandler)
         if audioDAQChannels is None or len(audioDAQChannels) == 0:
             # Don't display docker buttons
             self.audioMonitorDocker.unDockButton.grid_forget()
@@ -1109,6 +1112,9 @@ him know. Otherwise, I had nothing to do with it.
     def changeAVMergerParams(self, **params):
         self.sendMessage(self.mergeProcess, (AVMerger.SETPARAMS, params))
 
+    def audioWriteEnableChangeHandler(self, *args):
+        audioWriteEnable = self.audioMonitor.getEnableWrite()
+        self.setAudioWriteEnable(audioWriteEnable, updateTextField=False)
     def videoWriteEnableChangeHandler(self, *args):
         videoWriteEnables = {}
         for camSerial in self.cameraMonitors:
@@ -1760,8 +1766,8 @@ him know. Otherwise, I had nothing to do with it.
     def saveSettings(self, *args, path=None):
         params = self.getParams()
         # datetime.time objects are not serializable, so we have to extract the time
-        params["scheduleStart"] = timeToSerializable(params["scheduleStart"])
-        params["scheduleStop"] = timeToSerializable(params["scheduleStop"])
+        params['scheduleStart'] = timeToSerializable(params['scheduleStart'])
+        params['scheduleStop'] = timeToSerializable(params['scheduleStop'])
         if path is None:
             path = asksaveasfilename(
                 title = "Choose a filename to save current settings to.",
@@ -1783,12 +1789,22 @@ him know. Otherwise, I had nothing to do with it.
         if path is not None and len(path) > 0:
             with open(path, 'r') as f:
                 params = json.loads(f.read())
-            params["scheduleStart"] = serializableToTime(params["scheduleStart"])
-            params["scheduleStop"] = serializableToTime(params["scheduleStop"])
+            params['scheduleStart'] = serializableToTime(params['scheduleStart'])
+            params['scheduleStop'] = serializableToTime(params['scheduleStop'])
             self.log("Loaded settings:")
             self.log(params)
             self.setParams(**params)
         self.endLog(inspect.currentframe().f_code.co_name)
+
+    def setAudioWriteEnable(self, newAudioWriteEnable, *args, updateTextField=True):
+        # Expects newAudioWriteEnable to be True or False used
+        #   to enable or disable audio file writing for each camera.
+        self.audioWriteEnable.set(newAudioWriteEnable)
+        if updateTextField:
+            # Update text field
+            self.audioMonitors.setWriteEnable(newAudioWriteEnable)
+        # Notify AudioWriter child process of new write enable state
+        self.sendMessage(self.audioWriteProcess, (SimpleAudioWriter.SETPARAMS, dict(enableWrite=newAudioWriteEnable)))
 
     def setVideoWriteEnable(self, newVideoWriteEnables, *args, updateTextField=True):
         # Expects newVideoWriteEnables to be a dictionary of camserial:writeEnable, which will be used
@@ -2130,7 +2146,11 @@ him know. Otherwise, I had nothing to do with it.
                     daySubfolders=p['daySubfolders'],
                     verbose=self.videoWriteVerbose,
                     stdoutQueue=self.StdoutManager.queue,
-                    gpuVEnc=gpuOk
+                    gpuVEnc=gpuOk,
+                    scheduleEnabled=p['scheduleEnabled'],
+                    scheduleStartTime=p['scheduleStart'],
+                    scheduleStopTime=p['scheduleStop'],
+                    enableWrite=p['videoWriteEnable']
                     )
                 gpuCount += 1
             elif p["triggerMode"] == 'None':
