@@ -168,6 +168,16 @@ def slugify(value, allow_unicode=False):
     value = re.sub(r'[^\w\s-]', '', value).strip().lower()
     return re.sub(r'[-\s]+', '-', value)
 
+def getSharedString(sharedString, block=False):
+    L = sharedString.get_lock()
+    locked = L.acquire(block=block)
+    if locked:
+        value = str.rstrip(sharedString[:])
+        L.release()
+    else:
+        value = None
+    return value
+
 LINE_STYLES = [c+'-' for c in 'bykcmgr']
 WIDGET_COLORS = [
     '#050505', # near black
@@ -1213,16 +1223,18 @@ him know. Otherwise, I had nothing to do with it.
         if self.triggerIndicatorUpdateJob is not None:
             self.master.after_cancel(self.triggerIndicatorUpdateJob)
             self.triggerIndicatorUpdateJob = None
-        if self.updateStateDisplayJob is not None:
-            self.master.after_cancel(self.updateStateDisplayJob)
-            self.updateStateDisplayJob = None
+        # if self.updateStateDisplayJob is not None:
+        #     print('stopping update state display job...')
+        #     self.master.after_cancel(self.updateStateDisplayJob)
+        #     self.updateStateDisplayJob = None
+        #     print('...done stopping update state display job')
 
     def startMonitors(self):
         self.autoUpdateAudioMonitors()
         self.autoUpdateVideoMonitors()
         self.autoUpdateTriggerIndicator()
         self.autoUpdateAudioAnalysisMonitors()
-        self.updateStateDisplay()
+        # self.updateStateDisplay()
 
     def startSyncProcess(self):
         # self.syncProcess.start()
@@ -1595,9 +1607,9 @@ him know. Otherwise, I had nothing to do with it.
         )
         for camSerial in self.videoWriteProcesses:
             if self.videoWriteProcesses[camSerial] is not None:
-                info['videoWriteInfo'][camSerial] = self.videoWriteProcesses[camSerial].publishedInfoVar.value.decode('utf-8')
+                info['videoWriteInfo'][camSerial] = getSharedString(self.videoWriteProcesses[camSerial].publishedInfoVar)
         if self.audioWriteProcess is not None:
-            info['audioWriteInfo'] = self.audioWriteProcess.publishedInfoVar.value.decode('utf-8')
+            info['audioWriteInfo'] = getSharedString(self.audioWriteProcess.publishedInfoVar)
 
         if verbose:
             self.log("Check process info...")
@@ -1686,9 +1698,6 @@ him know. Otherwise, I had nothing to do with it.
         self.childStatusText.delete('1.0', tk.END)
         self.childStatusText['height'] = len(lines)
         self.childStatusText.insert(tk.END, '\n'.join(lines))
-
-        # for line in lines:
-        #     self.childStatusText.insert(tk.END, line)
 
         if repeat:
             self.updateStateDisplayJob = self.master.after(interval, self.updateStateDisplay)

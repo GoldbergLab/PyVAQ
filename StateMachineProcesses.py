@@ -16,7 +16,7 @@ from SharedImageQueue import SharedImageSender
 import traceback
 import unicodedata
 import re
-from ctypes import c_char_p
+from ctypes import c_wchar
 import PySpinUtilities as psu
 try:
     import PySpin
@@ -447,7 +447,8 @@ class StateMachineProcess(mp.Process):
         self.stdoutQueue = stdoutQueue                  # Queue for pushing output message groups to for printing
         self.publishedStateVar = mp.Value('i', -1)      # A thread-safe variable so other processes can query this process's state
         self.PID = mp.Value('i', -1)                    # A thread-safe variable so other processes can query this process's PID
-        self.publishedInfoVar = mp.Value(c_char_p, b'')  # A thread-safe variable so other processes can query this process's latest info
+        self.publishedInfoLength = 256
+        self.publishedInfoVar = mp.Array(c_wchar, self.publishedInfoLength)  # A thread-safe variable so other processes can query this process's latest info
         self.exitFlag = False                           # A flag to set to ensure the process exits ASAP
         self.stdoutBuffer = []                          # A buffer to accumulate log messages before sending out
         self.state = None
@@ -460,10 +461,16 @@ class StateMachineProcess(mp.Process):
 
     def updatePublishedInfo(self, info):
         if self.publishedInfoVar is not None:
+            # Pad or truncate info as necessary to make it the correct length to fit in the shared array
+            infoLength = len(info)
+            if infoLength > self.publishedInfoLength:
+                info = info[:self.publishedInfoLength]
+            elif infoLength < self.publishedInfoLength:
+                info = info + ' '*(self.publishedInfoLength - infoLength)
             L = self.publishedInfoVar.get_lock()
             locked = L.acquire(block=False)
             if locked:
-                self.publishedInfoVar.value = info.encode('utf-8')
+                self.publishedInfoVar[:] = info
                 L.release()
 
     def updatePublishedState(self, newState=None):
