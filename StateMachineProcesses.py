@@ -2434,7 +2434,7 @@ class SimpleAudioWriter(StateMachineProcess):
                     # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
                     audioFile.setparams((self.numChannels, self.audioDepthBytes, self.audioFrequency, 0, 'NONE', 'not compressed'))
 
-                    newFileInfo = 'Opened audio file {name} with {n} channels, {b} bitdepth, and {f} Hz sample rate'.format(name=audioFileName, n=self.numChannels, b=self.audioDepthBytes, f=self.audioFrequency);
+                    newFileInfo = 'Opened audio file {name} ({n} channels, {b} bitdepth, {f:.2f} Hz sample rate)'.format(name=audioFileName, n=self.numChannels, b=self.audioDepthBytes, f=self.audioFrequency);
                     self.updatePublishedInfo(newFileInfo)
 
                     if self.verbose >= 2:
@@ -3869,7 +3869,7 @@ class SimpleVideoWriter(StateMachineProcess):
                                 videoFileInterface.close()
                             videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", fps=self.frameRate, gpuVEnc=self.gpuVEnc)
 
-                        newFileInfo = 'Opened video file {name} at {f} fps, gpu encoding={gpu}'.format(name=videoFileName, f=self.frameRate, gpu=self.gpuVEnc);
+                        newFileInfo = 'Opened video file {name} ({f:.2f} fps, gpu encoding={gpu})'.format(name=videoFileName, f=self.frameRate, gpu=self.gpuVEnc);
                         self.updatePublishedInfo(newFileInfo)
 
                         if self.verbose >= 3: self.log('...opened new file writing interface')
