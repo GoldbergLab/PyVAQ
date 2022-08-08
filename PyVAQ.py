@@ -21,6 +21,7 @@ import unicodedata
 from TimeInput import TimeVar, TimeEntry
 from ParamDialog import ParamDialog, Param
 from fileWritingEntry import FileWritingEntry
+import warnings
 import cProfile, pstats, io
 # For audio monitor graph embedding:
 from matplotlib.backends.backend_tkagg import (
@@ -1123,7 +1124,7 @@ him know. Otherwise, I had nothing to do with it.
             self.sendMessage(self.mergeProcess, (AVMerger.CHILL, None))
 
     def updateChildSchedulingState(self, *args):
-        scheduleParams = getParams(['scheduleEnabled', 'scheduleStart', 'scheduleStop'])
+        scheduleParams = self.getParams('scheduleEnabled', 'scheduleStart', 'scheduleStop')
         for camSerial in self.videoWriteProcesses:
             self.sendMessage(SimpleVideoWriter.SETPARAMS, self.videoWriteProcesses[camSerial], scheduleParams)
 
@@ -2046,8 +2047,10 @@ him know. Otherwise, I had nothing to do with it.
         for paramName in params:
             try:
                 self.paramInfo[paramName]["set"](params[paramName])
-            except NotImplementedError:
-                traceback.print_exc()
+            except (NotImplementedError, AttributeError) as e:
+                print('Unable to set param: {paramName}'.format(paramName=paramName))
+                print('\tReason: {reason}'.format(reason=str(e)))
+                # traceback.print_exc()
             except:
                 traceback.print_exc()
 
@@ -2351,6 +2354,11 @@ him know. Otherwise, I had nothing to do with it.
                 stdoutQueue=self.StdoutManager.queue
             )
 
+        if self.continuousTriggerProcess is None:
+            taggerQueues = []
+        else:
+            [self.continuousTriggerProcess.msgQueue]
+
         # If we have an audioAcquireProcess, create (but don't start) an
         #   audioTriggerProcess to generate audio-based triggers
         if self.audioAcquireProcess is not None:
@@ -2369,7 +2377,7 @@ him know. Otherwise, I had nothing to do with it.
                 multiChannelStartBehavior=p["multiChannelStartBehavior"],
                 multiChannelStopBehavior=p["multiChannelStopBehavior"],
                 bandpassFrequencies=(p['triggerLowBandpass'], p['triggerHighBandpass']),
-                taggerQueues=[self.continuousTriggerProcess.msgQueue],
+                taggerQueues=taggerQueues,
                 verbose=self.audioTriggerVerbose,
                 audioMessageQueue=self.audioWriteProcess.msgQueue,
                 videoMessageQueues=dict([(camSerial, self.videoWriteProcesses[camSerial].msgQueue) for camSerial in self.videoWriteProcesses if self.videoWriteProcesses[camSerial] is not None]),
