@@ -440,6 +440,27 @@ class StateMachineProcess(mp.Process):
     # The base process that all other state machine processes inherit from.
     # It contains functionality for receiving messages from other processes,
     # and other conveniences.
+
+    # States:
+    UNKNOWN =       -1
+    STOPPED =       0
+    INITIALIZING =  1
+    STOPPING =      5
+    ERROR =         6
+    EXITING =       7
+    DEAD =          8
+
+    # Human-readable states
+    stateList = {
+        UNKNOWN :       'UNKNOWN',
+        STOPPED :       'STOPPED',
+        INITIALIZING :  'INITIALIZING',
+        STOPPING :      'STOPPING',
+        ERROR :         'ERROR',
+        EXITING :       'EXITING',
+        DEAD :          'DEAD'
+    }
+
     def __init__(self, *args, stdoutQueue=None, daemon=True, **kwargs):
         mp.Process.__init__(self, *args, daemon=daemon, **kwargs)
         self.ID = "X"                                   # An ID for logging purposes to identify the source of log messages
@@ -508,29 +529,19 @@ class AVMerger(StateMachineProcess):
     # Class for merging audio and video files using ffmpeg
 
     # States:
-    STOPPED = 0
-    INITIALIZING = 1
-    IGNORING = 2
-    WAITING = 3
-    MERGING = 4
-    STOPPING = 5
-    ERROR = 6
-    EXITING = 7
-    DEAD = 100
+    IGNORING = 100
+    WAITING = 101
+    MERGING = 102
 
     # Human-readable states
     stateList = {
-        -1:'UNKNOWN',
-        STOPPED :'STOPPED',
-        INITIALIZING :'INITIALIZING',
         IGNORING :'IGNORING',
         WAITING :'WAITING',
         MERGING :'MERGING',
-        STOPPING :'STOPPING',
-        ERROR :'ERROR',
-        EXITING :'EXITING',
-        DEAD :'DEAD'
     }
+
+    # Include common states from parent class
+    stateList.update(StateMachineProcess.stateList)
 
     # Recognized message types:
     START = 'msg_start'
@@ -997,27 +1008,17 @@ class Synchronizer(StateMachineProcess):
     #   and also accomplish other tasks.
 
     # States:
-    STOPPED = 0
-    INITIALIZING = 1
-    SYNCHRONIZING = 2
-    STOPPING = 3
-    SYNC_READY = 4
-    ERROR = 5
-    EXITING = 6
-    DEAD = 100
+    SYNCHRONIZING = 100
+    SYNC_READY = 101
 
     # Human-readable states
     stateList = {
-        -1:'UNKNOWN',
-         STOPPED:'STOPPED',
-         INITIALIZING:'INITIALIZING',
          SYNCHRONIZING:'SYNCHRONIZING',
-         STOPPING:'STOPPING',
          SYNC_READY:'SYNC_READY',
-         ERROR:'ERROR',
-         EXITING:'EXITING',
-         DEAD:'DEAD'
     }
+
+    # Include common states from parent class
+    stateList.update(StateMachineProcess.stateList)
 
     # Recognized message types:
     START = 'msg_start'
@@ -1372,27 +1373,17 @@ class AudioTriggerer(StateMachineProcess):
         and video writer processes.
     '''
     # States:
-    STOPPED = 0
-    INITIALIZING = 1
-    WAITING = 2
-    ANALYZING = 3
-    STOPPING = 4
-    ERROR = 5
-    EXITING = 6
-    DEAD = 100
+    WAITING = 100
+    ANALYZING = 101
 
     # Human-readable states
     stateList = {
-        -1:'UNKNOWN',
-        STOPPED :'STOPPED',
-        INITIALIZING :'INITIALIZING',
         WAITING :'WAITING',
         ANALYZING :'ANALYZING',
-        STOPPING :'STOPPING',
-        ERROR :'ERROR',
-        EXITING :'EXITING',
-        DEAD :'DEAD'
     }
+
+    # Include common states from parent class
+    stateList.update(StateMachineProcess.stateList)
 
     # Recognized message types:
     START = 'msg_start'
@@ -1878,27 +1869,17 @@ class AudioAcquirer(StateMachineProcess):
     #   channel.
 
     # States:
-    STOPPED = 0
-    INITIALIZING = 1
-    ACQUIRING = 2
-    STOPPING = 3
-    ACQUIRE_READY = 4
-    ERROR = 5
-    EXITING = 6
-    DEAD = 100
+    ACQUIRING = 100
+    ACQUIRE_READY = 101
 
     # Human-readable states
     stateList = {
-        -1:'UNKNOWN',
-        STOPPED :'STOPPED',
-        INITIALIZING :'INITIALIZING',
         ACQUIRING :'ACQUIRING',
-        STOPPING :'STOPPING',
         ACQUIRE_READY :'ACQUIRE_READY',
-        ERROR :'ERROR',
-        EXITING :'EXITING',
-        DEAD :'DEAD'
     }
+
+    # Include common states from parent class
+    stateList.update(StateMachineProcess.stateList)
 
     # Recognized message types:
     START = 'msg_start'
@@ -2249,27 +2230,17 @@ class AudioAcquirer(StateMachineProcess):
 
 class SimpleAudioWriter(StateMachineProcess):
     # States:
-    STOPPED = 0
-    INITIALIZING = 1
-    WRITING = 2
-    AUDIOINIT = 3
-    STOPPING = 4
-    ERROR = 5
-    EXITING = 6
-    DEAD = 100
+    WRITING = 100
+    AUDIOINIT = 101
 
     # Human-readable states
     stateList = {
-        -1:'UNKNOWN',
-        STOPPED :'STOPPED',
-        INITIALIZING :'INITIALIZING',
         WRITING :'WRITING',
         AUDIOINIT:'AUDIOINIT',
-        STOPPING :'STOPPING',
-        ERROR :'ERROR',
-        EXITING :'EXITING',
-        DEAD :'DEAD'
     }
+
+    # Include common states from parent class
+    stateList.update(StateMachineProcess.stateList)
 
     # Recognized message types:
     START = 'msg_start'
@@ -2719,27 +2690,17 @@ class SimpleAudioWriter(StateMachineProcess):
 
 class AudioWriter(StateMachineProcess):
     # States:
-    STOPPED = 0
-    INITIALIZING = 1
-    WRITING = 2
-    BUFFERING = 3
-    STOPPING = 4
-    ERROR = 5
-    EXITING = 6
-    DEAD = 100
+    WRITING = 100
+    BUFFERING = 101
 
     # Human-readable states
     stateList = {
-        -1:'UNKNOWN',
-        STOPPED :'STOPPED',
-        INITIALIZING :'INITIALIZING',
         WRITING :'WRITING',
         BUFFERING:'BUFFERING',
-        STOPPING :'STOPPING',
-        ERROR :'ERROR',
-        EXITING :'EXITING',
-        DEAD :'DEAD'
     }
+
+    # Include common states from parent class
+    stateList.update(StateMachineProcess.stateList)
 
     # Recognized message types:
     START = 'msg_start'
@@ -3213,27 +3174,17 @@ class VideoAcquirer(StateMachineProcess):
         to a VideoWriter process, when a received trigger becomes active.
     '''
     # States:
-    STOPPED = 0
-    INITIALIZING = 1
-    ACQUIRING = 2
-    STOPPING = 3
-    ACQUIRE_READY = 4
-    ERROR = 5
-    EXITING = 6
-    DEAD = 100
+    ACQUIRING = 100
+    ACQUIRE_READY = 101
 
     # Human-readable states
     stateList = {
-        -1:'UNKNOWN',
-        STOPPED :'STOPPED',
-        INITIALIZING :'INITIALIZING',
         ACQUIRING :'ACQUIRING',
-        STOPPING :'STOPPING',
         ACQUIRE_READY :'ACQUIRE_READY',
-        ERROR :'ERROR',
-        EXITING :'EXITING',
-        DEAD :'DEAD'
         }
+
+    # Include common states from parent class
+    stateList.update(StateMachineProcess.stateList)
 
     # Recognized message types:
     START = 'msg_start'
@@ -3676,27 +3627,17 @@ class VideoAcquirer(StateMachineProcess):
 
 class SimpleVideoWriter(StateMachineProcess):
     # States:
-    STOPPED = 0
-    INITIALIZING = 1
-    WRITING = 2
-    VIDEOINIT = 3
-    STOPPING = 4
-    ERROR = 5
-    EXITING = 6
-    DEAD = 100
+    WRITING = 100
+    VIDEOINIT = 101
 
     # Human-readable states
     stateList = {
-        -1:'UNKNOWN',
-        STOPPED :'STOPPED',
-        INITIALIZING :'INITIALIZING',
         WRITING :'WRITING',
         VIDEOINIT : 'VIDEOINIT',
-        STOPPING :'STOPPING',
-        ERROR :'ERROR',
-        EXITING :'EXITING',
-        DEAD :'DEAD'
     }
+
+    # Include common states from parent class
+    stateList.update(StateMachineProcess.stateList)
 
     # Recognized message types:
     START = 'msg_start'
@@ -4205,27 +4146,17 @@ class SimpleVideoWriter(StateMachineProcess):
 
 class VideoWriter(StateMachineProcess):
     # States:
-    STOPPED = 0
-    INITIALIZING = 1
-    WRITING = 2
-    BUFFERING = 3
-    STOPPING = 4
-    ERROR = 5
-    EXITING = 6
-    DEAD = 100
+    WRITING = 100
+    BUFFERING = 101
 
     # Human-readable states
     stateList = {
-        -1:'UNKNOWN',
-        STOPPED :'STOPPED',
-        INITIALIZING :'INITIALIZING',
         WRITING :'WRITING',
         BUFFERING :'BUFFERING',
-        STOPPING :'STOPPING',
-        ERROR :'ERROR',
-        EXITING :'EXITING',
-        DEAD :'DEAD'
     }
+
+    # Include common states from parent class
+    stateList.update(StateMachineProcess.stateList)
 
     # Recognized message types:
     START = 'msg_start'
@@ -4717,25 +4648,15 @@ class ContinuousTriggerer(StateMachineProcess):
         continuous train of triggers for both audio and video writer processes.
     '''
     # States:
-    STOPPED = 0
-    INITIALIZING = 1
-    TRIGGERING = 3
-    STOPPING = 4
-    ERROR = 5
-    EXITING = 6
-    DEAD = 100
+    TRIGGERING = 100
 
     # Human-readable states
     stateList = {
-        -1:'UNKNOWN',
-        STOPPED :'STOPPED',
-        INITIALIZING :'INITIALIZING',
         TRIGGERING :'TRIGGERING',
-        STOPPING :'STOPPING',
-        ERROR :'ERROR',
-        EXITING :'EXITING',
-        DEAD :'DEAD'
     }
+
+    # Include common states from parent class
+    stateList.update(StateMachineProcess.stateList)
 
     # Recognized message types:
     START = 'msg_start'
