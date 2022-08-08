@@ -321,9 +321,12 @@ class PyVAQ:
 
         self.acquisitionControlFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Control", expandText="Acquisition Control", borderwidth=3, relief=tk.SUNKEN)
         # self.acquisitionFrame = ttk.LabelFrame(self.controlFrame, text="Acquisition")
-        self.startChildProcessesButton = ttk.Button(self.acquisitionControlFrame, text="Start acquisition", command=self.acquireButtonClick)
 
-        self.updateInputsButton =   ttk.Button(self.acquisitionControlFrame, text="Select audio/video inputs", command=self.selectInputs)
+        self.selectAcquisitionHardwareButton =  ttk.Button(self.acquisitionControlFrame, text="Select audio/video inputs", command=self.selectInputs)
+        self.initializeAcquisitionButton =      ttk.Button(self.acquisitionControlFrame, text="Initialize acquisition", command=self.initializeAcquisition)
+        self.haltAcquisitionButton =            ttk.Button(self.acquisitionControlFrame, text='Halt acquisition', command=self.haltAcquisition)
+        self.restartAcquisitionButton =         ttk.Button(self.acquisitionControlFrame, text='Restart acquisition', command=self.restartAcquisition)
+        self.shutDownAcquisitionButton =        ttk.Button(self.acquisitionControlFrame, text='Shut down acquisition', command=self.shutDownAcquisition)
 
         self.acquisitionParametersFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Parameters", expandText="Acquisition Parameters", borderwidth=3, relief=tk.SUNKEN)
 
@@ -659,7 +662,7 @@ class PyVAQ:
         # Cancel automatic update jobs
         self.stopMonitors()
         self.log("Stopping acquisition")
-        self.stopChildProcesses()
+        self.haltChildProcesses()
         self.log("Destroying master")
         self.master.destroy()
         self.master.quit()
@@ -877,7 +880,7 @@ him know. Otherwise, I had nothing to do with it.
             if choices is not None:
                 # We're changing acquisition settings, so stop everything
                 self.stopMonitors()
-                self.updateAcquisitionButton()
+                # self.updateAcquisitionButton()
                 self.destroyChildProcesses()
 
                 # Extract chosen parameters from GUI
@@ -936,8 +939,8 @@ him know. Otherwise, I had nothing to do with it.
                 # Restart child processes with new acquisition values
                 self.createChildProcesses()
                 if 'Start acquisition immediately' in choices and choices['Start acquisition immediately'] == 'Yes':
-                    self.startChildProcesses()
-                self.updateAcquisitionButton()
+                    self.initializeChildProcesses()
+                # self.updateAcquisitionButton()
                 self.startMonitors()
             else:
                 self.log('User input cancelled.')
@@ -1666,9 +1669,13 @@ him know. Otherwise, I had nothing to do with it.
         #     audioWriteInfo = 'None'
         # )
 
+        # Format: Each line is a list of text to include in that line, separated
+        #   into chunks based on what tag to apply The last element in the list
+        #   is a list of tag names, one for each chunk in the line.
+
         lines = []
         lines.append(
-                    'VideoAcquirers:'
+                    'VideoAcquirers' #[['VideoAcquirers:'], ['normal']]
         )
         for camSerial in self.videoWriteProcesses:
             if self.videoWriteProcesses[camSerial] is not None:
@@ -1708,6 +1715,45 @@ him know. Otherwise, I had nothing to do with it.
         if repeat:
             self.updateStateDisplayJob = self.master.after(interval, self.updateStateDisplay)
 
+    def getProcesses(self, audio=True, video=True, acquirers=True, writers=True, auxiliary=True):
+        processes = []
+        if video and writers:
+            for camSerial in self.videoWriteProcesses:
+                processes.append(self.videoWriteProcesses[camSerial])
+        if video and acquirers:
+            for camSerial in self.videoAcquireProcesses:
+                processes.append(self.videoAcquireProcesses[camSerial])
+        if audio and writers:
+            processes.append(self.audioWriteProcess)
+        if audio and acquirers:
+            processes.append(self.audioAcquireProcess)
+        if auxiliary:
+            processes.extend([
+                self.audioTriggerProcess,
+                self.continuousTriggerProcess,
+                self.syncProcess,
+                self.mergeProcess
+                ])
+        return processes
+
+    def acquisitionInitiated(self):
+        # Check if reader/writer child processes exist and have started
+        processes = self.getProcesses(auxiliary=False)
+        if len(processes) == 0:
+            # THere are no reader/writer processes
+            return False
+        numProcesses = 0
+        for process in processes:
+            if process is not None:
+                numProcesses += 1
+                if not process.is_alive():
+                    # At least one of the reader/writer processes exists, but has not started.
+                    return False
+        if numProcesses == 0:
+            # No write/read processes actually exist
+            return False
+        return True
+
     def acquisitionActive(self):
         # Check if at least one audio or video process is acquiring
         activeAudioStates = [
@@ -1730,19 +1776,42 @@ him know. Otherwise, I had nothing to do with it.
                 return True
         return False
 
-    def acquireButtonClick(self):
-        if self.acquisitionActive():
-            self.stopChildProcesses()
-        else:
-            self.startChildProcesses()
-        # Schedule button update after 100 ms to give child processes a chance to react
-        self.master.after(100, self.updateAcquisitionButton)
+    def checkAcquisitionState(self):
+        pass
 
-    def updateAcquisitionButton(self):
-        if self.acquisitionActive():
-            self.startChildProcessesButton.config(text="Stop acquisition")
+    def reactToAcquisitionState(self, state):
+        if state in ['initialized', 'acquiring']:
+            # Child processes are either in initialized state, or are actively acquiring
+            pass
+        elif state == 'halted':
+            # Child processes are running, but in stopped state
+            pass
+        elif state == 'dead':
+            # Child processes are not running, or do not exist
+            pass
         else:
-            self.startChildProcessesButton.config(text= "Start acquisition")
+            pass
+
+    def initializeAcquisition(self):
+        if self.acquisitionActive():
+            self.haltChildProcesses()
+
+        self.initializeChildProcesses()
+        # Schedule button update after 100 ms to give child processes a chance to react
+        # self.master.after(100, self.updateAcquisitionButton)
+
+    def haltAcquisition(self):
+        pass
+    def restartAcquisition(self):
+        pass
+    def shutDownAcquisition(self):
+        pass
+
+    # def updateAcquisitionButton(self):
+    #     if self.acquisitionActive():
+    #         self.initializeAcquisitionButton.config(text="Stop acquisition")
+    #     else:
+    #         self.initializeAcquisitionButton.config(text= "Start acquisition")
 
     def writeButtonClick(self):
         self.sendWriteTrigger()
@@ -2233,7 +2302,7 @@ him know. Otherwise, I had nothing to do with it.
 
         self.endLog(inspect.currentframe().f_code.co_name)
 
-    def startChildProcesses(self):
+    def initializeChildProcesses(self):
         # Tell all child processes to start
 
         p = self.getParams('audioDAQChannels', 'camSerials', 'triggerMode')
@@ -2271,16 +2340,16 @@ him know. Otherwise, I had nothing to do with it.
             self.updateAVMergerState()
 
     def restartAcquisition(self):
-        self.stopChildProcesses()
+        self.haltChildProcesses()
         stopped = self.waitForChildProcessesToStop()
         if stopped:
-            self.startChildProcesses()
+            self.initializeChildProcesses()
         else:
             self.log("Attempted to restart child processes, but could not get them to stop.")
             self.endLog(inspect.currentframe().f_code.co_name)
 
-    def stopChildProcesses(self):
-        # Tell all child processes to stop
+    def haltChildProcesses(self):
+        # Tell all child processes to go to stopped state
 
         self.sendMessage(self.audioTriggerProcess, (AudioTriggerer.STOP, None))
         self.sendMessage(self.continuousTriggerProcess, (ContinuousTriggerer.STOP, None))
@@ -2428,8 +2497,8 @@ him know. Otherwise, I had nothing to do with it.
         #     self.acquisitionFrame.rowconfigure(r, weight=1)
 
         #### Children of self.acquisitionControlFrame
-        self.startChildProcessesButton.grid(row=0, column=0, columnspan=5, sticky=tk.NSEW)
-        self.updateInputsButton.grid(row=3, column=0, stick=tk.NSEW)
+        self.initializeAcquisitionButton.grid(row=0, column=0, columnspan=5, sticky=tk.NSEW)
+        self.selectAcquisitionHardwareButton.grid(row=3, column=0, stick=tk.NSEW)
 
         #### Children of self.acquisitionParametersFrame
         self.audioFrequencyFrame.grid(row=1, column=0, sticky=tk.EW)
