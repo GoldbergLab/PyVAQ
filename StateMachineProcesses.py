@@ -1008,8 +1008,8 @@ class Synchronizer(StateMachineProcess):
     #   and also accomplish other tasks.
 
     # States:
-    SYNCHRONIZING = 100
-    SYNC_READY = 101
+    SYNCHRONIZING = 200
+    SYNC_READY = 201
 
     # Human-readable states
     stateList = {
@@ -1373,8 +1373,8 @@ class AudioTriggerer(StateMachineProcess):
         and video writer processes.
     '''
     # States:
-    WAITING = 100
-    ANALYZING = 101
+    WAITING = 300
+    ANALYZING = 301
 
     # Human-readable states
     stateList = {
@@ -1869,8 +1869,8 @@ class AudioAcquirer(StateMachineProcess):
     #   channel.
 
     # States:
-    ACQUIRING = 100
-    ACQUIRE_READY = 101
+    ACQUIRING = 400
+    ACQUIRE_READY = 401
 
     # Human-readable states
     stateList = {
@@ -2230,8 +2230,8 @@ class AudioAcquirer(StateMachineProcess):
 
 class SimpleAudioWriter(StateMachineProcess):
     # States:
-    WRITING = 100
-    AUDIOINIT = 101
+    WRITING = 500
+    AUDIOINIT = 501
 
     # Human-readable states
     stateList = {
@@ -2690,8 +2690,8 @@ class SimpleAudioWriter(StateMachineProcess):
 
 class AudioWriter(StateMachineProcess):
     # States:
-    WRITING = 100
-    BUFFERING = 101
+    WRITING = 600
+    BUFFERING = 601
 
     # Human-readable states
     stateList = {
@@ -3174,8 +3174,8 @@ class VideoAcquirer(StateMachineProcess):
         to a VideoWriter process, when a received trigger becomes active.
     '''
     # States:
-    ACQUIRING = 100
-    ACQUIRE_READY = 101
+    ACQUIRING = 700
+    ACQUIRE_READY = 701
 
     # Human-readable states
     stateList = {
@@ -3627,8 +3627,8 @@ class VideoAcquirer(StateMachineProcess):
 
 class SimpleVideoWriter(StateMachineProcess):
     # States:
-    WRITING = 100
-    VIDEOINIT = 101
+    WRITING = 800
+    VIDEOINIT = 801
 
     # Human-readable states
     stateList = {
@@ -4146,8 +4146,8 @@ class SimpleVideoWriter(StateMachineProcess):
 
 class VideoWriter(StateMachineProcess):
     # States:
-    WRITING = 100
-    BUFFERING = 101
+    WRITING = 900
+    BUFFERING = 901
 
     # Human-readable states
     stateList = {
@@ -4648,7 +4648,7 @@ class ContinuousTriggerer(StateMachineProcess):
         continuous train of triggers for both audio and video writer processes.
     '''
     # States:
-    TRIGGERING = 100
+    TRIGGERING = 1000
 
     # Human-readable states
     stateList = {
