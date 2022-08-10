@@ -3801,6 +3801,8 @@ class SimpleVideoWriter(StateMachineProcess):
                     # Check if
                     #   1. Video write is manually enabled or not
                     #   2. Video write is scheduled to be on or off
+                    numFramesInCurrentVideo = 0
+
                     currentTimeOfDay = dt.datetime.now()
                     writeEnabledPrevious = writeEnabled
                     writeEnabled = (self.enableWrite and
@@ -3817,7 +3819,6 @@ class SimpleVideoWriter(StateMachineProcess):
                     if writeEnabled:
                         im = None
                         videoFileStartTime = seriesStartTime + numFramesInCurrentSeries / self.frameRate
-                        numFramesInCurrentVideo = 0
 
                         if videoFileInterface is not None:
                             if self.verbose >= 2: self.log('Closing pre-existing video file interface.')
