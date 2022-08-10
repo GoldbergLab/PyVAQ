@@ -153,21 +153,6 @@ def format_diff(diff):
     # Diff is a list of the form output by pympler.summary.diff()
     output = '\n'.join(str(d) for d in sorted(diff, key=lambda dd:-dd[2]))
 
-def config_descendants(widget, ignoreTclErrors=True, **params):
-    # Configure a tkinter widget as well as all its descendants
-    # If the attempt to config raises a TclError, it may be ignored by setting
-    #   ignoreTclErrors to True
-    try:
-        widget.config(**params)
-    except tk.TclError as e:
-        if not ignoreTclErrors:
-            raise e
-
-    for child in widget.winfo_children():
-        if child is not widget:
-            config_descendants(child, ignoreTclErrors=ignoreTclErrors, **params)
-
-
 def slugify(value, allow_unicode=False):
     """
     Convert to ASCII if 'allow_unicode' is False. Convert spaces to hyphens.
@@ -1831,8 +1816,8 @@ him know. Otherwise, I had nothing to do with it.
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.triggerModeRadioButtons[mode].config(state=tk.DISABLED)
-            config_descendants(self.acquisitionParametersFrame, state=tk.DISABLED)
         elif metaState == 'acquiring':
+            self.acquisitionParametersFrame.disable()
             # Child processes are either in initialized state, or are actively acquiring
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.DISABLED)
@@ -1841,8 +1826,8 @@ him know. Otherwise, I had nothing to do with it.
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.shutDownAcquisitionButton[mode].config(state=tk.NORMAL)
-            config_descendants(self.acquisitionParametersFrame, state=tk.DISABLED)
         elif metaState == 'halted':
+            self.acquisitionParametersFrame.disable()
             # Child processes are running, but in stopped state
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.NORMAL)
@@ -1851,8 +1836,8 @@ him know. Otherwise, I had nothing to do with it.
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.triggerModeRadioButtons[mode].config(state=tk.NORMAL)
-            config_descendants(self.acquisitionParametersFrame, state=tk.NORMAL)
         elif metaState == 'dead':
+            self.acquisitionParametersFrame.enable()
             # Child processes are not running, or do not exist
             self.selectAcquisitionHardwareButton.config(state=tk.NORMAL)
             self.initializeAcquisitionButton.config(state=tk.NORMAL)
@@ -1861,8 +1846,8 @@ him know. Otherwise, I had nothing to do with it.
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.triggerModeRadioButtons[mode].config(state=tk.NORMAL)
-            config_descendants(self.acquisitionParametersFrame, state=tk.NORMAL)
         elif metaState == 'error':
+            self.acquisitionParametersFrame.enable()
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.DISABLED)
             self.haltAcquisitionButton.config(state=tk.NORMAL)
@@ -1870,8 +1855,8 @@ him know. Otherwise, I had nothing to do with it.
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.triggerModeRadioButtons[mode].config(state=tk.DISABLED)
-            config_descendants(self.acquisitionParametersFrame, state=tk.DISABLED)
         elif metaState == 'indeterminate':
+            self.acquisitionParametersFrame.disable()
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.DISABLED)
             self.haltAcquisitionButton.config(state=tk.NORMAL)
@@ -1879,7 +1864,7 @@ him know. Otherwise, I had nothing to do with it.
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.triggerModeRadioButtons[mode].config(state=tk.DISABLED)
-            config_descendants(self.acquisitionParametersFrame, state=tk.DISABLED)
+            self.acquisitionParametersFrame.disable()
         else:
             self.selectAcquisitionHardwareButton.config(state=tk.NORMAL)
             self.initializeAcquisitionButton.config(state=tk.NORMAL)
@@ -1888,7 +1873,7 @@ him know. Otherwise, I had nothing to do with it.
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.triggerModeRadioButtons[mode].config(state=tk.NORMAL)
-            config_descendants(self.acquisitionParametersFrame, state=tk.NORMAL)
+            self.acquisitionParametersFrame.enable()
 
     def initializeAcquisition(self):
         if self.acquisitionActive():

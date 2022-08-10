@@ -1,6 +1,20 @@
 import tkinter as tk
 import tkinter.ttk as ttk
 
+def config_descendants(widget, ignoreTclErrors=True, **params):
+    # Configure a tkinter widget as well as all its descendants
+    # If the attempt to config raises a TclError, it may be ignored by setting
+    #   ignoreTclErrors to True
+    try:
+        widget.config(**params)
+    except tk.TclError as e:
+        if not ignoreTclErrors:
+            raise e
+
+    for child in widget.winfo_children():
+        if child is not widget:
+            config_descendants(child, ignoreTclErrors=ignoreTclErrors, **params)
+
 class CollapsableFrame(tk.Frame):
     def __init__(self, parent, *args, collapseSymbol='/\\', collapseText=None,
         expandSymbol='\\/', expandText=None, collapseFunction=None,
@@ -76,7 +90,6 @@ class CollapsableFrame(tk.Frame):
         self.stateChangeButton['text'] = text
         self.stateChangeButton['command'] = fcn
 
-
     def isCollapsed(self):
         # Return whether frame is in collapsed or expanded state
         return self._isCollapsed
@@ -102,6 +115,14 @@ class CollapsableFrame(tk.Frame):
         # If present, run user-supplied expand callback
         if self.expandFunction is not None:
             self.expandFunction(self)
+
+    def disable(self):
+        # Disable all child widgets within frame, without disabling collapse button
+        config_descendants(self, ignoreTclErrors=True, state=tk.DISABLED)
+
+    def enable(self):
+        # Enable all child widgets within frame
+        config_descendants(self, ignoreTclErrors=True, state=tk.NORMAL)
 
     def after(self, *args, collapsableInner=False, **kwargs):
         if collapsableInner:
