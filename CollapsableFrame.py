@@ -18,7 +18,8 @@ def config_descendants(widget, ignoreTclErrors=True, **params):
 class CollapsableFrame(tk.Frame):
     def __init__(self, parent, *args, collapseSymbol='/\\', collapseText=None,
         expandSymbol='\\/', expandText=None, collapseFunction=None,
-        expandFunction=None, collapsed=True, **kwargs):
+        expandFunction=None, collapsed=True, padx=0, pady=0, ipadx=0,
+        ipady=0, **kwargs):
         # CollapsableFrame: A class that provides a "collapsable" frame, meaning
         #   a Tkinter frame that can be "collapsed" such that all its children
         #   are hidden and the frame becomes shorted, and "expanded" again.
@@ -43,6 +44,12 @@ class CollapsableFrame(tk.Frame):
         self.parent = parent
         self.outerFrame = tk.Frame(self.parent, *args, **kwargs)
         super().__init__(self.outerFrame)
+
+        # Store padding for inner frame
+        self.padx = padx
+        self.pady = pady
+        self.ipadx = ipadx
+        self.ipady = ipady
 
         # Store user-supplied collapse/expand callbacks
         self.collapseFunction = collapseFunction
@@ -69,16 +76,40 @@ class CollapsableFrame(tk.Frame):
 
         # Create collapse/expand button
         self.stateChangeButton = tk.Button(self.outerFrame, relief=tk.FLAT, pady=-2)
-        self.updateStateChangeButton()
 
         # Lay out widgets
-        self.stateChangeButton.grid(row=0, column=0, sticky=tk.NW)
-        self.grid(row=1, column=0, sticky=tk.NSEW, collapsableInner=True)
+        self.updateComponentDisplay()
 
-        if collapsed:
+    def updateComponentDisplay(self):
+        self.updateStateChangeButton()
+        self.stateChangeButton.grid(row=0, column=0, sticky=tk.NW)
+        self.grid(row=1, column=0, sticky=tk.NSEW,
+                  padx=self.padx, pady=self.pady,
+                  ipadx=self.ipadx, ipady=self.ipady,
+                  collapsableInner=True)
+        if self.isCollapsed():
             self.collapse()
         else:
             self.expand()
+
+    def setPadding(self, padx=None, pady=None, ipadx=None, ipady=None):
+        if padx is not None:
+            self.padx = padx
+        if pady is not None:
+            self.pady = pady
+        if ipadx is not None:
+            self.ipadx = ipadx
+        if ipady is not None:
+            self.ipady = ipady
+
+    def setPadx(self, padx):
+        self.padx = padx
+    def setPady(self, pady):
+        self.pady = pady
+    def setIpadx(self, ipadx):
+        self.ipadx = ipadx
+    def setIpady(self, ipady):
+        self.ipady = ipady
 
     def updateStateChangeButton(self):
         if self.isCollapsed():
