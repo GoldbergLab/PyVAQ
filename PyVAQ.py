@@ -173,7 +173,8 @@ def getSharedString(sharedString, block=False):
     L = sharedString.get_lock()
     locked = L.acquire(block=block)
     if locked:
-        value = str.strip(sharedString[:])
+        # Strip off spaces and null bytes
+        value = str.rstrip(sharedString[:], u' \x00')
         L.release()
     else:
         value = None
