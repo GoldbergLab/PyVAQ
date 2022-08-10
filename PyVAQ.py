@@ -2618,14 +2618,14 @@ him know. Otherwise, I had nothing to do with it.
         # self.controlFrame.rowconfigure(0, weight=1)
         # self.controlFrame.rowconfigure(1, weight=1)
 
-        self.statusFrame.grid(row=0, column=0, stick=tk.NSEW)
-        self.acquisitionControlFrame.grid(row=1, column=0, sticky=tk.NSEW)
+        self.statusFrame.grid(               row=0, column=0, stick=tk.NSEW)
+        self.acquisitionControlFrame.grid(   row=1, column=0, sticky=tk.NSEW)
         self.acquisitionParametersFrame.grid(row=2, column=0, sticky=tk.NSEW)
-        self.acquisitionControlFrame.grid(row=3, column=0, sticky=tk.NSEW)
-        self.mergeFrame.grid(row=4, column=0, sticky=tk.NSEW)
-        self.fileSettingsFrame.grid(row=5, column=0, sticky=tk.NSEW)
-        self.scheduleFrame.grid(row=6, column=0, sticky=tk.NSEW)
-        self.triggerFrame.grid(row=7, column=0, sticky=tk.NSEW)
+        self.acquisitionControlFrame.grid(   row=3, column=0, sticky=tk.NSEW)
+        self.mergeFrame.grid(                row=4, column=0, sticky=tk.NSEW)
+        self.fileSettingsFrame.grid(         row=5, column=0, sticky=tk.NSEW)
+        self.scheduleFrame.grid(             row=6, column=0, sticky=tk.NSEW)
+        self.triggerFrame.grid(              row=7, column=0, sticky=tk.NSEW)
 
         #### Children of self.statusFrame
         self.childStatusText.grid()
@@ -2637,53 +2637,53 @@ him know. Otherwise, I had nothing to do with it.
 
         #### Children of self.acquisitionControlFrame
         self.initializeAcquisitionButton.grid(row=0, column=0, sticky=tk.NSEW)
-        self.haltAcquisitionButton.grid(row=1, column=0, sticky=tk.NSEW)
-        self.restartAcquisitionButton.grid(row=2, column=0, sticky=tk.NSEW)
-        self.shutDownAcquisitionButton.grid(row=3, column=0, sticky=tk.NSEW)
+        self.haltAcquisitionButton.grid(      row=0, column=1, sticky=tk.NSEW)
+        self.restartAcquisitionButton.grid(   row=0, column=2, sticky=tk.NSEW)
+        self.shutDownAcquisitionButton.grid(  row=0, column=3, sticky=tk.NSEW)
 
         #### Children of self.acquisitionParametersFrame
-        self.audioFrequencyFrame.grid(row=1, column=0, sticky=tk.EW)
+        self.audioFrequencyFrame.grid(              row=1, column=0, sticky=tk.EW)
         self.audioFrequencyEntry.grid()
-        self.videoFrequencyFrame.grid(row=1, column=1, sticky=tk.EW)
+        self.videoFrequencyFrame.grid(              row=1, column=1, sticky=tk.EW)
         self.videoFrequencyEntry.grid()
-        self.videoExposureTimeFrame.grid(row=1, column=2, sticky=tk.EW)
+        self.videoExposureTimeFrame.grid(           row=1, column=2, sticky=tk.EW)
         self.videoExposureTimeEntry.grid()
-        self.preTriggerTimeFrame.grid(row=2, column=0, sticky=tk.EW)
+        self.preTriggerTimeFrame.grid(              row=2, column=0, sticky=tk.EW)
         self.preTriggerTimeEntry.grid()
-        self.recordTimeFrame.grid(row=2, column=1, sticky=tk.EW)
+        self.recordTimeFrame.grid(                  row=2, column=1, sticky=tk.EW)
         self.recordTimeEntry.grid()
-        self.gainFrame.grid(row=2, column=2, sticky=tk.EW)
+        self.gainFrame.grid(                        row=2, column=2, sticky=tk.EW)
         self.gainEntry.grid()
-        self.selectAcquisitionHardwareButton.grid(row=3, column=0, columnspan=3, sticky=tk.NSEW)
-        self.acquisitionHardwareText.grid(row=4, column=0, columnspan=3)
+        self.selectAcquisitionHardwareButton.grid(  row=3, column=0, columnspan=3, sticky=tk.NSEW)
+        self.acquisitionHardwareText.grid(          row=4, column=0, columnspan=3)
 
         #### Children of self.mergeFrame
-        self.mergeFilesCheckbutton.grid(row=1, column=0, sticky=tk.NW)
-        self.deleteMergedFilesFrame.grid(row=2, column=0, sticky=tk.NW)
-        self.mergeCompressionFrame.grid(row=2, column=1, sticky=tk.NW)
+        self.mergeFilesCheckbutton.grid(            row=1, column=0, sticky=tk.NW)
+        self.deleteMergedFilesFrame.grid(           row=2, column=0, sticky=tk.NW)
+        self.mergeCompressionFrame.grid(            row=2, column=1, sticky=tk.NW)
         self.mergeCompression.grid()
         self.deleteMergedAudioFilesCheckbutton.grid(row=0, column=0, sticky=tk.NW)
         self.deleteMergedVideoFilesCheckbutton.grid(row=0, column=1, sticky=tk.NW)
-        self.montageMergeCheckbutton.grid(row=3, column=0, sticky=tk.NW)
+        self.montageMergeCheckbutton.grid(          row=3, column=0, sticky=tk.NW)
 
-        self.mergeFileWidget.grid(row=4, column=0, columnspan=2)
+        self.mergeFileWidget.grid(                  row=4, column=0, columnspan=2)
 
         #### Children of self.fileSettingsFrame
-        self.daySubfoldersCheckbutton.grid(row=0, column=0)
-        self.maxGPUVencFrame.grid(row=0, column=1)
+        self.daySubfoldersCheckbutton.grid( row=0, column=0)
+        self.maxGPUVencFrame.grid(          row=0, column=1)
         self.maxGPUVEncEntry.grid()
 
         #### Children of self.scheduleFrame
-        self.scheduleEnabledCheckbutton.grid(row=0, column=0, sticky=tk.NW)
-        self.scheduleStartTimeEntry.grid(row=1, column=0, sticky=tk.NW)
-        self.scheduleStopTimeEntry.grid(row=2, column=0, sticky=tk.NW)
+        self.scheduleEnabledCheckbutton.grid(   row=0, column=0, sticky=tk.NW)
+        self.scheduleStartTimeEntry.grid(       row=1, column=0, sticky=tk.NW)
+        self.scheduleStopTimeEntry.grid(        row=2, column=0, sticky=tk.NW)
 
         #### Children of self.triggerFrame
-        self.triggerModeChooserFrame.grid(row=0, column=0, sticky=tk.NW)
-        self.triggerModeLabel.grid(row=0, column=0)
+        self.triggerModeChooserFrame.grid(          row=0, column=0, sticky=tk.NW)
+        self.triggerModeLabel.grid(                 row=0, column=0)
         for k, mode in enumerate(self.triggerModes):
             self.triggerModeRadioButtons[mode].grid(row=0, column=k+1)
-        self.triggerControlTabs.grid(row=1, column=0)
+        self.triggerControlTabs.grid(               row=1, column=0)
         # if mode == self.triggerModeVar.get():
         #     self.triggerModeControlGroupFrames[mode].grid(row=1, column=0)
         # else:
