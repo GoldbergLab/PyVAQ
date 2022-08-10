@@ -324,7 +324,6 @@ class PyVAQ:
         self.acquisitionControlFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Control", expandText="Acquisition Control", borderwidth=3, relief=tk.SUNKEN)
         # self.acquisitionFrame = ttk.LabelFrame(self.controlFrame, text="Acquisition")
 
-        self.selectAcquisitionHardwareButton =  ttk.Button(self.acquisitionControlFrame, text="Select audio/video inputs", command=self.selectInputs)
         self.initializeAcquisitionButton =      ttk.Button(self.acquisitionControlFrame, text="Initialize acquisition", command=self.initializeAcquisition)
         self.haltAcquisitionButton =            ttk.Button(self.acquisitionControlFrame, text='Halt acquisition', command=self.haltAcquisition)
         self.restartAcquisitionButton =         ttk.Button(self.acquisitionControlFrame, text='Restart acquisition', command=self.restartAcquisition)
@@ -357,6 +356,9 @@ class PyVAQ:
         self.recordTimeFrame =      ttk.LabelFrame(self.acquisitionParametersFrame, text="Record time (s)", style='SingleContainer.TLabelframe')
         self.recordTimeVar =        tk.StringVar(); self.recordTimeVar.set("10.0")
         self.recordTimeEntry =      ttk.Entry(self.recordTimeFrame, width=14, textvariable=self.recordTimeVar)
+
+        self.selectAcquisitionHardwareButton =  ttk.Button(self.acquisitionParametersFrame, text="Select audio/video inputs", command=self.selectInputs)
+        self.acquisitionHardwareText = tk.Text(self.acquisitionParametersFrame)
 
         self.chunkSizeVar =         tk.StringVar(); self.chunkSizeVar.set(1000)
 
@@ -610,6 +612,8 @@ class PyVAQ:
 
         self.setupInputMonitoringWidgets()
 
+        self.updateHardwareInputDisplay()
+
         self.update()
         # Start automatic updating of video and audio monitors
         self.audioMonitorUpdateJob = None
@@ -622,6 +626,7 @@ class PyVAQ:
             self.autoUpdateAudioAnalysisMonitors()
 
         self.updateStateDisplayJob = None
+        self.metaState = None
         self.updateStateDisplay()
 
         self.master.update_idletasks()
@@ -938,6 +943,9 @@ him know. Otherwise, I had nothing to do with it.
                 # Create GUI elements for monitoring the chosen inputs
                 self.setupInputMonitoringWidgets()
 
+                # Update display text
+                self.updateHardwareInputDisplay()
+
                 # Restart child processes with new acquisition values
                 self.createChildProcesses()
                 if 'Start acquisition immediately' in choices and choices['Start acquisition immediately'] == 'Yes':
@@ -950,6 +958,36 @@ him know. Otherwise, I had nothing to do with it.
             showinfo('No inputs', 'No compatible audio/video inputs found. Please connect at least one USB3 vision camera for video input and/or a NI USB DAQ for audio input and synchronization.')
 
         self.endLog(inspect.currentframe().f_code.co_name)
+
+    def updateHardwareInputDisplay(self):
+        lines = []
+
+        p = self.getParams(
+            "audioDAQChannels",
+            "camSerials",
+            "audioSyncTerminal",
+            "videoSyncTerminal",
+            "audioSyncSource",
+            "videoSyncSource",
+            "acquisitionStartTriggerSource",
+            "audioChannelConfiguration"
+            )
+
+        lines.extend([
+            'Acquisition hardware selections:',
+            '  Audio DAQ channels:   {audioDAQChannels}'.format(audioDAQChannels=', '.join(p['audioDAQChannels'])),
+            '  Cameras:              {camSerials}'.format(camSerials=', '.join(p['camSerials'])),
+            '  Audio sync terminal:  {audioSyncTerminal}'.format(audioSyncTerminal=p['audioSyncTerminal']),
+            '  Video sync terminal:  {videoSyncTerminal}'.format(videoSyncTerminal=p['videoSyncTerminal']),
+            '  Audio sync source:    {audioSyncSource}'.format(audioSyncSource=p['audioSyncSource']),
+            '  Video sync source:    {videoSyncSource}'.format(videoSyncSource=p['videoSyncSource']),
+            '  Start trigger source: {acquisitionStartTriggerSource}'.format(acquisitionStartTriggerSource=p['acquisitionStartTriggerSource']),
+            '  Audio channel config: {audioChannelConfiguration}'.format(audioChannelConfiguration=p['audioChannelConfiguration'])
+        ])
+
+        self.acquisitionHardwareText.delete('0.0', tk.END)
+        self.acquisitionHardwareText['height'] = len(lines)
+        self.acquisitionHardwareText.insert('0.0', '\n'.join(lines))
 
     def setupInputMonitoringWidgets(self):
         # Set up widgets and other entities for specific selected audio and video inputs
@@ -1656,9 +1694,9 @@ him know. Otherwise, I had nothing to do with it.
         queueSizes = self.getQueueSizes(verbose=log)
         info = self.checkInfo(verbose=log)
 
-        metaState = self.checkAcquisitionState(states=states)
+        self.checkAcquisitionState(states=states)
 
-        self.reactToAcquisitionState(metaState)
+        self.reactToAcquisitionState()
 
         # Format: Each line is a list of text to include in that line, separated
         #   into chunks based on what tag to apply The last element in the list
@@ -1666,7 +1704,7 @@ him know. Otherwise, I had nothing to do with it.
 
         lines = []
         lines.append(
-                    'Overall state: {metaState}'.format(metaState=metaState)
+                    'Overall state: {metaState}'.format(metaState=self.metaState)
         )
         lines.append(
                     'VideoAcquirers' #[['VideoAcquirers:'], ['normal']]
@@ -1794,22 +1832,31 @@ him know. Otherwise, I had nothing to do with it.
         # print('numError = {numError}'.format(numError=numError))
 
         if numProcesses == 0:
-            metaState = 'dead'
+            self.metaState = 'dead'
         elif numError > 0:
-            metaState = 'error'
+            self.metaState = 'error'
         elif numInitializing == numProcesses:
-            metastate = 'initialized'
+            self.metastate = 'initialized'
         elif numAcquiresRunning > 0 and numAcquiresAcquiring == numAcquiresRunning:
-            metaState = 'acquiring'
+            self.metaState = 'acquiring'
         elif numStopped == numProcesses:
-            metaState = 'halted'
+            self.metaState = 'halted'
         else:
-            metaState = 'indeterminate'
+            self.metaState = 'indeterminate'
 
-        return metaState
+        return self.metaState
 
-    def reactToAcquisitionState(self, metaState):
-        if metaState == 'initialized':
+    def reactToAcquisitionState(self):
+        if self.metaState is None:
+            self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
+            self.initializeAcquisitionButton.config(state=tk.DISABLED)
+            self.haltAcquisitionButton.config(state=tk.DISABLED)
+            self.restartAcquisitionButton.config(state=tk.DISABLED)
+            self.shutDownAcquisitionButton.config(state=tk.DISABLED)
+            for mode in self.triggerModeRadioButtons:
+                self.triggerModeRadioButtons[mode].config(state=tk.DISABLED)
+            self.acquisitionParametersFrame.disable()
+        elif self.metaState == 'initialized':
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.DISABLED)
             self.haltAcquisitionButton.config(state=tk.NORMAL)
@@ -1817,8 +1864,8 @@ him know. Otherwise, I had nothing to do with it.
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.triggerModeRadioButtons[mode].config(state=tk.DISABLED)
-        elif metaState == 'acquiring':
             self.acquisitionParametersFrame.disable()
+        elif self.metaState == 'acquiring':
             # Child processes are either in initialized state, or are actively acquiring
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.DISABLED)
@@ -1827,8 +1874,8 @@ him know. Otherwise, I had nothing to do with it.
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.shutDownAcquisitionButton[mode].config(state=tk.NORMAL)
-        elif metaState == 'halted':
             self.acquisitionParametersFrame.disable()
+        elif self.metaState == 'halted':
             # Child processes are running, but in stopped state
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.NORMAL)
@@ -1837,8 +1884,8 @@ him know. Otherwise, I had nothing to do with it.
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.triggerModeRadioButtons[mode].config(state=tk.NORMAL)
-        elif metaState == 'dead':
             self.acquisitionParametersFrame.enable()
+        elif self.metaState == 'dead':
             # Child processes are not running, or do not exist
             self.selectAcquisitionHardwareButton.config(state=tk.NORMAL)
             self.initializeAcquisitionButton.config(state=tk.NORMAL)
@@ -1847,8 +1894,8 @@ him know. Otherwise, I had nothing to do with it.
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.triggerModeRadioButtons[mode].config(state=tk.NORMAL)
-        elif metaState == 'error':
             self.acquisitionParametersFrame.enable()
+        elif self.metaState == 'error':
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.DISABLED)
             self.haltAcquisitionButton.config(state=tk.NORMAL)
@@ -1856,8 +1903,8 @@ him know. Otherwise, I had nothing to do with it.
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.triggerModeRadioButtons[mode].config(state=tk.DISABLED)
-        elif metaState == 'indeterminate':
             self.acquisitionParametersFrame.disable()
+        elif self.metaState == 'indeterminate':
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.DISABLED)
             self.haltAcquisitionButton.config(state=tk.NORMAL)
@@ -1946,6 +1993,7 @@ him know. Otherwise, I had nothing to do with it.
             self.log("Loaded settings:")
             self.log(params)
             self.setParams(**params)
+            self.updateHardwareInputDisplay()
         self.endLog(inspect.currentframe().f_code.co_name)
 
     def setAudioWriteEnable(self, newAudioWriteEnable, *args, updateTextField=True):
@@ -2588,11 +2636,10 @@ him know. Otherwise, I had nothing to do with it.
         #     self.acquisitionFrame.rowconfigure(r, weight=1)
 
         #### Children of self.acquisitionControlFrame
-        self.selectAcquisitionHardwareButton.grid(row=0, column=0, sticky=tk.NSEW)
-        self.initializeAcquisitionButton.grid(row=1, column=0, sticky=tk.NSEW)
-        self.haltAcquisitionButton.grid(row=2, column=0, sticky=tk.NSEW)
-        self.restartAcquisitionButton.grid(row=3, column=0, sticky=tk.NSEW)
-        self.shutDownAcquisitionButton.grid(row=4, column=0, sticky=tk.NSEW)
+        self.initializeAcquisitionButton.grid(row=0, column=0, sticky=tk.NSEW)
+        self.haltAcquisitionButton.grid(row=1, column=0, sticky=tk.NSEW)
+        self.restartAcquisitionButton.grid(row=2, column=0, sticky=tk.NSEW)
+        self.shutDownAcquisitionButton.grid(row=3, column=0, sticky=tk.NSEW)
 
         #### Children of self.acquisitionParametersFrame
         self.audioFrequencyFrame.grid(row=1, column=0, sticky=tk.EW)
@@ -2607,6 +2654,8 @@ him know. Otherwise, I had nothing to do with it.
         self.recordTimeEntry.grid()
         self.gainFrame.grid(row=2, column=2, sticky=tk.EW)
         self.gainEntry.grid()
+        self.selectAcquisitionHardwareButton.grid(row=3, column=0, columnspan=3, sticky=tk.NSEW)
+        self.acquisitionHardwareText.grid(row=4, column=0, columnspan=3)
 
         #### Children of self.mergeFrame
         self.mergeFilesCheckbutton.grid(row=1, column=0, sticky=tk.NW)
