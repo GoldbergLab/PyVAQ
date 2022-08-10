@@ -41,7 +41,7 @@ except ModuleNotFoundError:
 
 from MonitorWidgets import AudioMonitor, CameraMonitor
 from DockableFrame import Docker
-from StateMachineProcesses import StateMachineProcess, Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter
+from StateMachineProcesses import States, Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter
 import inspect
 import CollapsableFrame as cf
 import PySpinUtilities as psu
@@ -989,6 +989,15 @@ him know. Otherwise, I had nothing to do with it.
         self.acquisitionHardwareText['height'] = len(lines)
         self.acquisitionHardwareText.insert('0.0', '\n'.join(lines))
 
+    def destroyInputMonitoringWidgets(self):
+        oldCamSerials = self.cameraMonitors.keys()
+        for camSerial in oldCamSerials:
+            self.cameraMonitors[camSerial].grid_forget()
+            self.cameraMonitors[camSerial].destroy()
+            del self.cameraMonitors[camSerial]
+        self.audioMonitor
+
+
     def setupInputMonitoringWidgets(self):
         # Set up widgets and other entities for specific selected audio and video inputs
 
@@ -1008,7 +1017,7 @@ him know. Otherwise, I had nothing to do with it.
         videoDirectories = p["videoDirectories"]
 
         # Destroy old video stream monitoring widgets
-        oldCamSerials = self.cameraMonitors.keys()
+        oldCamSerials = list(self.cameraMonitors.keys())
         for camSerial in oldCamSerials:
             self.cameraMonitors[camSerial].grid_forget()
             self.cameraMonitors[camSerial].destroy()
@@ -1287,7 +1296,7 @@ him know. Otherwise, I had nothing to do with it.
 
     def startSyncProcess(self):
         # self.syncProcess.start()
-        self.sendMessage(self.syncProcess, (Synchronizer.START, None))
+        self.sendMessage(self.syncProcess, (Synchronizer.SYNC, None))
 
     def autoUpdateAudioAnalysisMonitors(self, beginAuto=True):
         if self.audioTriggerProcess is not None:
@@ -1650,7 +1659,7 @@ him know. Otherwise, I had nothing to do with it.
         if verbose:
             self.log("Check states...")
             for camSerial in stateNames['videoWriteStates']:
-                self.log("videoWriteStates[", camSerial, "]:", states['videoWriteStates'][camSerial])
+                self.log("videoWriteStates[", camSerial, "]:", stateNames['videoWriteStates'][camSerial])
             for camSerial in stateNames['videoAcquireStates']:
                 self.log("videoAcquireStates[", camSerial, "]:", stateNames['videoAcquireStates'][camSerial])
             self.log("audioWriteState:", stateNames['audioWriteState'])
@@ -1774,18 +1783,22 @@ him know. Otherwise, I had nothing to do with it.
 
         numProcesses = 0
         numInitializing = 0
-        numAcquiresRunning = 0
+        numAcquirersRunning = 0
         numAcquiresAcquiring = 0
+        numAuxiliariesRunning = 0
+        numWritersRunning = 0
         numStopped = 0
         numError = 0
         stateList = []
         isAcquirer = []
+        isWriter = []
+        isAux = []
         for camSerial in states['videoWriteStates']:
             state = states['videoWriteStates'][camSerial]
-            stateList.append(state); isAcquirer.append(False)
+            stateList.append(state); isAcquirer.append(False); isWriter.append(True);  isAux.append(False)
         for camSerial in states['videoAcquireStates']:
-            state = states['videoWriteStates'][camSerial]
-            stateList.append(state); isAcquirer.append(True)
+            state = states['videoAcquireStates'][camSerial]
+            stateList.append(state); isAcquirer.append(True);  isWriter.append(False); isAux.append(False)
 
         # print('audioAcquireState |', str(states['audioAcquireState']), '|')
         # print('audioWriteState |', str(states['audioWriteState']), '|')
@@ -1794,30 +1807,47 @@ him know. Otherwise, I had nothing to do with it.
         # print('audioTriggerState |', str(states['audioTriggerState']), '|')
         # print('continuousTriggerState |', str(states['continuousTriggerState']), '|')
 
-        stateList.append(states['audioAcquireState']);      isAcquirer.append(True)
-        stateList.append(states['audioWriteState']);        isAcquirer.append(False)
-        stateList.append(states['syncState']);              isAcquirer.append(False)
-        stateList.append(states['mergeState']);             isAcquirer.append(False)
-        stateList.append(states['audioTriggerState']);      isAcquirer.append(False)
-        stateList.append(states['continuousTriggerState']); isAcquirer.append(False)
+        stateList.append(states['audioAcquireState']);      isAcquirer.append(True);  isWriter.append(False); isAux.append(False)
+        stateList.append(states['audioWriteState']);        isAcquirer.append(False); isWriter.append(True);  isAux.append(False)
+        stateList.append(states['syncState']);              isAcquirer.append(False); isWriter.append(False); isAux.append(True)
+        stateList.append(states['mergeState']);             isAcquirer.append(False); isWriter.append(False); isAux.append(True)
+        stateList.append(states['audioTriggerState']);      isAcquirer.append(False); isWriter.append(False); isAux.append(True)
+        stateList.append(states['continuousTriggerState']); isAcquirer.append(False); isWriter.append(False); isAux.append(True)
+
+        allStates = {States.UNKNOWN:'UNKNOWN', States.STOPPED:'STOPPED',
+            States.INITIALIZING:'INITIALIZING', States.READY:'READY',
+            States.STOPPING:'STOPPING', States.ERROR:'ERROR',
+            States.EXITING:'EXITING', States.DEAD:'DEAD',
+            States.IGNORING:'IGNORING', States.MERGING:'MERGING',
+            States.SYNCHRONIZING:'SYNCHRONIZING', States.WAITING:'WAITING',
+            States.ANALYZING:'ANALYZING', States.AUDIOINIT:'AUDIOINIT',
+            States.WRITING:'WRITING', States.BUFFERING:'BUFFERING',
+            States.ACQUIRING:'ACQUIRING', States.VIDEOINIT:'VIDEOINIT',
+            States.TRIGGERING:'TRIGGERING', None:'None'}
 
         # Tally up the various types of states processes are in
-        for state, acquirer in zip(stateList, isAcquirer):
-            if state is not None and state != StateMachineProcess.EXITING:
+        for state, acquirer, aux, writer in zip(stateList, isAcquirer, isAux, isWriter):
+            # print('state = ', state, allStates[state])
+
+            if state is not None and state != States.EXITING:
                 numProcesses += 1
                 if acquirer:
-                    numAcquiresRunning += 1
-            if state == StateMachineProcess.INITIALIZING:
+                    numAcquirersRunning += 1
+                if aux:
+                    numAuxiliariesRunning += 1
+                if writer:
+                    numWritersRunning += 1
+            if state in [States.INITIALIZING, States.WAITING, States.READY]:
                 numInitializing += 1
-            if state in [VideoAcquirer.ACQUIRING, VideoAcquirer.ACQUIRE_READY, AudioAcquirer.ACQUIRING, AudioAcquirer.ACQUIRE_READY]:
+            if state in [States.ACQUIRING]:
                 numAcquiresAcquiring += 1
-            if state in [StateMachineProcess.STOPPED, StateMachineProcess.STOPPING]:
+            if state in [States.STOPPED, States.STOPPING]:
                 numStopped += 1
-            if state == StateMachineProcess.ERROR:
+            if state == States.ERROR:
                 numError += 1
 
         # List of metaStates
-        # 'initialized'   # All processes running (inc at least one acquire), but in initializing or similar state
+        # 'initialized'   # All processes running (inc at least one acquire), and acquisition/sync processes but in initializing or similar state
         # 'acquiring'     # All processes running (inc at least one acquire), and all in an acquire-ey state
         # 'halted'        # All processes running but in stopped state
         # 'dead'          # No processes running
@@ -1826,7 +1856,9 @@ him know. Otherwise, I had nothing to do with it.
 
         # print('numProcesses = {numProcesses}'.format(numProcesses=numProcesses))
         # print('numInitializing = {numInitializing}'.format(numInitializing=numInitializing))
-        # print('numAcquiresRunning = {numAcquiresRunning}'.format(numAcquiresRunning=numAcquiresRunning))
+        # print('numAcquirersRunning = {numAcquirersRunning}'.format(numAcquirersRunning=numAcquirersRunning))
+        # print('numAuxiliariesRunning = {numAuxiliariesRunning}'.format(numAuxiliariesRunning=numAuxiliariesRunning))
+        # print('numWritersRunning = {numWritersRunning}'.format(numWritersRunning=numWritersRunning))
         # print('numAcquiresAcquiring = {numAcquiresAcquiring}'.format(numAcquiresAcquiring=numAcquiresAcquiring))
         # print('numStopped = {numStopped}'.format(numStopped=numStopped))
         # print('numError = {numError}'.format(numError=numError))
@@ -1835,9 +1867,9 @@ him know. Otherwise, I had nothing to do with it.
             self.metaState = 'dead'
         elif numError > 0:
             self.metaState = 'error'
-        elif numInitializing == numProcesses:
-            self.metastate = 'initialized'
-        elif numAcquiresRunning > 0 and numAcquiresAcquiring == numAcquiresRunning:
+        elif numInitializing == (numAcquirersRunning + numAuxiliariesRunning):
+            self.metaState = 'initialized'
+        elif numAcquirersRunning > 0 and numAcquiresAcquiring == numAcquirersRunning:
             self.metaState = 'acquiring'
         elif numStopped == numProcesses:
             self.metaState = 'halted'
@@ -1873,7 +1905,7 @@ him know. Otherwise, I had nothing to do with it.
             self.restartAcquisitionButton.config(state=tk.NORMAL)
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
-                self.shutDownAcquisitionButton[mode].config(state=tk.NORMAL)
+                self.triggerModeRadioButtons[mode].config(state=tk.NORMAL)
             self.acquisitionParametersFrame.disable()
         elif self.metaState == 'halted':
             # Child processes are running, but in stopped state
@@ -1889,9 +1921,9 @@ him know. Otherwise, I had nothing to do with it.
             # Child processes are not running, or do not exist
             self.selectAcquisitionHardwareButton.config(state=tk.NORMAL)
             self.initializeAcquisitionButton.config(state=tk.NORMAL)
-            self.haltAcquisitionButton.config(state=tk.NORMAL)
-            self.restartAcquisitionButton.config(state=tk.NORMAL)
-            self.shutDownAcquisitionButton.config(state=tk.NORMAL)
+            self.haltAcquisitionButton.config(state=tk.DISABLED)
+            self.restartAcquisitionButton.config(state=tk.DISABLED)
+            self.shutDownAcquisitionButton.config(state=tk.DISABLED)
             for mode in self.triggerModeRadioButtons:
                 self.triggerModeRadioButtons[mode].config(state=tk.NORMAL)
             self.acquisitionParametersFrame.enable()
@@ -1929,13 +1961,16 @@ him know. Otherwise, I had nothing to do with it.
         self.initializeChildProcesses()
         # Schedule button update after 100 ms to give child processes a chance to react
         # self.master.after(100, self.updateAcquisitionButton)
-
     def haltAcquisition(self):
-        pass
+        self.haltChildProcesses()
     def restartAcquisition(self):
-        pass
+        self.haltChildProcesses()
+        self.setupInputMonitoringWidgets()
+        self.initializeChildProcesses()
+
     def shutDownAcquisition(self):
-        pass
+        self.haltChildProcesses()
+        self.destroyChildProcesses()
 
     # def updateAcquisitionButton(self):
     #     if self.acquisitionActive():
@@ -2176,23 +2211,23 @@ him know. Otherwise, I had nothing to do with it.
             states, stateNames = self.checkStates(verbose=False)
             if 'videoWriteStates' in states:
                 for camSerial in states['videoWriteStates']:
-                    if not (states['videoWriteStates'][camSerial] == VideoWriter.STOPPED):
+                    if not (states['videoWriteStates'][camSerial] == States.STOPPED):
                         break;
             if 'videoAcquireStates' in states:
                 for camSerial in states['videoAcquireStates']:
-                    if not (states['videoAcquireStates'][camSerial] == VideoAcquirer.STOPPED):
+                    if not (states['videoAcquireStates'][camSerial] == States.STOPPED):
                         break;
             if 'audioWriteState' in states:
-                if not (states['audioWriteState'] == VideoWriter.STOPPED):
+                if not (states['audioWriteState'] == States.STOPPED):
                     break;
             if 'audioAcquireState' in states:
-                if not (states['audioAcquireState'] == VideoAcquirer.STOPPED):
+                if not (states['audioAcquireState'] == States.STOPPED):
                     break;
             if 'syncState' in states:
-                if not (states['syncState'] == Synchronizer.STOPPED):
+                if not (states['syncState'] == States.STOPPED):
                     break;
             if 'mergeState' in states:
-                if not (states['mergeState'] == AVMerger.STOPPED):
+                if not (states['mergeState'] == States.STOPPED):
                     break;
             allStopped = True
 
@@ -2208,7 +2243,7 @@ him know. Otherwise, I had nothing to do with it.
         p = self.getParams()
 
         self.log('Number of synced processes = {k}'.format(k=p["numSyncedProcesses"]))
-        ready = mp.Barrier(p["numSyncedProcesses"])
+        ready = mp.Barrier(p["numSyncedProcesses"], timeout=0.5)
 
         if self.StdoutManager is None:
             self.StdoutManager = StdoutManager()
@@ -2394,7 +2429,9 @@ him know. Otherwise, I had nothing to do with it.
 
         # If we have an audioAcquireProcess, create (but don't start) an
         #   audioTriggerProcess to generate audio-based triggers
-        if self.audioAcquireProcess is not None:
+        if self.audioAcquireProcess is not None and \
+                self.getParams('triggerMode') == "Audio" and \
+                len(p["audioDAQChannels"]) > 0:
             self.audioTriggerProcess = AudioTriggerer(
                 audioQueue=self.audioAcquireProcess.analysisQueue,
                 audioFrequency=self.actualAudioFrequency,
@@ -2418,10 +2455,12 @@ him know. Otherwise, I had nothing to do with it.
                 )
 
         # Start all audio-related processes
-        if len(p["audioDAQChannels"]) > 0:
+        if self.audioTriggerProcess is not None:
             self.audioTriggerProcess.start()
             if self.getParams('triggerMode') == "Audio":
                 self.sendMessage(self.audioTriggerProcess, (AudioTriggerer.STARTANALYZE, None))
+
+        if len(p["audioDAQChannels"]) > 0:
             self.audioWriteProcess.start()
             self.audioAcquireProcess.start()
 
@@ -2432,10 +2471,7 @@ him know. Otherwise, I had nothing to do with it.
             self.videoAcquireProcesses[camSerial].start()
 
         # Start other processes
-        if self.syncProcess is not None:
-            # if p["triggerMode"] != "SimpleContinuous":
-            #     # In SimpleContinuous mode, we need to start the sync proces manually to give user time to change settings
-            self.syncProcess.start()
+        if self.syncProcess is not None: self.syncProcess.start()
         if self.mergeProcess is not None: self.mergeProcess.start()
         if self.continuousTriggerProcess is not None: self.continuousTriggerProcess.start()
 
@@ -2468,13 +2504,11 @@ him know. Otherwise, I had nothing to do with it.
             # Start VideoAcquirer
             self.sendMessage(self.videoAcquireProcesses[camSerial], (VideoAcquirer.START, None))
 
+        if len(p["audioDAQChannels"]) + len(p["camSerials"]) >= 1:
+            # Start sync process
+            self.sendMessage(self.syncProcess, (Synchronizer.START, None))
+
         if len(p["audioDAQChannels"]) + len(p["camSerials"]) >= 2:
-            if p["triggerMode"] != "SimpleContinuous":
-                # In SimpleContinuous mode, we need to start the sync proces manually to give user time to change settings
-
-                # Start sync process
-                self.sendMessage(self.syncProcess, (Synchronizer.START, None))
-
             # Start merge process
             self.updateAVMergerState()
 

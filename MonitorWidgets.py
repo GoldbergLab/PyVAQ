@@ -145,11 +145,15 @@ class AudioMonitor(ttk.LabelFrame):
         self.updateWidgets()
 
     def updateWidgets(self):
-        if self.channels != self.displayWidgets.keys():
+        oldChannels = list(self.displayWidgets.keys())
+        if not all(chan in oldChannels for chan in self.channels) or \
+           not all(chan in self.channels for chan in oldChannels):
             # We've got a new set of channels, delete old widgets, make new ones
             for channel in self.displayWidgets:
                 self.displayWidgets[channel]['displayFrame'].grid_forget()
-                self.displayWidgets[channel]['figureCanvas'].pack_forget()
+                self.displayWidgets[channel]['displayFrame'].destroy()
+                self.displayWidgets[channel]['figureCanvas'].get_tk_widget().pack_forget()
+                self.displayWidgets[channel]['figureCanvas'].get_tk_widget().destroy()
                 # Memory leak? MPL figure is probably still in memory...
                 self.data = None
             self.displayWidgets = {}
