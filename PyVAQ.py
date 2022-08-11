@@ -2371,6 +2371,12 @@ him know. Otherwise, I had nothing to do with it.
                 bufferSizeSeconds=p["bufferSizeSeconds"],
                 ready=ready,
                 stdoutQueue=self.StdoutManager.queue)
+
+            if camSerial in p['videoWriteEnable']:
+                videoWriteEnable = p['videoWriteEnable'][camSerial]
+            else:
+                videoWriteEnable = True
+
             if p["triggerMode"] == "SimpleContinuous":
                 gpuOk = (gpuCount < p['maxGPUVEnc'])
                 if p['maxGPUVEnc'] > 0 and not gpuOk:
@@ -2392,7 +2398,7 @@ him know. Otherwise, I had nothing to do with it.
                     scheduleEnabled=p['scheduleEnabled'],
                     scheduleStartTime=p['scheduleStart'],
                     scheduleStopTime=p['scheduleStop'],
-                    enableWrite=p['videoWriteEnable']
+                    enableWrite=videoWriteEnable
                     )
                 gpuCount += 1
             elif p["triggerMode"] == 'None':
