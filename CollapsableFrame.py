@@ -1,17 +1,23 @@
 import tkinter as tk
 import tkinter.ttk as ttk
+import tkinter.font as tkFont
 
-def config_descendants(widget, ignoreTclErrors=True, **params):
+def config_descendants(widget, ignoreTclErrors=True, collapsableInner=None, **params):
     # Configure a tkinter widget as well as all its descendants
     # If the attempt to config raises a TclError, it may be ignored by setting
     #   ignoreTclErrors to True
     try:
-        widget.config(**params)
+        if collapsableInner is not None:
+            children = widget.winfo_children(collapsableInner=collapsableInner)
+            widget.config(collapsableInner=collapsableInner, **params)
+        else:
+            children = widget.winfo_children()
+            widget.config(**params)
     except tk.TclError as e:
         if not ignoreTclErrors:
             raise e
 
-    for child in widget.winfo_children():
+    for child in children:
         if child is not widget:
             config_descendants(child, ignoreTclErrors=ignoreTclErrors, **params)
 
@@ -74,11 +80,31 @@ class CollapsableFrame(tk.Frame):
         # Set boolean isCollapsed flag to True
         self._isCollapsed = collapsed
 
+        # Should frame shrink horizontally when frames are collapsed?
+        self.horizontalShrink = True
+
         # Create collapse/expand button
-        self.stateChangeButton = tk.Button(self.outerFrame, relief=tk.FLAT, pady=-2)
+
+        defaultFont = tkFont.nametofont("TkDefaultFont")
+        labelFont = tkFont.Font(family=defaultFont['family'], size=defaultFont['size'], weight='bold')
+        self.stateChangeButton = tk.Button(self.outerFrame, relief=tk.FLAT, pady=-2, font=labelFont)
 
         # Lay out widgets
         self.updateComponentDisplay()
+
+    def setExpandText(self, text):
+        # Set the expand text of the stateChangeButton
+        self.expandText = text
+        self.updateStateChangeButton()
+    def setCollapseText(self, text):
+        # Set the collapse text of the stateChangeButton
+        self.collapseText = text
+        self.updateStateChangeButton()
+    def setText(self, text):
+        # Set the expand and collapse text of the stateChangeButton
+        self.expandText = text
+        self.collapseText = text
+        self.updateStateChangeButton()
 
     def updateComponentDisplay(self):
         self.updateStateChangeButton()
@@ -113,10 +139,10 @@ class CollapsableFrame(tk.Frame):
 
     def updateStateChangeButton(self):
         if self.isCollapsed():
-            text = '{s} {t} {s}'.format(s=self.expandSymbol, t=self.expandText)
+            text = '{s} {t}'.format(s=self.expandSymbol, t=self.expandText)
             fcn = self.expand
         else:
-            text = '{s} {t} {s}'.format(s=self.collapseSymbol, t=self.collapseText)
+            text = '{s} {t}'.format(s=self.collapseSymbol, t=self.collapseText)
             fcn = self.collapse
         self.stateChangeButton['text'] = text
         self.stateChangeButton['command'] = fcn
@@ -131,7 +157,13 @@ class CollapsableFrame(tk.Frame):
         # Update state change button
         self.updateStateChangeButton()
         # Hide frame
-        self.grid_forget(collapsableInner=True)
+        if self.horizontalShrink:
+            self.grid_forget(collapsableInner=True)
+        else:
+            self.grid_propagate(False, collapsableInner=True)
+            self.config(height=-1, collapsableInner=True)
+            w = self.winfo_width(collapsableInner=True)
+            self.config(width=w, collapsableInner=True)
         # If present, run user-supplied collapse callback
         if self.collapseFunction is not None:
             self.collapseFunction(self)
@@ -142,6 +174,8 @@ class CollapsableFrame(tk.Frame):
         # Update state change button
         self.updateStateChangeButton()
         # Show frame
+        if self.horizontalShrink:
+            self.grid_propagate(True, collapsableInner=True)
         self.grid(collapsableInner=True)
         # If present, run user-supplied expand callback
         if self.expandFunction is not None:
@@ -149,11 +183,11 @@ class CollapsableFrame(tk.Frame):
 
     def disable(self):
         # Disable all child widgets within frame, without disabling collapse button
-        config_descendants(self, ignoreTclErrors=True, state=tk.DISABLED)
+        config_descendants(self, ignoreTclErrors=True, collapsableInner=True, state=tk.DISABLED)
 
     def enable(self):
         # Enable all child widgets within frame
-        config_descendants(self, ignoreTclErrors=True, state=tk.NORMAL)
+        config_descendants(self, ignoreTclErrors=True, collapsableInner=True, state=tk.NORMAL)
 
     def after(self, *args, collapsableInner=False, **kwargs):
         if collapsableInner:

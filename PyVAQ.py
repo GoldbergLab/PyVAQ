@@ -200,7 +200,7 @@ class PyVAQ:
     def __init__(self, master, settingsFilePath=None):
         self.master = master
         self.master.resizable(height=False, width=False)  # Disallow resizing window
-        self.master.minsize(500, 0)
+        self.master.minsize(300, 0)
         self.customTitleBar = False
         if self.customTitleBar:
             self.master.overrideredirect(True) # Disable title bar
@@ -254,6 +254,11 @@ class PyVAQ:
         self.audioChannelConfiguration = GeneralVar(); self.audioChannelConfiguration.set(None)
 
         ########### GUI WIDGETS #####################
+
+        collapsableFrameStyle = {
+            'relief':tk.GROOVE,
+            'borderwidth':3
+            }
 
         self.mainFrame = ttk.Frame(self.master)
 
@@ -318,10 +323,11 @@ class PyVAQ:
 
         self.controlFrame = ttk.Frame(self.mainFrame)
 
-        self.statusFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Status", expandText="Status", borderwidth=3, relief=tk.SUNKEN)
+        self.statusFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Status", **collapsableFrameStyle)
         self.childStatusText = tk.Text(self.statusFrame, tabs=('7c',))
 
-        self.acquisitionControlFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Control", expandText="Acquisition Control", borderwidth=3, relief=tk.SUNKEN)
+        self.acquisitionControlFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Control", **collapsableFrameStyle)
+        self.acquisitionControlFrame.expand()
         # self.acquisitionFrame = ttk.LabelFrame(self.controlFrame, text="Acquisition")
 
         self.initializeAcquisitionButton =      ttk.Button(self.acquisitionControlFrame, text="Initialize acquisition", command=self.initializeAcquisition)
@@ -329,7 +335,7 @@ class PyVAQ:
         self.restartAcquisitionButton =         ttk.Button(self.acquisitionControlFrame, text='Restart acquisition', command=self.restartAcquisition)
         self.shutDownAcquisitionButton =        ttk.Button(self.acquisitionControlFrame, text='Shut down acquisition', command=self.shutDownAcquisition)
 
-        self.acquisitionParametersFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Parameters", expandText="Acquisition Parameters", borderwidth=3, relief=tk.SUNKEN)
+        self.acquisitionParametersFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Parameters", **collapsableFrameStyle)
 
         self.audioFrequencyFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Audio freq. (Hz)", style='SingleContainer.TLabelframe')
         self.audioFrequencyVar =    tk.StringVar(); self.audioFrequencyVar.set("44100")
@@ -362,7 +368,7 @@ class PyVAQ:
 
         self.chunkSizeVar =         tk.StringVar(); self.chunkSizeVar.set(1000)
 
-        self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", expandText="AV File Merging", borderwidth=3, relief=tk.SUNKEN)
+        self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", **collapsableFrameStyle)
         # self.mergeFrame = ttk.LabelFrame(self.acquisitionFrame, text="AV File merging")
 
         self.mergeFileWidget = FileWritingEntry(
@@ -398,8 +404,7 @@ class PyVAQ:
         self.mergeCompression = ttk.Combobox(self.mergeCompressionFrame, textvariable=self.mergeCompressionVar, values=AVMerger.COMPRESSION_OPTIONS, width=12)
         self.mergeCompressionVar.trace('w', lambda *args: self.changeAVMergerParams(compression=self.mergeCompressionVar.get()))
 
-        self.fileSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="File settings", expandText="File settings", borderwidth=3, relief=tk.SUNKEN)
-        # self.fileSettingsFrame = ttk.LabelFrame(self.acquisitionFrame, text="File settings")
+        self.fileSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="File writing settings", **collapsableFrameStyle)
 
         self.daySubfoldersVar = tk.BooleanVar(); self.daySubfoldersVar.set(True)
         self.daySubfoldersCheckbutton = ttk.Checkbutton(self.fileSettingsFrame, text="File in day subfolders", variable=self.daySubfoldersVar)
@@ -410,7 +415,7 @@ class PyVAQ:
         self.maxGPUVEncVar = tk.StringVar(); self.maxGPUVEncVar.set(str(DEFAULT_NUM_GPU_VENC_SESSIONS))
         self.maxGPUVEncEntry = ttk.Entry(self.maxGPUVencFrame, width=10, textvariable=self.maxGPUVEncVar)
 
-        self.scheduleFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Recording Schedule", expandText="Recording Schedule", borderwidth=3, relief=tk.SUNKEN)
+        self.scheduleFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Recording Schedule", **collapsableFrameStyle)
 
         self.scheduleEnabledVar = tk.BooleanVar(); self.scheduleEnabledVar.set(False)
         self.scheduleEnabledVar.trace('w', self.updateChildSchedulingState)
@@ -420,7 +425,7 @@ class PyVAQ:
         self.scheduleStopVar = TimeVar(); self.scheduleStopVar.trace('w', self.updateChildSchedulingState)
         self.scheduleStopTimeEntry = TimeEntry(self.scheduleFrame, text="Stop time")
 
-        self.triggerFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Triggering", expandText="Triggering", borderwidth=3, relief=tk.SUNKEN)
+        self.triggerFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Triggering", **collapsableFrameStyle)
         # self.triggerFrame = ttk.LabelFrame(self.controlFrame, text='Triggering')
 
         self.triggerModes = ['Manual', 'Audio', 'Continuous', 'SimpleContinuous', 'None']
@@ -1426,6 +1431,7 @@ him know. Otherwise, I had nothing to do with it.
                     if 'done' in metadata:
                         # Acquire process has indicated it's done sending images for now
                         self.cameraMonitors[camSerial].idle()
+                        pixelFormats[camSerial] = None
                     else:
                         self.cameraMonitors[camSerial].active()
                         pixelFormats[camSerial] = metadata['pixelFormat']
@@ -1712,6 +1718,11 @@ him know. Otherwise, I had nothing to do with it.
 
         self.reactToAcquisitionState()
 
+        if self.metaState is not None:
+            self.statusFrame.setText('Status: {metaState}'.format(metaState=self.metaState))
+        else:
+            self.statusFrame.setText('Status')
+
         # Format: Each line is a list of text to include in that line, separated
         #   into chunks based on what tag to apply The last element in the list
         #   is a list of tag names, one for each chunk in the line.
@@ -1740,18 +1751,18 @@ him know. Otherwise, I had nothing to do with it.
                     '       Info: {info}'.format(info=info['videoWriteInfo'][camSerial])
                 ])
         lines.extend([
-            'AudioAcquirer ({PID}):\t{state}'.format(PID=PIDs['audioAcquirePID'], state=stateNames['audioAcquireState']),
-            '   Audio Queue: {qsize}'.format(qsize=queueSizes['audioQueueSize']),
-            '   Analysis Queue: {qsize}'.format(qsize=queueSizes['audioAnalysisQueueSize']),
-            '   Monitor Queue: {qsize}'.format(qsize=queueSizes['audioMonitorQueueSize']),
-            '   Analysis Monitor Queue: {qsize}'.format(qsize=queueSizes['audioAnalysisMonitorQueueSize']),
-            'AudioWriter ({PID}):\t{state}'.format(PID=PIDs['audioWritePID'], state=stateNames['audioWriteState']),
-            '   Info: {info}'.format(info=info['audioWriteInfo']),
-            'Synchronizer ({PID}):\t{state}'.format(PID=PIDs['syncPID'], state=stateNames['syncState']),
-            'ContinuousTrigger ({PID}):\t{state}'.format(PID=PIDs['continuousTriggerPID'], state=stateNames['continuousTriggerState']),
-            'AudioTriggerer ({PID}):\t{state}'.format(PID=PIDs['audioTriggerPID'], state=stateNames['audioTriggerState']),
-            'AVMerger ({PID}):\t{state}'.format(PID=PIDs['mergePID'], state=stateNames['mergeState']),
-            '   Merge Queue: {qsize}'.format(qsize=queueSizes['mergeQueueSize'])
+                    'AudioAcquirer ({PID}):\t{state}'.format(PID=PIDs['audioAcquirePID'], state=stateNames['audioAcquireState']),
+                    '   Audio Queue: {qsize}'.format(qsize=queueSizes['audioQueueSize']),
+                    '   Analysis Queue: {qsize}'.format(qsize=queueSizes['audioAnalysisQueueSize']),
+                    '   Monitor Queue: {qsize}'.format(qsize=queueSizes['audioMonitorQueueSize']),
+                    '   Analysis Monitor Queue: {qsize}'.format(qsize=queueSizes['audioAnalysisMonitorQueueSize']),
+                    'AudioWriter ({PID}):\t{state}'.format(PID=PIDs['audioWritePID'], state=stateNames['audioWriteState']),
+                    '   Info: {info}'.format(info=info['audioWriteInfo']),
+                    'Synchronizer ({PID}):\t{state}'.format(PID=PIDs['syncPID'], state=stateNames['syncState']),
+                    'ContinuousTrigger ({PID}):\t{state}'.format(PID=PIDs['continuousTriggerPID'], state=stateNames['continuousTriggerState']),
+                    'AudioTriggerer ({PID}):\t{state}'.format(PID=PIDs['audioTriggerPID'], state=stateNames['audioTriggerState']),
+                    'AVMerger ({PID}):\t{state}'.format(PID=PIDs['mergePID'], state=stateNames['mergeState']),
+                    '   Merge Queue: {qsize}'.format(qsize=queueSizes['mergeQueueSize'])
         ])
 
         self.childStatusText.delete('1.0', tk.END)
@@ -2626,11 +2637,11 @@ him know. Otherwise, I had nothing to do with it.
         else:
             self.titleBarFrame.grid_forget()
             self.closeButton.grid_forget()
-        self.mainFrame.grid(row=1, column=1)
-        self.mainFrame.columnconfigure(0, weight=1)
-        self.mainFrame.columnconfigure(1, weight=1)
-        self.mainFrame.rowconfigure(0, weight=1)
-        self.mainFrame.rowconfigure(1, weight=1)
+        self.mainFrame.grid(row=1, column=1, sticky=tk.NSEW)
+        # self.mainFrame.columnconfigure(0, weight=1)
+        # self.mainFrame.columnconfigure(1, weight=1)
+        # self.mainFrame.rowconfigure(0, weight=1)
+        # self.mainFrame.rowconfigure(1, weight=1)
 
         p = self.getParams(
             'camSerials',
@@ -2657,20 +2668,19 @@ him know. Otherwise, I had nothing to do with it.
 #        self.audioMonitor.grid(row=1, column=0, sticky=tk.NSEW)
 
         self.controlFrame.grid(row=0, column=1, sticky=tk.NSEW)
-        self.controlFrame.columnconfigure(0, weight=1)
-        self.controlFrame.columnconfigure(1, weight=1)
+        # self.controlFrame.columnconfigure(0, weight=1)
+        # self.controlFrame.columnconfigure(1, weight=1)
         # self.controlFrame.columnconfigure(1, weight=1)
         # self.controlFrame.rowconfigure(0, weight=1)
         # self.controlFrame.rowconfigure(1, weight=1)
 
-        self.statusFrame.grid(               row=0, column=0, stick=tk.NSEW)
-        self.acquisitionControlFrame.grid(   row=1, column=0, sticky=tk.NSEW)
+        self.acquisitionControlFrame.grid(   row=0, column=0, sticky=tk.NSEW)
+        self.statusFrame.grid(               row=1, column=0, sticky=tk.NSEW)
         self.acquisitionParametersFrame.grid(row=2, column=0, sticky=tk.NSEW)
-        self.acquisitionControlFrame.grid(   row=3, column=0, sticky=tk.NSEW)
-        self.mergeFrame.grid(                row=4, column=0, sticky=tk.NSEW)
-        self.fileSettingsFrame.grid(         row=5, column=0, sticky=tk.NSEW)
-        self.scheduleFrame.grid(             row=6, column=0, sticky=tk.NSEW)
-        self.triggerFrame.grid(              row=7, column=0, sticky=tk.NSEW)
+        self.mergeFrame.grid(                row=3, column=0, sticky=tk.NSEW)
+        self.fileSettingsFrame.grid(         row=4, column=0, sticky=tk.NSEW)
+        self.scheduleFrame.grid(             row=5, column=0, sticky=tk.NSEW)
+        self.triggerFrame.grid(              row=6, column=0, sticky=tk.NSEW)
 
         #### Children of self.statusFrame
         self.childStatusText.grid()
