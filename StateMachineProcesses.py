@@ -3387,7 +3387,7 @@ class VideoAcquirer(StateMachineProcess):
 
                         # Get current camera pixel format
                         self.pixelFormat = psu.getCameraAttribute('PixelFormat', PySpin.CEnumerationPtr, nodemap=nodemap)[1]
-                        print('initializing - pixel format is:', self.pixelFormat)
+                        if self.verbose >= 2: print('Camera pixel format is:', self.pixelFormat)
 
                         monitorFramePeriod = 1.0/self.monitorMasterFrameRate
                         if self.verbose >= 1: self.log("Monitoring with period", monitorFramePeriod)
@@ -3569,7 +3569,7 @@ class VideoAcquirer(StateMachineProcess):
 
                     # Inform image monitors that we're done sending images for now
                     if self.monitorImageSender is not None:
-                        self.monitorImageSender.put(np.array([], dtype='uint8'), metadata={'done':True})
+                        self.monitorImageSender.put(None, metadata={'done':True})
 
                     # CHECK FOR MESSAGES
                     try:

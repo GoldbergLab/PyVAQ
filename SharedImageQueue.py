@@ -113,6 +113,10 @@ class SharedImageSender():
         #   image = cam.GetNextImage()
         if image is not None:
             imarray = image.GetNDArray()
+        else:
+            # Image is none - we're just passing metadata, but we have to
+            #   advance the image queue in parallel anyway.
+            imarray = None
         # Use the numpy array view of the shared memory buffer to copy the image data into shared memory
         with self.readLag.get_lock():
             readLag = self.readLag.value
@@ -123,8 +127,9 @@ class SharedImageSender():
                     print('{name}: Warning, queue full. Overflow allowed - continuing...'.format(name=self.name))
             self.readLag.value = readLag + 1
         nextID = self.getNextID()
-        with self.bufferLocks[nextID % self.maxBufferSize]:
-            np.copyto(self.npBuffers[nextID % self.maxBufferSize], imarray)
+        if imarray is not None:
+            with self.bufferLocks[nextID % self.maxBufferSize]:
+                np.copyto(self.npBuffers[nextID % self.maxBufferSize], imarray)
         if self.verbose >= 3: print("PUT! name={name} buffer #{ID:03d} readlag={rl}, metadata_qsize={mqs}".format(name=self.name, ID=nextID % self.maxBufferSize, rl=readLag+1, mqs=self.metadataQueue.qsize())) #, "data=", imarray[0:5, 0, 0])
         try:
             self.metadataQueue.put(metadata, block=False)
