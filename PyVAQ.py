@@ -431,8 +431,6 @@ class PyVAQ:
         self.triggerModes = ['Manual', 'Audio', 'Continuous', 'SimpleContinuous', 'None']
         self.triggerModeChooserFrame = ttk.Frame(self.triggerFrame)
         self.triggerModeVar = tk.StringVar(); self.triggerModeVar.set(self.triggerModes[0])
-        self.triggerModeVar.set('SimpleContinuous')
-        self.triggerModeVar.trace('w', self.updateTriggerMode)
         self.triggerModeLabel = ttk.Label(self.triggerModeChooserFrame, text='Trigger mode:')
         self.triggerModeRadioButtons = {}
         self.triggerModeControlGroupFrames = {}
@@ -442,6 +440,11 @@ class PyVAQ:
             self.triggerModeRadioButtons[mode] = ttk.Radiobutton(self.triggerModeChooserFrame, text=mode, variable=self.triggerModeVar, value=mode)
             self.triggerModeControlGroupFrames[mode] = ttk.Frame(self.triggerControlTabs)
             self.triggerControlTabs.add(self.triggerModeControlGroupFrames[mode], text=mode)
+
+        defaultMode = 'SimpleContinuous'
+        self.triggerControlTabs.select(self.triggerModeControlGroupFrames[defaultMode])
+        self.triggerModeVar.set(defaultMode)
+        self.triggerModeVar.trace('w', self.updateTriggerMode)
 
         # Manual controls
         self.manualWriteTriggerButton = ttk.Button(self.triggerModeControlGroupFrames['Manual'], text="Manual write trigger", command=self.writeButtonClick)
