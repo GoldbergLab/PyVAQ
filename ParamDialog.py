@@ -33,6 +33,18 @@ class Param():
         self.widgetFrame = None
         self.label = None
 
+    def height(self):
+        # Returns an approximate # of lines the param widget occupies. Note that
+        #   if createWidget is called with a maxHeight argument, then this
+        #   function will be incorrect. Use min(maxHeight+1, param.height()) to
+        #   get the actual height
+        if self.widgetType == Param.TEXT:
+            return 2
+        elif self.widgetType == Param.MONOCHOICE:
+            return len(self.options) + 1
+        elif self.widgetType == Param.MULTICHOICE:
+            return len(self.options) + 2   # Extra line for "Select all" option
+
     def createWidgets(self, parent, maxHeight=None):
         self.mainFrame = ttk.LabelFrame(parent, text=self.name)
         self.widgetFrame = ttk.Frame(self.mainFrame)
@@ -125,6 +137,7 @@ class ParamDialog(tk.Toplevel):
     HORIZONTAL='h'
     VERTICAL='v'
     BOX='b'
+    HYBRID='y'
 
     def __init__(self, parent, params=[], title=None, arrangement=HORIZONTAL, maxHeight=None):
         # params should be a list of Param objects
@@ -162,6 +175,7 @@ class ParamDialog(tk.Toplevel):
         # Create widgets for inputting parameters
         if self.arrangement == ParamDialog.BOX:
             nW, nH = getOptimalBoxGrid(len(self.params))
+        row = 0; col = 0; lineCount = 0
         for k, param in enumerate(self.params):
             param.createWidgets(self.paramFrame, maxHeight=self.maxHeight)
             if self.arrangement == ParamDialog.HORIZONTAL:
@@ -176,6 +190,13 @@ class ParamDialog(tk.Toplevel):
                 self.paramFrame.rowconfigure(row, weight=1)
                 self.paramFrame.columnconfigure(col, weight=1)
                 # raise NotImplementedError("Box arrangement has not been implemented yet.")
+            elif self.arrangement == ParamDialog.HYBRID:
+                paramHeight = min(self.maxHeight+1, param.height())
+                if row + paramHeight > self.maxHeight:
+                    row = 0
+                    col = col + 1
+                else:
+                    row = row + 1
             else:
                 raise NameError("Unknown arrangement type: "+str(self.arrangement))
             param.grid(row=row, column=col, sticky=tk.NSEW)
