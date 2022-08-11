@@ -1432,6 +1432,7 @@ him know. Otherwise, I had nothing to do with it.
                         # Acquire process has indicated it's done sending images for now
                         self.cameraMonitors[camSerial].idle()
                         pixelFormats[camSerial] = None
+                        availableImages[camSerial] = None
                     else:
                         self.cameraMonitors[camSerial].active()
                         pixelFormats[camSerial] = metadata['pixelFormat']
@@ -1442,7 +1443,8 @@ him know. Otherwise, I had nothing to do with it.
                 # pImage = availableImages[camSerial]
                 # imData = np.reshape(pImage.data, (pImage.height, pImage.width, 3))
                 # im = Image.fromarray(imData)
-                self.cameraMonitors[camSerial].updateImage(availableImages[camSerial], pixelFormat=pixelFormats[camSerial])
+                if availableImages[camSerial] is not None:
+                    self.cameraMonitors[camSerial].updateImage(availableImages[camSerial], pixelFormat=pixelFormats[camSerial])
 
         if beginAuto:
             period = int(round(1000.0/(2*self.monitorMasterFrameRate)))
