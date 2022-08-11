@@ -421,7 +421,7 @@ class StdoutManager(mp.Process):
                 pass
 
             for msgBundle in msgBundles:
-                if msgBundle == StdoutManager.EXIT:
+                if msgBundle == Messages.EXIT:
                     print("StdoutManager: Received stop signal!")
                     return 0
                 for args, kwargs in msgBundle:
@@ -457,6 +457,20 @@ class States:
     ACQUIRING =     700
     VIDEOINIT =     801
     TRIGGERING =    1000
+
+class Messages:
+    # Dummy class to hold all messages
+    START = 'msg_start'
+    STOP = 'msg_stop'
+    EXIT = 'msg_exit'
+    SETPARAMS = 'msg_setParams'
+    MERGE = 'msg_merge'
+    CHILL = 'msg_chill'
+    SYNC = 'msg_sync'
+    STARTANALYZE = "msg_startanalyze"
+    STOPANALYZE = "msg_stopanalyze"
+    TRIGGER = 'msg_trigger'
+    TAGTRIGGER = 'tag_trigger'      # Send a trigger that indicates the videos that overlap with that trigger should be tagged with trigger's tags
 
 class StateMachineProcess(mp.Process):
     # The base process that all other state machine processes inherit from.
@@ -556,21 +570,12 @@ class AVMerger(StateMachineProcess):
     # Include common states from parent class
     stateList.update(StateMachineProcess.stateList)
 
-    # Recognized message types:
-    START = 'msg_start'
-    MERGE = 'msg_merge'
-    STOP = 'msg_stop'
-    EXIT = 'msg_exit'
-    CHILL = 'msg_chill'
-    SETPARAMS = 'msg_setParams'
-
     # Stream types
     VIDEO = 'video'
     AUDIO = 'audio'
 
     NO_REENCODING = "No reencoding"
     COMPRESSION_OPTIONS = [NO_REENCODING]+[str(k) for k in range(52)]
-
 
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
@@ -636,7 +641,7 @@ class AVMerger(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True)
-                        if msg == AVMerger.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -644,17 +649,17 @@ class AVMerger(StateMachineProcess):
                         self.nextState = States.EXITING
                     elif msg == '':
                         self.nextState = self.state
-                    elif msg == AVMerger.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == AVMerger.CHILL:
+                    elif msg == Messages.CHILL:
                         self.ignoreFlag = True
                         self.nextState = States.INITIALIZING
-                    elif msg == AVMerger.START:
+                    elif msg == Messages.START:
                         self.ignoreFlag = False
                         self.nextState = States.INITIALIZING
-                    elif msg == AVMerger.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == AVMerger.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.EXITING
                     else:
@@ -671,23 +676,23 @@ class AVMerger(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AVMerger.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg == AVMerger.CHILL or self.ignoreFlag:
+                    elif msg == Messages.CHILL or self.ignoreFlag:
                         self.ignoreFlag = True
                         self.nextState = States.IGNORING
-                    elif msg == AVMerger.START:
+                    elif msg == Messages.START:
                         self.ignoreFlag = False
                         self.nextState = States.WAITING
                     elif msg in '':
                         self.nextState = States.WAITING
-                    elif msg == AVMerger.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == AVMerger.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -708,24 +713,24 @@ class AVMerger(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True, timeout=0.1)
-                        if msg == AVMerger.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if msg == AVMerger.MERGE and arg is not None:
+                    if msg == Messages.MERGE and arg is not None:
                         if self.verbose >= 1: self.log("Ignoring {streamType} file event for merging at {time}: {file}".format(file=arg['filePath'], streamType=arg['streamType'], time=arg['trigger'].triggerTime))
                         self.nextState = States.IGNORING
-                    elif msg == AVMerger.CHILL:
+                    elif msg == Messages.CHILL:
                         self.ignoreFlag = True
                         self.nextState = States.IGNORING
-                    elif msg == AVMerger.START:
+                    elif msg == Messages.START:
                         self.ignoreFlag = False
                         self.nextState = States.WAITING
                     elif msg == '':
                         self.nextState = States.IGNORING
-                    elif msg == AVMerger.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == AVMerger.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = AVMergers.STOPPING
                     else:
@@ -737,7 +742,7 @@ class AVMerger(StateMachineProcess):
                         raise IOError("Can't merge less than two files at a time!")
 
                     # Waiting for message of type:
-                    #   (AVMerger.MERGE, {'filePath':filePath,
+                    #   (Messages.MERGE, {'filePath':filePath,
                     #                     'streamType':streamType,
                     #                     'trigger':trigger,
                     #                     'streamID':streamID}
@@ -775,25 +780,25 @@ class AVMerger(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True, timeout=0.1)
-                        if msg == AVMerger.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if msg == AVMerger.MERGE and arg is not None:
+                    if msg == Messages.MERGE and arg is not None:
                         receivedFileEventList.append(arg)
                         if self.verbose >= 1: self.log("Received {streamType} file event for merging at {time}: {file}".format(file=arg['filePath'], streamType=arg['streamType'], time=arg['trigger'].triggerTime))
                         self.nextState = States.WAITING
-                    elif msg == AVMerger.CHILL or self.ignoreFlag:
+                    elif msg == Messages.CHILL or self.ignoreFlag:
                         self.ignoreFlag = True
                         self.nextState = States.IGNORING
                     elif len(groupedFileEventList) > 0:
                         # At least one group of unmerged matching files - go to merge
                         self.nextState = States.MERGING
-                    elif msg in ['', AVMerger.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = States.WAITING
-                    elif msg == AVMerger.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == AVMerger.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = AVMergers.STOPPING
                     else:
@@ -888,24 +893,24 @@ class AVMerger(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True, timeout=0.1)
-                        if msg == AVMerger.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg == AVMerger.MERGE:
+                    elif msg == Messages.MERGE:
                         if arg is not None:
                             receivedFileEventList.append(arg)
                         self.nextState = States.WAITING
-                    elif msg in ['', AVMerger.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = States.WAITING
-                    elif msg == AVMerger.CHILL:
+                    elif msg == Messages.CHILL:
                         self.ignoreFlag = True
                         self.nextState = States.IGNORING
-                    elif msg == AVMerger.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == AVMerger.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -917,7 +922,7 @@ class AVMerger(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AVMerger.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -925,11 +930,11 @@ class AVMerger(StateMachineProcess):
                         self.nextState = States.STOPPED
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == AVMerger.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
-                    elif msg == AVMerger.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == AVMerger.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPED
                     else:
@@ -948,7 +953,7 @@ class AVMerger(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AVMerger.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -964,9 +969,9 @@ class AVMerger(StateMachineProcess):
                             self.nextState = States.EXITING
                         else:
                             self.nextState = States.STOPPING
-                    elif msg == AVMerger.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == AVMerger.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         if self.lastState == States.STOPPING:
                             self.nextState = States.EXITING
@@ -1023,13 +1028,6 @@ class Synchronizer(StateMachineProcess):
     # Include common states from parent class
     stateList.update(StateMachineProcess.stateList)
 
-    # Recognized message types:
-    START = 'msg_start'
-    STOP = 'msg_stop'
-    EXIT = 'msg_exit'
-    SETPARAMS = 'msg_setParams'
-    SYNC = 'msg_sync'
-
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
@@ -1038,15 +1036,18 @@ class Synchronizer(StateMachineProcess):
     def __init__(self,
         actualVideoFrequency=None,          # A shared value for publishing the actual video frequencies obtained from DAQ
         actualAudioFrequency=None,          # A shared value for publishing the actual audio frequencies obtained from DAQ
-        requestedVideoFrequency=120,                     # The frequency in Hz of the video sync signal
-        requestedAudioFrequency=44100,                   # The frequency in Hz of the audio sync signal
-        videoSyncChannel=None,           # The counter channel on which to generate the video sync signal Dev3/ctr0
+        requestedVideoFrequency=120,        # The frequency in Hz of the video sync signal
+        requestedAudioFrequency=44100,      # The frequency in Hz of the audio sync signal
+        videoSyncChannel=None,              # The counter channel on which to generate the video sync signal Dev3/ctr0
         videoDutyCycle=0.5,
-        audioSyncChannel=None,           # The counter channel on which to generate the audio sync signal Dev3/ctr1
+        audioSyncChannel=None,              # The counter channel on which to generate the audio sync signal Dev3/ctr1
         audioDutyCycle=0.5,
-        startTriggerChannel=None,             # A digital channel on which to wait for a start trigger signal. If this is none, sync process starts ASAP.
-        startTime=None,                         # Shared value that is set when sync starts, used as start time by all processes (relevant for manual triggers)
-        ready=None,                             # Synchronization barrier to ensure everyone's ready before beginning
+        signalChannel=None,                 # A digital channel which can be used for various purposes, including hardware triggering sync pulse train start, and enabling/disabling writing.
+        startOnHWSignal=False,              # Should synchronizer pulses wait for a rising edge on the signal channel to start?
+        writeEnableOnHWSignal=False,        # Should Synchronizer signal Audio/Video writers to only write when signal channel is high?
+        writerMsgQueues=[],                 # List of writer queues to send write enable/disable messages if writeEnableOnHWSignal is True
+        startTime=None,                     # Shared value that is set when sync starts, used as start time by all processes (relevant for manual triggers)
+        ready=None,                         # Synchronization barrier to ensure everyone's ready before beginning
         **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
@@ -1060,7 +1061,10 @@ class Synchronizer(StateMachineProcess):
         self.audioSyncChannel = audioSyncChannel
         self.videoDutyCycle = videoDutyCycle
         self.audioDutyCycle = audioDutyCycle
-        self.startTriggerChannel = startTriggerChannel
+        self.signalChannel = signalChannel
+        self.startOnHWSignal = startOnHWSignal
+        self.writeEnableOnHWSignal = writeEnableOnHWSignal
+        self.writerMsgQueues = writerMsgQueues
         self.ready = ready
         self.errorMessages = []
 
@@ -1088,7 +1092,7 @@ class Synchronizer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True)
-                        if msg == Synchronizer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -1096,11 +1100,11 @@ class Synchronizer(StateMachineProcess):
                         self.nextState = States.EXITING
                     elif msg == '':
                         self.nextState = self.state
-                    elif msg == Synchronizer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == Synchronizer.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
-                    elif msg == Synchronizer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.EXITING
                     else:
@@ -1108,6 +1112,8 @@ class Synchronizer(StateMachineProcess):
 # Synchronizer: ******************* INITIALIZING *********************************
                 elif self.state == States.INITIALIZING:
                     # DO STUFF
+                    writeEnable = None
+                    lastWriteEnable = None
 
                     if self.ready.broken:
                         # Someone has already tried and failed to pass through the Barrier - reset it for everyone.
@@ -1116,14 +1122,14 @@ class Synchronizer(StateMachineProcess):
                     # Configure and generate synchronization signal
                     if self.audioSyncChannel is None and self.videoSyncChannel is None:
                         trigTask = None
-                        startTask = None
+                        signalTask = None
                         raise IOError("At least one audio or video sync channel must be specified.")
                     else:
                         trigTask = nidaqmx.Task()                       # Create task
-                        if self.startTriggerChannel is not None:
-                            startTask = nidaqmx.Task()
+                        if self.signalChannel is not None:
+                            signalTask = nidaqmx.Task()
                         else:
-                            startTask = None
+                            signalTask = None
 
                     if self.videoSyncChannel is not None:
                         trigTask.co_channels.add_co_pulse_chan_freq(
@@ -1145,9 +1151,9 @@ class Synchronizer(StateMachineProcess):
                             duty_cycle=self.audioDutyCycle)     # Prepare a counter output channel for the audio sync signal
                         if self.verbose >= 2:
                             self.log('Added audio sync channel to task')
-                    # if (self.startTriggerChannel is not None) and ((self.videoSyncChannel is not None) or (self.audioSyncChannel is not None)):
+                    # if (self.signalChannel is not None) and ((self.videoSyncChannel is not None) or (self.audioSyncChannel is not None)):
                     #     # Configure task to wait for a digital pulse on the specified channel.
-                    #     trigTask.triggers.arm_start_trigger.dig_edge_src=self.startTriggerChannel
+                    #     trigTask.triggers.arm_start_trigger.dig_edge_src=self.signalChannel
                     #     trigTask.triggers.arm_start_trigger.trig_type=TriggerType.DIGITAL_EDGE
                     #     trigTask.triggers.arm_start_trigger.dig_edge_edge=Edge.RISING
                     trigTask.timing.cfg_implicit_timing(sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS)
@@ -1160,20 +1166,20 @@ class Synchronizer(StateMachineProcess):
                         self.actualVideoFrequency.value = trigTask.co_channels['videoFrequency'].co_pulse_freq
                         if self.verbose > 0: self.log('Requested video frequency: ', self.videoFrequency, ' | actual video frequency: ', self.actualVideoFrequency.value);
 
-                    if startTask is not None:
+                    if signalTask is not None:
                         # Add dummy write channel to force execute to block until task gets start trigger
-#                        startTask.do_channels.add_do_chan(lines=self.startTriggerChannel)
-                        # startTask.timing.cfg_samp_clk_timing(rate=10000, sample_mode=nidaqmx.constants.AcquisitionType.FINITE, samps_per_chan=1)
+#                        signalTask.do_channels.add_do_chan(lines=self.signalChannel)
+                        # signalTask.timing.cfg_samp_clk_timing(rate=10000, sample_mode=nidaqmx.constants.AcquisitionType.FINITE, samps_per_chan=1)
                         # # Configure task to wait for a digital pulse on the specified channel.
-                        # startTask.triggers.arm_start_trigger.dig_edge_src=self.startTriggerChannel
-                        # startTask.triggers.arm_start_trigger.trig_type=TriggerType.DIGITAL_EDGE
-                        # startTask.triggers.arm_start_trigger.dig_edge_edge=Edge.RISING
-                        startReader = DigitalSingleChannelReader(startTask.in_stream)  # Set up an analog stream reader
-                        startTask.di_channels.add_di_chan(self.startTriggerChannel)
+                        # signalTask.triggers.arm_start_trigger.dig_edge_src=self.signalChannel
+                        # signalTask.triggers.arm_start_trigger.trig_type=TriggerType.DIGITAL_EDGE
+                        # signalTask.triggers.arm_start_trigger.dig_edge_edge=Edge.RISING
+                        signalReader = DigitalSingleChannelReader(signalTask.in_stream)  # Set up an analog stream reader
+                        signalTask.di_channels.add_di_chan(self.signalChannel)
                         if self.verbose >= 2:
                             self.log('Added digital trigger channel to start task')
 
-                        # startTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
+                        # signalTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
                         #     rate=1000,
                         #     active_edge=nidaqmx.constants.Edge.RISING,
                         #     sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
@@ -1182,20 +1188,20 @@ class Synchronizer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == Synchronizer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg in ['', Synchronizer.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = States.WAITING
-                    elif msg == Synchronizer.SYNC:
+                    elif msg == Messages.SYNC:
                         # Skip waiting state, go straight to READY
                         self.nextState = States.READY
-                    elif msg == Synchronizer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == Synchronizer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -1208,17 +1214,17 @@ class Synchronizer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == Synchronizer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if msg in ['', Synchronizer.START]:
+                    if msg in ['', Messages.START]:
                         self.nextState = States.WAITING
-                    elif msg == Synchronizer.SYNC:
+                    elif msg == Messages.SYNC:
                         self.nextState = States.READY
-                    elif msg == Synchronizer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == Synchronizer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -1240,12 +1246,13 @@ class Synchronizer(StateMachineProcess):
                         # To give audio and video processes a chance to get totally set up for acquiring, wait a second.
                         time.sleep(1)
 
-                        if startTask is not None:
-                            startTask.start()
-                            while not startReader.read_one_sample_one_line():
-                                pass
-                            if self.verbose >= 2:
-                                self.log("Got sync start trigger!")
+                        if signalTask is not None:
+                            signalTask.start()
+                            if self.startOnHWSignal:
+                                while not signalReader.read_one_sample_one_line():
+                                    time.sleep(0.1)
+                                if self.verbose >= 2:
+                                    self.log("Got sync start trigger!")
 
                         preTime = time.time_ns()
                         trigTask.start()
@@ -1253,8 +1260,6 @@ class Synchronizer(StateMachineProcess):
                         self.startTime.value = (preTime + postTime) / 2000000000
                         if self.verbose >= 1: self.log("Sync task started at {time} s".format(time=self.startTime.value))
                         if self.verbose >= 1: self.log("Sync task startup took {time} s".format(time=(postTime - preTime)/1000000000))
-                        if startTask is not None:
-                            startTask.stop()
                     except BrokenBarrierError:
                         passedBarrier = False
                         if self.verbose >= 2: self.log("No simultaneous start - retrying")
@@ -1263,17 +1268,17 @@ class Synchronizer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == Synchronizer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if not passedBarrier:
                         self.nextState = States.READY
-                    elif msg in ['', Synchronizer.START, Synchronizer.SYNC]:
+                    elif msg in ['', Messages.START, Messages.SYNC]:
                         self.nextState = States.SYNCHRONIZING
-                    elif msg == Synchronizer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == Synchronizer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -1285,20 +1290,28 @@ class Synchronizer(StateMachineProcess):
                     if trigTask.is_task_done():
                         raise RuntimeError('Warning, synchronizer trigger task stopped unexpectedly.')
 
+                    if self.writeEnableOnHWSignal and signalTask is not None:
+                        lastWriteEnable = writeEnable
+                        writeEnable = signalReader.read_one_sample_one_line()
+                        if writeEnable != lastWriteEnable:
+                            # Digital input has changed - notify writers to start/stop writing.
+                            for writerMsgQueue in writerMsgQueues:
+                                writerMsgQueue.put((Messages.SETPARAMS, {'enableWrite', writeEnable}))
+
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True, timeout=0.1)
-                        if msg == Synchronizer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg in ['', Synchronizer.START, Synchronizer.SYNC]:
+                    elif msg in ['', Messages.START, Messages.SYNC]:
                         self.nextState = self.state
-                    elif msg == Synchronizer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == Synchronizer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -1307,7 +1320,11 @@ class Synchronizer(StateMachineProcess):
                 elif self.state == States.STOPPING:
                     # DO STUFF
                     if trigTask is not None:
+                        trigTask.stop()
                         trigTask.close()
+                    if signalTask is not None:
+                        signalTask.stop()
+                        signalTask.close()
                     if self.actualAudioFrequency is not None:
                         self.actualAudioFrequency.value = -1
                     if self.actualVideoFrequency is not None:
@@ -1316,7 +1333,7 @@ class Synchronizer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == Synchronizer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -1324,11 +1341,11 @@ class Synchronizer(StateMachineProcess):
                         self.nextState = States.STOPPED
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == Synchronizer.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
-                    elif msg == Synchronizer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == Synchronizer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPED
                     else:
@@ -1347,7 +1364,7 @@ class Synchronizer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == Synchronizer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -1363,9 +1380,9 @@ class Synchronizer(StateMachineProcess):
                             self.nextState = States.EXITING
                         else:
                             self.nextState = States.STOPPING
-                    elif msg == Synchronizer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == Synchronizer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         if self.lastState == States.STOPPING:
                             self.nextState = States.EXITING
@@ -1417,14 +1434,6 @@ class AudioTriggerer(StateMachineProcess):
 
     # Include common states from parent class
     stateList.update(StateMachineProcess.stateList)
-
-    # Recognized message types:
-    START = 'msg_start'
-    STARTANALYZE = "msg_startanalyze"
-    STOPANALYZE = "msg_stopanalyze"
-    STOP = 'msg_stop'
-    EXIT = 'msg_exit'
-    SETPARAMS = 'msg_setParams'
 
     multiChannelBehaviors = ['OR', 'AND']
 
@@ -1568,20 +1577,20 @@ class AudioTriggerer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True)
-                        if msg == AudioTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if msg == AudioTriggerer.EXIT or self.exitFlag:
+                    if msg == Messages.EXIT or self.exitFlag:
                         self.exitFlag = True
                         self.nextState = States.EXITING
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == AudioTriggerer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == AudioTriggerer.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
-                    elif msg == AudioTriggerer.STARTANALYZE:
+                    elif msg == Messages.STARTANALYZE:
                         self.analyzeFlag = True
                         self.nextState = States.INITIALIZING
                     else:
@@ -1605,21 +1614,21 @@ class AudioTriggerer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if msg == AudioTriggerer.EXIT or self.exitFlag:
+                    if msg == Messages.EXIT or self.exitFlag:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
-                    elif msg == AudioTriggerer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg in ['', AudioTriggerer.START, AudioTriggerer.STOPANALYZE]:
+                    elif msg in ['', Messages.START, Messages.STOPANALYZE]:
                         if self.audioFrequency is None:
                             self.nextState = States.INITIALIZING
                         else:
                             self.nextState = States.WAITING
-                    elif msg == AudioTriggerer.STARTANALYZE or self.analyzeFlag:
+                    elif msg == Messages.STARTANALYZE or self.analyzeFlag:
                         self.nextState = States.ANALYZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -1637,18 +1646,18 @@ class AudioTriggerer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if msg == AudioTriggerer.STOP:
+                    if msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == AudioTriggerer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
-                    elif msg == AudioTriggerer.STARTANALYZE or self.analyzeFlag:
+                    elif msg == Messages.STARTANALYZE or self.analyzeFlag:
                         self.nextState = States.ANALYZING
-                    elif msg in ['', AudioTriggerer.STOPANALYZE, AudioTriggerer.START]:
+                    elif msg in ['', Messages.STOPANALYZE, Messages.START]:
                         self.nextState = States.WAITING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -1760,19 +1769,19 @@ class AudioTriggerer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
 #                    if self.verbose >= 3: self.log("|{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
-                    if msg == AudioTriggerer.EXIT or self.exitFlag:
+                    if msg == Messages.EXIT or self.exitFlag:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
-                    elif msg == AudioTriggerer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == AudioTriggerer.STOPANALYZE:
+                    elif msg == Messages.STOPANALYZE:
                         self.nextState = States.WAITING
-                    elif msg in ['', AudioTriggerer.STARTANALYZE, AudioTriggerer.START]:
+                    elif msg in ['', Messages.STARTANALYZE, Messages.START]:
                         self.nextState = self.state
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -1783,7 +1792,7 @@ class AudioTriggerer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -1791,12 +1800,12 @@ class AudioTriggerer(StateMachineProcess):
                         self.nextState = States.STOPPED
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == AudioTriggerer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == AudioTriggerer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPED
-                    elif msg == AudioTriggerer.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -1814,7 +1823,7 @@ class AudioTriggerer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -1830,9 +1839,9 @@ class AudioTriggerer(StateMachineProcess):
                             self.nextState = States.EXITING
                         else:
                             self.nextState = States.STOPPING
-                    elif msg == AudioTriggerer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == AudioTriggerer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         if self.lastState == States.STOPPING:
                             self.nextState = States.EXITING
@@ -1888,12 +1897,12 @@ class AudioTriggerer(StateMachineProcess):
 
     def sendTrigger(self, trigger):
         if self.writeTriggerEnabled:
-            self.audioMessageQueue.put((AudioWriter.TRIGGER, trigger))
+            self.audioMessageQueue.put((Messages.TRIGGER, trigger))
             for camSerial in self.videoMessageQueues:
-                self.videoMessageQueues[camSerial].put((VideoWriter.TRIGGER, trigger))
+                self.videoMessageQueues[camSerial].put((Messages.TRIGGER, trigger))
         if self.tagTriggerEnabled:
             for queue in self.taggerQueues:
-                queue.put((ContinuousTriggerer.TAGTRIGGER, trigger))
+                queue.put((Messages.TAGTRIGGER, trigger))
 
 class AudioAcquirer(StateMachineProcess):
     # Class for acquiring an audio signal (or any analog signal) at a rate that
@@ -1908,12 +1917,6 @@ class AudioAcquirer(StateMachineProcess):
 
     # Include common states from parent class
     stateList.update(StateMachineProcess.stateList)
-
-    # Recognized message types:
-    START = 'msg_start'
-    STOP = 'msg_stop'
-    EXIT = 'msg_exit'
-    SETPARAMS = 'msg_setParams'
 
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
@@ -1995,7 +1998,7 @@ class AudioAcquirer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True)
-                        if msg == AudioAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -2003,11 +2006,11 @@ class AudioAcquirer(StateMachineProcess):
                         self.nextState = States.EXITING
                     elif msg == '':
                         self.nextState = self.state
-                    elif msg == AudioAcquirer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == AudioAcquirer.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
-                    elif msg == AudioAcquirer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.EXITING
                     else:
@@ -2047,20 +2050,20 @@ class AudioAcquirer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg in ['', AudioAcquirer.START]:
+                    elif msg in ['', Messages.START]:
                         if self.audioFrequency is None:
                             self.nextState = States.INITIALIZING
                         else:
                             self.nextState = States.READY
-                    elif msg == AudioAcquirer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == AudioAcquirer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -2082,17 +2085,17 @@ class AudioAcquirer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if not passedBarrier:
                         self.nextState = States.READY
-                    elif msg in ['', AudioAcquirer.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = States.ACQUIRING
-                    elif msg == AudioAcquirer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == AudioAcquirer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -2144,17 +2147,17 @@ class AudioAcquirer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg in ['', AudioAcquirer.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = States.ACQUIRING
-                    elif msg == AudioAcquirer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == AudioAcquirer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -2168,7 +2171,7 @@ class AudioAcquirer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -2176,12 +2179,12 @@ class AudioAcquirer(StateMachineProcess):
                         self.nextState = States.STOPPED
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == AudioAcquirer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == AudioAcquirer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPED
-                    elif msg == AudioAcquirer.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -2199,7 +2202,7 @@ class AudioAcquirer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -2215,9 +2218,9 @@ class AudioAcquirer(StateMachineProcess):
                             self.nextState = States.EXITING
                         else:
                             self.nextState = States.STOPPING
-                    elif msg == AudioAcquirer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == AudioAcquirer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         if self.lastState == States.STOPPING:
                             self.nextState = States.EXITING
@@ -2268,12 +2271,6 @@ class SimpleAudioWriter(StateMachineProcess):
 
     # Include common states from parent class
     stateList.update(StateMachineProcess.stateList)
-
-    # Recognized message types:
-    START = 'msg_start'
-    STOP = 'msg_stop'
-    EXIT = 'msg_exit'
-    SETPARAMS = 'msg_setParams'
 
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
@@ -2351,7 +2348,7 @@ class SimpleAudioWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True)
-                        if msg == SimpleAudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -2359,11 +2356,11 @@ class SimpleAudioWriter(StateMachineProcess):
                         self.nextState = States.EXITING
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == SimpleAudioWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == SimpleAudioWriter.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
-                    elif msg == SimpleAudioWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.EXITING
                     else:
@@ -2408,22 +2405,22 @@ class SimpleAudioWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == SimpleAudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg in ['', SimpleAudioWriter.START]:
+                    elif msg in ['', Messages.START]:
                         if self.audioFrequency is None or self.frameRate is None:
                             # Haven't received audio frequency or frame rate from synchronizer - continue waiting
                             self.nextState = States.INITIALIZING
                         else:
                             # Ready to go
                             self.nextState = States.AUDIOINIT
-                    elif msg == SimpleAudioWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == SimpleAudioWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -2481,18 +2478,18 @@ class SimpleAudioWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == SimpleAudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg == SimpleAudioWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == SimpleAudioWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
-                    elif msg in ['', SimpleAudioWriter.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = States.WRITING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -2542,18 +2539,18 @@ class SimpleAudioWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == SimpleAudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg == SimpleAudioWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == SimpleAudioWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
-                    elif msg in ['', SimpleAudioWriter.START]:
+                    elif msg in ['', Messages.START]:
                         if numSamplesInCurrentFile == numSamplesPerFile:
                             # We've reached the desired sample count. Start a new audio file.
                             self.nextState = States.AUDIOINIT
@@ -2572,7 +2569,7 @@ class SimpleAudioWriter(StateMachineProcess):
                                     tags=['{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
                                     )
                                 if self.verbose >= 1: self.log("Sending audio filename to merger")
-                                self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                                self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
                             else:
                                 if self.verbose >= 3:
                                     self.log('No merge message queue available, cannot send to AVMerger')
@@ -2603,7 +2600,7 @@ class SimpleAudioWriter(StateMachineProcess):
                                 startTime=audioFileStartTime,
                                 tags=['{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
                             )
-                            self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                            self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
                         audioFile = None
                     else:
                         if self.verbose >= 3:
@@ -2612,7 +2609,7 @@ class SimpleAudioWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == SimpleAudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -2620,12 +2617,12 @@ class SimpleAudioWriter(StateMachineProcess):
                         self.nextState = States.STOPPED
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == SimpleAudioWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == SimpleAudioWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPED
-                    elif msg == SimpleAudioWriter.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -2643,7 +2640,7 @@ class SimpleAudioWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == SimpleAudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -2659,9 +2656,9 @@ class SimpleAudioWriter(StateMachineProcess):
                             self.nextState = States.EXITING
                         else:
                             self.nextState = States.STOPPING
-                    elif msg == SimpleAudioWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == SimpleAudioWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         if self.lastState == States.STOPPING:
                             self.nextState = States.EXITING
@@ -2718,13 +2715,6 @@ class AudioWriter(StateMachineProcess):
 
     # Include common states from parent class
     stateList.update(StateMachineProcess.stateList)
-
-    # Recognized message types:
-    START = 'msg_start'
-    STOP = 'msg_stop'
-    EXIT = 'msg_exit'
-    TRIGGER = 'msg_trigger'
-    SETPARAMS = 'msg_setParams'
 
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
@@ -2791,7 +2781,7 @@ class AudioWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True)
-                        if msg == AudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -2799,11 +2789,11 @@ class AudioWriter(StateMachineProcess):
                         self.nextState = States.EXITING
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == AudioWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == AudioWriter.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
-                    elif msg == AudioWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.EXITING
                     else:
@@ -2832,20 +2822,20 @@ class AudioWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg in ['', AudioWriter.START]:
+                    elif msg in ['', Messages.START]:
                         if self.audioFrequency is None:
                             self.nextState = States.INITIALIZING
                         else:
                             self.nextState = States.BUFFERING
-                    elif msg == AudioWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == AudioWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -2882,14 +2872,14 @@ class AudioWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == AudioWriter.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        elif msg == Messages.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if msg == AudioWriter.STOP:
+                    if msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == AudioWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     elif len(triggers) > 0:
@@ -2925,7 +2915,7 @@ class AudioWriter(StateMachineProcess):
                             # No audio chunks have been received yet, can't evaluate if trigger time has begun yet
                             if self.verbose >= 1: self.log("No audio chunks yet, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.bufferSize))
                             self.nextState = States.BUFFERING
-                    elif msg in ['', AudioWriter.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = States.BUFFERING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -2995,19 +2985,19 @@ class AudioWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == AudioWriter.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        elif msg == Messages.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg == AudioWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == AudioWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
-                    elif msg in ['', AudioWriter.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = States.WRITING
                         if len(triggers) > 0 and audioChunk is not None:
                             chunkStartTriggerState, chunkEndTriggerState = audioChunk.getTriggerState(triggers[0])
@@ -3030,7 +3020,7 @@ class AudioWriter(StateMachineProcess):
                                             startTime=audioFileStartTime
                                         )
                                         if self.verbose >= 1: self.log("Sending audio filename to merger")
-                                        self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                                        self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
                                     audioFile = None
                                 # Remove current trigger
                                 oldTrigger = triggers.pop(0)
@@ -3068,14 +3058,14 @@ class AudioWriter(StateMachineProcess):
                                 streamID='audio',
                                 startTime=audioFileStartTime
                             )
-                            self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                            self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
                         audioFile = None
                     triggers = []
 
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -3083,12 +3073,12 @@ class AudioWriter(StateMachineProcess):
                         self.nextState = States.STOPPED
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == AudioWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == AudioWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPED
-                    elif msg == AudioWriter.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -3106,7 +3096,7 @@ class AudioWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == AudioWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -3122,9 +3112,9 @@ class AudioWriter(StateMachineProcess):
                             self.nextState = States.EXITING
                         else:
                             self.nextState = States.STOPPING
-                    elif msg == AudioWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == AudioWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         if self.lastState == States.STOPPING:
                             self.nextState = States.EXITING
@@ -3197,12 +3187,6 @@ class VideoAcquirer(StateMachineProcess):
 
     # Include common states from parent class
     stateList.update(StateMachineProcess.stateList)
-
-    # Recognized message types:
-    START = 'msg_start'
-    STOP = 'msg_stop'
-    EXIT = 'msg_exit'
-    SETPARAMS = 'msg_setParams'
 
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
@@ -3302,7 +3286,7 @@ class VideoAcquirer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True)
-                        if msg == VideoAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -3310,11 +3294,11 @@ class VideoAcquirer(StateMachineProcess):
                         self.nextState = States.EXITING
                     elif msg == '':
                         self.nextState = self.state
-                    elif msg == VideoAcquirer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == VideoAcquirer.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
-                    elif msg == VideoAcquirer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.EXITING
                     else:
@@ -3359,20 +3343,20 @@ class VideoAcquirer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == VideoAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg in ['', VideoAcquirer.START]:
+                    elif msg in ['', Messages.START]:
                         if self.frameRate is None:
                             self.nextState = States.INITIALIZING
                         else:
                             self.nextState = States.READY
-                    elif msg == VideoAcquirer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == VideoAcquirer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -3397,17 +3381,17 @@ class VideoAcquirer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == VideoAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if not passedBarrier:
                         self.nextState = States.READY
-                    elif msg in ['', VideoAcquirer.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = States.ACQUIRING
-                    elif msg == VideoAcquirer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == VideoAcquirer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -3495,17 +3479,17 @@ class VideoAcquirer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == VideoAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg in ['', VideoAcquirer.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = States.ACQUIRING
-                    elif msg == VideoAcquirer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == VideoAcquirer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -3531,7 +3515,7 @@ class VideoAcquirer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == VideoAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -3539,12 +3523,12 @@ class VideoAcquirer(StateMachineProcess):
                         self.nextState = States.STOPPED
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == AudioWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == VideoAcquirer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPED
-                    elif msg == VideoAcquirer.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -3562,7 +3546,7 @@ class VideoAcquirer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == VideoAcquirer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -3578,9 +3562,9 @@ class VideoAcquirer(StateMachineProcess):
                             self.nextState = States.EXITING
                         else:
                             self.nextState = States.STOPPING
-                    elif msg == VideoAcquirer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == VideoAcquirer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         if self.lastState == States.STOPPING:
                             self.nextState = States.EXITING
@@ -3665,12 +3649,6 @@ class SimpleVideoWriter(StateMachineProcess):
     # Include common states from parent class
     stateList.update(StateMachineProcess.stateList)
 
-    # Recognized message types:
-    START = 'msg_start'
-    STOP = 'msg_stop'
-    EXIT = 'msg_exit'
-    SETPARAMS = 'msg_setParams'
-
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
@@ -3748,7 +3726,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True)
-                        if msg == SimpleVideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -3756,11 +3734,11 @@ class SimpleVideoWriter(StateMachineProcess):
                         self.nextState = States.EXITING
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == SimpleVideoWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == SimpleVideoWriter.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
-                    elif msg == SimpleVideoWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.EXITING
                     else:
@@ -3791,22 +3769,22 @@ class SimpleVideoWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == SimpleVideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg in ['', SimpleVideoWriter.START]:
+                    elif msg in ['', Messages.START]:
                         if self.frameRate == -1:
                             # Frame rate hasn't been set by synchronizer yet
                             self.nextState = States.INITIALIZING
                         else:
                             # Frame rate has been set by synchronizer
                             self.nextState = States.VIDEOINIT
-                    elif msg == SimpleVideoWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == SimpleVideoWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -3889,18 +3867,18 @@ class SimpleVideoWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == SimpleVideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg == SimpleVideoWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == SimpleVideoWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
-                    elif msg in ['', SimpleVideoWriter.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = States.WRITING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -3963,18 +3941,18 @@ class SimpleVideoWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == SimpleVideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg == SimpleVideoWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == SimpleVideoWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
-                    elif msg in ['', SimpleVideoWriter.START]:
+                    elif msg in ['', Messages.START]:
                         if numFramesInCurrentVideo == self.videoFrameCount:
                             # We've reached desired video frame count. Start a new video.
                             self.nextState = States.VIDEOINIT
@@ -4004,7 +3982,7 @@ class SimpleVideoWriter(StateMachineProcess):
                                         tags=['{videoCount:03d}'.format(videoCount=videoCount)]
                                     )
                                 if self.verbose >= 2: self.log("Sending video filename to merger")
-                                self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                                self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
                             else:
                                 if self.verbose >= 3:
                                     self.log('No merge message queue available, cannot send to AVMerger')
@@ -4048,13 +4026,13 @@ class SimpleVideoWriter(StateMachineProcess):
                                     startTime=videoFileStartTime,
                                     tags=['{videoCount:03d}'.format(videoCount=videoCount)]
                                 )
-                            self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                            self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
                         videoFileInterface = None
 
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == SimpleVideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -4062,12 +4040,12 @@ class SimpleVideoWriter(StateMachineProcess):
                         self.nextState = States.STOPPED
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == SimpleVideoWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == SimpleVideoWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPED
-                    elif msg == SimpleVideoWriter.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -4085,7 +4063,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == SimpleVideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -4101,9 +4079,9 @@ class SimpleVideoWriter(StateMachineProcess):
                             self.nextState = States.EXITING
                         else:
                             self.nextState = States.STOPPING
-                    elif msg == SimpleVideoWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == SimpleVideoWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         if self.lastState == States.STOPPING:
                             self.nextState = States.EXITING
@@ -4173,13 +4151,6 @@ class VideoWriter(StateMachineProcess):
     # Include common states from parent class
     stateList.update(StateMachineProcess.stateList)
 
-    # Recognized message types:
-    START = 'msg_start'
-    STOP = 'msg_stop'
-    EXIT = 'msg_exit'
-    TRIGGER = 'msg_trigger'
-    SETPARAMS = 'msg_setParams'
-
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
@@ -4242,7 +4213,7 @@ class VideoWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True)
-                        if msg == VideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -4250,11 +4221,11 @@ class VideoWriter(StateMachineProcess):
                         self.nextState = States.EXITING
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == VideoWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == VideoWriter.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
-                    elif msg == VideoWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.EXITING
                     else:
@@ -4278,20 +4249,20 @@ class VideoWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == VideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg in ['', VideoWriter.START]:
+                    elif msg in ['', Messages.START]:
                         if self.frameRate is None:
                             self.nextState = States.INITIALIZING
                         else:
                             self.nextState = States.BUFFERING
-                    elif msg == VideoWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == VideoWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     else:
@@ -4308,14 +4279,14 @@ class VideoWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == VideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == VideoWriter.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        elif msg == Messages.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if msg == VideoWriter.STOP:
+                    if msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == VideoWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     elif len(triggers) > 0:
@@ -4349,7 +4320,7 @@ class VideoWriter(StateMachineProcess):
                             if self.verbose >= 2: self.log("No frames at the moment, can't begin trigger yet (buffer: {len}/{maxlen})".format(len=len(self.buffer), maxlen=self.bufferSize))
                             self.nextState = States.BUFFERING
 
-                    elif msg in ['', VideoWriter.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = States.BUFFERING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -4410,19 +4381,19 @@ class VideoWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == VideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == VideoWriter.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        elif msg == Messages.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
                         self.nextState = States.STOPPING
-                    elif msg == VideoWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg == VideoWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
-                    elif msg in ['', VideoWriter.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = States.WRITING
                         if len(triggers) > 0 and im is not None:
                             triggerState = triggers[0].state(frameTime)
@@ -4456,7 +4427,7 @@ class VideoWriter(StateMachineProcess):
                                                 startTime=videoFileStartTime
                                             )
                                         if self.verbose >= 2: self.log("Sending video filename to merger")
-                                        self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                                        self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
                                     videoFileInterface = None
                                 triggers.pop(0)
                                 # Last image wasn't part of this trigger, so it didn't get written. Put it back in buffer.
@@ -4493,14 +4464,14 @@ class VideoWriter(StateMachineProcess):
                                     streamID=self.camSerial,
                                     startTime=videoFileStartTime
                                 )
-                            self.mergeMessageQueue.put((AVMerger.MERGE, fileEvent))
+                            self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
                         videoFileInterface = None
                     triggers = []
 
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == VideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -4508,12 +4479,12 @@ class VideoWriter(StateMachineProcess):
                         self.nextState = States.STOPPED
                     elif msg == '':
                         self.nextState = States.BUFFERING
-                    elif msg == VideoWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == VideoWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPED
-                    elif msg == VideoWriter.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -4531,7 +4502,7 @@ class VideoWriter(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == VideoWriter.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -4547,9 +4518,9 @@ class VideoWriter(StateMachineProcess):
                             self.nextState = States.EXITING
                         else:
                             self.nextState = States.STOPPING
-                    elif msg == VideoWriter.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == VideoWriter.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         if self.lastState == States.STOPPING:
                             self.nextState = States.EXITING
@@ -4668,13 +4639,6 @@ class ContinuousTriggerer(StateMachineProcess):
     # Include common states from parent class
     stateList.update(StateMachineProcess.stateList)
 
-    # Recognized message types:
-    START = 'msg_start'
-    STOP = 'msg_stop'
-    EXIT = 'msg_exit'
-    SETPARAMS = 'msg_setParams'
-    TAGTRIGGER = 'tag_trigger'      # Send a trigger that indicates the videos that overlap with that trigger should be tagged with trigger's tags
-
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'continuousTriggerPeriod',
@@ -4745,19 +4709,19 @@ class ContinuousTriggerer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True)
-                        if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == ContinuousTriggerer.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we haven't started yet
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        elif msg == Messages.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we haven't started yet
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if msg == ContinuousTriggerer.EXIT or self.exitFlag:
+                    if msg == Messages.EXIT or self.exitFlag:
                         self.exitFlag = True
                         self.nextState = States.EXITING
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == ContinuousTriggerer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == ContinuousTriggerer.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -4778,17 +4742,17 @@ class ContinuousTriggerer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == ContinuousTriggerer.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we haven't started yet
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        elif msg == Messages.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we haven't started yet
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if msg == ContinuousTriggerer.EXIT or self.exitFlag:
+                    if msg == Messages.EXIT or self.exitFlag:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
-                    elif msg == ContinuousTriggerer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg in ['', ContinuousTriggerer.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = States.TRIGGERING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -4841,18 +4805,18 @@ class ContinuousTriggerer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=True, timeout=self.updatePeriod)
-                        if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == ContinuousTriggerer.TAGTRIGGER: self.updateTagTriggers(tagTriggers, arg); msg = ''; arg=None
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        elif msg == Messages.TAGTRIGGER: self.updateTagTriggers(tagTriggers, arg); msg = ''; arg=None
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
 #                    if self.verbose >= 3: self.log("|{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
-                    if msg == ContinuousTriggerer.EXIT or self.exitFlag:
+                    if msg == Messages.EXIT or self.exitFlag:
                         self.exitFlag = True
                         self.nextState = States.STOPPING
-                    elif msg == ContinuousTriggerer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
-                    elif msg in ['', ContinuousTriggerer.START]:
+                    elif msg in ['', Messages.START]:
                         self.nextState = self.state
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -4864,8 +4828,8 @@ class ContinuousTriggerer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == ContinuousTriggerer.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we are stopping
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        elif msg == Messages.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we are stopping
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -4873,12 +4837,12 @@ class ContinuousTriggerer(StateMachineProcess):
                         self.nextState = States.STOPPED
                     elif msg == '':
                         self.nextState = States.STOPPED
-                    elif msg == ContinuousTriggerer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == ContinuousTriggerer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         self.nextState = States.STOPPED
-                    elif msg == ContinuousTriggerer.START:
+                    elif msg == Messages.START:
                         self.nextState = States.INITIALIZING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
@@ -4896,8 +4860,8 @@ class ContinuousTriggerer(StateMachineProcess):
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)
-                        if msg == ContinuousTriggerer.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == ContinuousTriggerer.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we are in an error state
+                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
+                        elif msg == Messages.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we are in an error state
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
@@ -4913,9 +4877,9 @@ class ContinuousTriggerer(StateMachineProcess):
                             self.nextState = States.EXITING
                         else:
                             self.nextState = States.STOPPING
-                    elif msg == ContinuousTriggerer.STOP:
+                    elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
-                    elif msg == ContinuousTriggerer.EXIT:
+                    elif msg == Messages.EXIT:
                         self.exitFlag = True
                         if self.lastState == States.STOPPING:
                             self.nextState = States.EXITING
@@ -4962,10 +4926,10 @@ class ContinuousTriggerer(StateMachineProcess):
     def sendTrigger(self, trigger):
         if self.audioMessageQueue:
             # If an audio message queue exists, send the trigger through it.
-            self.audioMessageQueue.put((AudioWriter.TRIGGER, trigger))
+            self.audioMessageQueue.put((Messages.TRIGGER, trigger))
         for camSerial in self.videoMessageQueues:
             # Send the trigger through any and all video message queues
-            self.videoMessageQueues[camSerial].put((VideoWriter.TRIGGER, trigger))
+            self.videoMessageQueues[camSerial].put((Messages.TRIGGER, trigger))
 
     def purgeOldTagTriggers(self, tagTriggers, activeTriggers):
         # Get earliest trigger time
