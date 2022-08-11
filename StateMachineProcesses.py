@@ -3567,6 +3567,10 @@ class VideoAcquirer(StateMachineProcess):
                     if system is not None:
                         system.ReleaseInstance()
 
+                    # Inform image monitors that we're done sending images for now
+                    if self.monitorImageSender is not None:
+                        self.monitorImageSender.put(np.array([], dtype='uint8'), metadata={'done':True})
+
                     # CHECK FOR MESSAGES
                     try:
                         msg, arg = self.msgQueue.get(block=False)

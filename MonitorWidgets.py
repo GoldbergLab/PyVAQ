@@ -22,6 +22,8 @@ WIDGET_COLORS = [
 ]
 LINE_STYLES = [c+'-' for c in 'bykcmgr']
 
+NO_IMAGES_IMAGE = Image.open(r'Resources\NoImages_000.png')
+
 class AudioMonitor(ttk.LabelFrame):
     def __init__(self, *args, historyLength=44100*2, displayAmplitude=5, autoscale=False, initialDirectory='', initialBaseFileName='', **kwargs):
         ttk.LabelFrame.__init__(self, *args, **kwargs)
@@ -217,6 +219,8 @@ class CameraMonitor(ttk.LabelFrame):
         self.imageID = None
         self.currentImage = None
 
+        self.isIdle = False  # Boolean flag indicating whether the monitor is actively sending images or not
+
         self.fileWidget = FileWritingEntry(
             self,
             defaultDirectory=initialDirectory,
@@ -239,7 +243,18 @@ class CameraMonitor(ttk.LabelFrame):
         self.enableViewerCheckButton.grid(row=1, column=1)
         self.enableWriteCheckButton.grid(row=2, column=1)
 
+        # Initialize widget with idle image
+        self.idle()
+
 #       self.cameraAttributeBrowserButton = ttk.Button(vFrame, text="Attribute browser", command=lambda:self.createCameraAttributeBrowser(camSerial))
+
+    def idle(self):
+        if not self.isIdle:
+            # Transitioning from active to idle
+            self.isIdle = True
+            self.updateImage(NO_IMAGES_IMAGE)
+    def active(self):
+        self.isIdle = False
 
     def updateEnableWriteCheckButton(self, *args):
         self.enableWriteChangeHandler()

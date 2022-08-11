@@ -1423,7 +1423,12 @@ him know. Otherwise, I had nothing to do with it.
                 try:
                     # Get all available images with the associated pixel format information fromt he monitor queue
                     availableImages[camSerial], metadata = self.videoAcquireProcesses[camSerial].monitorImageReceiver.get(includeMetadata=True)
-                    pixelFormats[camSerial] = metadata['pixelFormat']
+                    if 'done' in metadata:
+                        # Acquire process has indicated it's done sending images for now
+                        self.cameraMonitors[camSerial].idle()
+                    else:
+                        self.cameraMonitors[camSerial].active()
+                        pixelFormats[camSerial] = metadata['pixelFormat']
                 except queue.Empty:
                     pass
 
