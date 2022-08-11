@@ -474,7 +474,7 @@ class StateMachineProcess(mp.Process):
         States.DEAD :          'DEAD'
     }
 
-    def __init__(self, *args, stdoutQueue=None, daemon=True, **kwargs):
+    def __init__(self, *args, stdoutQueue=None, daemon=True, verbose=1, **kwargs):
         mp.Process.__init__(self, *args, daemon=daemon, **kwargs)
         self.ID = "X"                                   # An ID for logging purposes to identify the source of log messages
         self.msgQueue = mp.Queue()                      # Queue for receiving messages/requests from other processes
@@ -488,13 +488,18 @@ class StateMachineProcess(mp.Process):
         self.state = None
         self.lastState = None
         self.nextState = None
+        self.verbose = verbose
 
     def run(self):
         # Start run by recording this process's PID
         self.PID.value = os.getpid()
+        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
+        self.state = States.STOPPED
+        self.nextState = States.STOPPED
+        self.lastState = -1
 
     def updatePublishedInfo(self, info):
-        if self.publishedInfoVar is not None:
+        if self.publishedInfoVar is not None and self.state != self.lastState:
             # Pad or truncate info as necessary to make it the correct length to fit in the shared array
             infoLength = len(info)
             if infoLength > self.publishedInfoLength:
@@ -582,7 +587,6 @@ class AVMerger(StateMachineProcess):
     ]
 
     def __init__(self,
-        verbose=False,
         numFilesPerTrigger=2,           # Number of files expected per trigger event (audio + video)
         directory='.',                  # Directory for writing merged files
         baseFileName='',                # Base filename (sans extension) for writing merged files
@@ -595,7 +599,6 @@ class AVMerger(StateMachineProcess):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
         self.ID = "M"
-        self.verbose = verbose
         self.ignoreFlag = True
         self.errorMessages = []
         self.numFilesPerTrigger = numFilesPerTrigger
@@ -618,17 +621,12 @@ class AVMerger(StateMachineProcess):
                 if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
-        self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
-        self.state = States.STOPPED
-        self.nextState = States.STOPPED
-        self.lastState = -1
+        super().run()
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if self.state != self.lastState:
-                self.updatePublishedState()
+            self.updatePublishedState()
 
             try:
 # AVMerger: *********************** STOPPPED *********************************
@@ -1048,7 +1046,6 @@ class Synchronizer(StateMachineProcess):
         audioDutyCycle=0.5,
         startTriggerChannel=None,             # A digital channel on which to wait for a start trigger signal. If this is none, sync process starts ASAP.
         startTime=None,                         # Shared value that is set when sync starts, used as start time by all processes (relevant for manual triggers)
-        verbose=False,
         ready=None,                             # Synchronization barrier to ensure everyone's ready before beginning
         **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
@@ -1066,7 +1063,6 @@ class Synchronizer(StateMachineProcess):
         self.startTriggerChannel = startTriggerChannel
         self.ready = ready
         self.errorMessages = []
-        self.verbose = verbose
 
     def setParams(self, **params):
         for key in params:
@@ -1077,20 +1073,15 @@ class Synchronizer(StateMachineProcess):
                 if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
-        self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
-        self.state = States.STOPPED
-        self.nextState = States.STOPPED
-        self.lastState = -1
+        super().run()
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if self.state != self.lastState:
-                self.updatePublishedState()
+            self.updatePublishedState()
 
             try:
-# ContinuousTriggerer: ************ STOPPPED *********************************
+# Synchronizer: **************** STOPPPED *********************************
                 if self.state == States.STOPPED:
                     # DO STUFF
 
@@ -1478,7 +1469,6 @@ class AudioTriggerer(StateMachineProcess):
                 scheduleEnabled=False,
                 scheduleStartTime=None,
                 scheduleStopTime=None,
-                verbose=False,
                 audioMessageQueue=None,             # Queue to send triggers to audio writers
                 videoMessageQueues={},              # Queues to send triggers to video writers
                 taggerQueues=None,
@@ -1526,7 +1516,6 @@ class AudioTriggerer(StateMachineProcess):
 
         self.errorMessages = []
         self.analyzeFlag = False
-        self.verbose = verbose
 
         self.highLevelBuffer = None
         self.lowLevelBuffer = None
@@ -1564,17 +1553,12 @@ class AudioTriggerer(StateMachineProcess):
                 if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
-        self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
-        self.state = States.STOPPED
-        self.nextState = States.STOPPED
-        self.lastState = -1
+        super().run()
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if self.state != self.lastState:
-                self.updatePublishedState()
+            self.updatePublishedState()
 
             try:
 # AudioTriggerer: ************ STOPPPED *********************************
@@ -1947,7 +1931,6 @@ class AudioAcquirer(StateMachineProcess):
                 channelNames = [],                  # Channel name for analog input (microphone signal)
                 channelConfig = "DEFAULT",
                 syncChannel = None,                 # Channel name for synchronization source
-                verbose = False,
                 ready=None,                         # Synchronization barrier to ensure everyone's ready before beginning
                 copyToMonitoringQueue=True,         # Should images be also sent to the monitoring queue?
                 copyToAnalysisQueue=True,           # Should images be also sent to the analysis queue?
@@ -1983,7 +1966,6 @@ class AudioAcquirer(StateMachineProcess):
         self.syncChannel = syncChannel
         self.ready = ready
         self.errorMessages = []
-        self.verbose = verbose
         self.exitFlag = False
 
     def setParams(self, **params):
@@ -1998,17 +1980,12 @@ class AudioAcquirer(StateMachineProcess):
         return (data * ((maxD-minD)/(maxV-minV))).astype('int16')
 
     def run(self):
-        self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
-        self.state = States.STOPPED
-        self.nextState = States.STOPPED
-        self.lastState = -1
+        super().run()
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if self.state != self.lastState:
-                self.updatePublishedState()
+            self.updatePublishedState()
 
             try:
 # AudioAcquirer: ***************** STOPPPED *********************************
@@ -2319,7 +2296,6 @@ class SimpleAudioWriter(StateMachineProcess):
                 frameRate=None,         # A shared variable for video framerate (needed to ensure audio sync)
                 numChannels=1,
                 videoLength=None,       # Requested time in seconds of each video.
-                verbose=False,
                 audioDepthBytes=2,
                 mergeMessageQueue=None, # Queue to put (filename, trigger) in for merging
                 daySubfolders=True,         # Create and write to subfolders labeled by day?
@@ -2344,7 +2320,6 @@ class SimpleAudioWriter(StateMachineProcess):
         self.videoLength = videoLength
         self.mergeMessageQueue = mergeMessageQueue
         self.errorMessages = []
-        self.verbose = verbose
         self.audioDepthBytes = audioDepthBytes
         self.daySubfolders = daySubfolders
         self.enableWrite = enableWrite
@@ -2361,17 +2336,12 @@ class SimpleAudioWriter(StateMachineProcess):
                 if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
-        self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
-        self.state = States.STOPPED
-        self.nextState = States.STOPPED
-        self.lastState = -1
+        super().run()
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if self.state != self.lastState:
-                self.updatePublishedState()
+            self.updatePublishedState()
 
             try:
 # SimpleAudioWriter: **************** STOPPPED *********************************
@@ -2773,7 +2743,6 @@ class AudioWriter(StateMachineProcess):
                 numChannels=1,
                 bufferSizeSeconds=4,     # Buffer size in chunks - must be equal to the buffer size of associated videowriters, and equal to an integer # of audio chunks
                 chunkSize=None,
-                verbose=False,
                 audioDepthBytes=2,
                 mergeMessageQueue=None, # Queue to put (filename, trigger) in for merging
                 daySubfolders=True,         # Create and write to subfolders labeled by day?
@@ -2795,7 +2764,6 @@ class AudioWriter(StateMachineProcess):
         self.bufferSize = None
         self.buffer = None
         self.errorMessages = []
-        self.verbose = verbose
         self.audioDepthBytes = audioDepthBytes
         self.daySubfolders = daySubfolders
 
@@ -2808,17 +2776,12 @@ class AudioWriter(StateMachineProcess):
                 if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
-        self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
-        self.state = States.STOPPED
-        self.nextState = States.STOPPED
-        self.lastState = -1
+        super().run()
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if self.state != self.lastState:
-                self.updatePublishedState()
+            self.updatePublishedState()
 
             try:
 # AudioWriter: ******************* STOPPPED *********************************
@@ -3255,11 +3218,9 @@ class VideoAcquirer(StateMachineProcess):
                 # acquisitionBufferSize=100,
                 bufferSizeSeconds=2.2,
                 monitorFrameRate=15,
-                verbose=False,
                 ready=None,                        # Synchronization barrier to ensure everyone's ready before beginning
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
-        self.verbose = verbose
         self.startTimeSharedValue = startTime
         self.camSerial = camSerial
         self.ID = 'VA_'+self.camSerial
@@ -3322,22 +3283,16 @@ class VideoAcquirer(StateMachineProcess):
                 if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
-        self.PID.value = os.getpid()
-#        if self.verbose >= 1: profiler = cProfile.Profile()
-        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
+        super().run()
 
         self.imageQueue.setupBuffers()
         self.monitorImageSender.setupBuffers()
 
-        self.state = States.STOPPED
-        self.nextState = States.STOPPED
-        self.lastState = -1
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if self.state != self.lastState:
-                self.updatePublishedState()
+            self.updatePublishedState()
 
             try:
 # VideoAcquirer: ******************** STOPPPED *********************************
@@ -3735,7 +3690,6 @@ class SimpleVideoWriter(StateMachineProcess):
                 frameRate=None,
                 mergeMessageQueue=None,            # Queue to put (filename, trigger) in for merging
                 camSerial='',
-                verbose=False,
                 daySubfolders=True,
                 videoLength=2,   # Video length in seconds
                 gpuVEnc=False,   # Should we use GPU acceleration
@@ -3757,7 +3711,6 @@ class SimpleVideoWriter(StateMachineProcess):
         self.frameRate = None
         self.mergeMessageQueue = mergeMessageQueue
         self.errorMessages = []
-        self.verbose = verbose
         self.videoWriteMethod = 'ffmpeg'   # options are ffmpeg, PySpin, OpenCV
         self.daySubfolders = daySubfolders
         self.videoLength = videoLength
@@ -3777,19 +3730,13 @@ class SimpleVideoWriter(StateMachineProcess):
                 if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
-        self.PID.value = os.getpid()
-#        if self.verbose >= 1: profiler = cProfile.Profile()
-        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
+        super().run()
 
-        self.state = States.STOPPED
-        self.nextState = States.STOPPED
-        self.lastState = -1
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if self.state != self.lastState:
-                self.updatePublishedState()
+            self.updatePublishedState()
 
             try:
 # SimpleVideoWriter: ***************** STOPPPED *********************************
@@ -4248,7 +4195,6 @@ class VideoWriter(StateMachineProcess):
                 mergeMessageQueue=None,            # Queue to put (filename, trigger) in for merging
                 bufferSizeSeconds=2.2,
                 camSerial='',
-                verbose=False,
                 daySubfolders=True,
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
@@ -4266,7 +4212,6 @@ class VideoWriter(StateMachineProcess):
         self.bufferSize = int(1.6*bufferSizeSeconds * self.requestedFrameRate)
         self.buffer = deque() #maxlen=self.bufferSize)
         self.errorMessages = []
-        self.verbose = verbose
         self.videoWriteMethod = 'PySpin'   # options are ffmpeg, PySpin, OpenCV
         self.daySubfolders = daySubfolders
 
@@ -4279,19 +4224,13 @@ class VideoWriter(StateMachineProcess):
                 if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
     def run(self):
-        self.PID.value = os.getpid()
-#        if self.verbose >= 1: profiler = cProfile.Profile()
-        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
+        super().run()
 
-        self.state = States.STOPPED
-        self.nextState = States.STOPPED
-        self.lastState = -1
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if self.state != self.lastState:
-                self.updatePublishedState()
+            self.updatePublishedState()
 
             try:
 # VideoWriter: ******************** STOPPPED *********************************
@@ -4748,7 +4687,6 @@ class ContinuousTriggerer(StateMachineProcess):
                 scheduleEnabled=False,
                 scheduleStartTime=None,
                 scheduleStopTime=None,
-                verbose=False,
                 audioMessageQueue=None,             # Queue to send triggers to audio writers
                 videoMessageQueues={},              # Queues to send triggers to video writers
                 **kwargs):
@@ -4769,7 +4707,6 @@ class ContinuousTriggerer(StateMachineProcess):
         self.scheduleStopTime = scheduleStopTime
 
         self.errorMessages = []
-        self.verbose = verbose
 
     def setParams(self, **params):
         for key in params:
@@ -4789,18 +4726,14 @@ class ContinuousTriggerer(StateMachineProcess):
         self.updatePeriod = min(self.recordPeriod/20, 0.1)
 
     def run(self):
-        self.PID.value = os.getpid()
-        if self.verbose >= 1: self.log("PID={pid}".format(pid=os.getpid()))
-        self.state = States.STOPPED
-        self.nextState = States.STOPPED
-        self.lastState = -1
+        super().run()
+
         tagTriggers = []   # A list of triggers received from other processes that will be used to tag overlapping audio/video files
         msg = ''; arg = None
 
         while True:
             # Publish updated state
-            if self.state != self.lastState:
-                self.updatePublishedState()
+            self.updatePublishedState()
 
             try:
 # ContinuousTriggerer: ************* STOPPPED *********************************
