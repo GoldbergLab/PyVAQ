@@ -33,24 +33,35 @@ class Param():
         self.widgetFrame = None
         self.label = None
 
-    def height(self):
+    def getHeight(self):
         # Returns an approximate # of lines the param widget occupies. Note that
         #   if createWidget is called with a maxHeight argument, then this
-        #   function will be incorrect. Use min(maxHeight+1, param.height()) to
-        #   get the actual height
+        #   function will be incorrect. Use min(maxHeight+1, param.getHeight())
+        #   to get the actual height
         if self.widgetType == Param.TEXT:
-            return 2
+            return 2 + self.getLabelHeight()
         elif self.widgetType == Param.MONOCHOICE:
-            return len(self.options) + 1
+            return len(self.options) + 1 + self.getLabelHeight()
         elif self.widgetType == Param.MULTICHOICE:
-            return len(self.options) + 2   # Extra line for "Select all" option
+            return len(self.options) + 2 + self.getLabelHeight() # Extra line for "Select all" option
+
+    def getLabelWidth(self):
+        labelWidth = max([len(self.name), 7]) * 10
+        return labelWidth
+
+    def getLabelHeight(self):
+        if self.description is not None and len(self.description) > 0:
+            labelWidth = self.getLabelWidth()
+            labelHeight = 1 + (len(self.description) // labelWidth)
+        else:
+            labelHeight = 0
+        return labelHeight
 
     def createWidgets(self, parent, maxHeight=None):
         self.mainFrame = ttk.LabelFrame(parent, text=self.name)
         self.widgetFrame = ttk.Frame(self.mainFrame)
         if self.description is not None and len(self.description) > 0:
-            labelWidth = max([len(self.name), 7]) * 10
-            self.label = ttk.Label(self.mainFrame, text=self.description, wraplength=labelWidth)
+            self.label = ttk.Label(self.mainFrame, text=self.description, wraplength=self.getLabelWidth())
         if self.widgetType == Param.TEXT:
             self.var = tk.StringVar()
             entry = ttk.Entry(self.widgetFrame, textvariable=self.var)
@@ -114,6 +125,11 @@ class Param():
             self.label.grid(row=0, column=0, sticky=tk.NW)
         self.widgetFrame.grid(row=1, column=0, sticky=tk.NW)
 
+    def pack(self, *args, **kwargs):
+        if self.mainFrame is not None:
+            self.mainFrame.pack(*args, **kwargs)
+        else:
+            raise AttributeError('You must call createWidgets on this Param object before calling pack')
 
     def grid(self, *args, **kwargs):
         if self.mainFrame is not None:
@@ -157,6 +173,7 @@ class ParamDialog(tk.Toplevel):
         self.paramFrame = ttk.Frame(self.mainFrame)
         self.buttonFrame = ttk.Frame(self.mainFrame)
         self.parameterWidgets = {}
+        self.subFrames = []   # For HYBRID arrangement
         self.createParameterWidgets()
 
         self.grab_set()
@@ -175,30 +192,37 @@ class ParamDialog(tk.Toplevel):
         # Create widgets for inputting parameters
         if self.arrangement == ParamDialog.BOX:
             nW, nH = getOptimalBoxGrid(len(self.params))
-        row = 0; col = 0; lineCount = 0
+        row = 0; col = 0; lineCount = 0; hybridCol = 0
         for k, param in enumerate(self.params):
-            param.createWidgets(self.paramFrame, maxHeight=self.maxHeight)
             if self.arrangement == ParamDialog.HORIZONTAL:
+                param.createWidgets(self.paramFrame, maxHeight=self.maxHeight)
                 row=0; col=k;
                 self.paramFrame.columnconfigure(col, weight=1)
             elif self.arrangement == ParamDialog.VERTICAL:
+                param.createWidgets(self.paramFrame, maxHeight=self.maxHeight)
                 row=k; col=0;
                 self.paramFrame.rowconfigure(row, weight=1)
             elif self.arrangement == ParamDialog.BOX:
+                param.createWidgets(self.paramFrame, maxHeight=self.maxHeight)
                 row = k // nW
                 col = k % nW
                 self.paramFrame.rowconfigure(row, weight=1)
                 self.paramFrame.columnconfigure(col, weight=1)
-                # raise NotImplementedError("Box arrangement has not been implemented yet.")
             elif self.arrangement == ParamDialog.HYBRID:
-                paramHeight = min(self.maxHeight+1, param.height())
-                if row + paramHeight > self.maxHeight:
+                paramHeight = min(self.maxHeight+1, param.getHeight())
+                if len(self.subFrames) == 0 or lineCount + paramHeight > self.maxHeight+2:
+                    self.subFrames.append(tk.Frame(self.paramFrame))
+                    self.subFrames[-1].grid(row=0, column=hybridCol, sticky=tk.N)
                     row = 0
-                    col = col + 1
+                    hybridCol += 1
+                    lineCount = paramHeight
                 else:
-                    row = row + 1
+                    row += 1
+                    lineCount += paramHeight
+                param.createWidgets(self.subFrames[-1], maxHeight=self.maxHeight)
             else:
                 raise NameError("Unknown arrangement type: "+str(self.arrangement))
+
             param.grid(row=row, column=col, sticky=tk.NSEW)
 
         okButton = ttk.Button(self.buttonFrame, text="OK", width=10, command=self.ok, default=tk.ACTIVE)
@@ -213,7 +237,6 @@ class ParamDialog(tk.Toplevel):
         self.results = {}
         for param in self.params:
             self.results[param.name] = param.get()
-            # print("Got", param.name, "=", self.results[param.name], type(self.results[param.name]))
 
     def ok(self, event=None):
         # if not self.validate():
