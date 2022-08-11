@@ -3515,12 +3515,14 @@ class VideoAcquirer(StateMachineProcess):
                 elif self.state == States.STOPPING:
                     # DO STUFF
                     if cam is not None:
-                        camList.Clear()
                         cam.EndAcquisition()
                         cam.DeInit()
                         cam = None
+                        camList.Clear()
+                        camList = None
                     if system is not None:
                         system.ReleaseInstance()
+                        system = None
 
                     # Inform image monitors that we're done sending images for now
                     if self.monitorImageSender is not None:
