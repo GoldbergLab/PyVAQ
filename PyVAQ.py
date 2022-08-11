@@ -1972,8 +1972,10 @@ him know. Otherwise, I had nothing to do with it.
             self.acquisitionParametersFrame.enable()
 
     def initializeAcquisition(self):
-        self.setupInputMonitoringWidgets()
-        self.createChildProcesses()
+        if self.metaState != 'halted':
+            # If state is halted, we can just reinit the processes
+            self.setupInputMonitoringWidgets()
+            self.createChildProcesses()
         self.initializeChildProcesses()
         # Schedule button update after 100 ms to give child processes a chance to react
         # self.master.after(100, self.updateAcquisitionButton)
