@@ -2010,7 +2010,7 @@ him know. Otherwise, I had nothing to do with it.
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.NORMAL)
             self.haltAcquisitionButton.config(state=tk.NORMAL)
-            self.restartAcquisitionButton.config(state=tk.NORMAL)
+            self.restartAcquisitionButton.config(state=tk.DISABLED)
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.triggerModeRadioButtons[mode].config(state=tk.NORMAL)
@@ -2747,7 +2747,7 @@ him know. Otherwise, I had nothing to do with it.
         audioDAQChannels = p["audioDAQChannels"]
 
         if (self.audioMonitorDocker.isDocked() and len(audioDAQChannels) > 0) or (self.videoMonitorDocker.isDocked() and len(camSerials) > 0):
-            self.monitorMasterFrame.grid(row=0, column=0, sticky=tk.NSEW)
+            self.monitorMasterFrame.grid(row=0, column=1, sticky=tk.NSEW)
         else:
             self.monitorMasterFrame.grid_forget()
 
@@ -2763,7 +2763,7 @@ him know. Otherwise, I had nothing to do with it.
             self.audioMonitorDocker.docker.grid(row=1, column=0, sticky=tk.NSEW)
 #        self.audioMonitor.grid(row=1, column=0, sticky=tk.NSEW)
 
-        self.controlFrame.grid(row=0, column=1, sticky=tk.NSEW)
+        self.controlFrame.grid(row=0, column=0, sticky=tk.NSEW)
         # self.controlFrame.columnconfigure(0, weight=1)
         # self.controlFrame.columnconfigure(1, weight=1)
         # self.controlFrame.columnconfigure(1, weight=1)
