@@ -49,10 +49,14 @@ import ctypes
 
 VERSION='0.3.0'
 
-# Inform windows that this App should display its own icon, not python's
-# Thanks to StackOverflow user @DamonJW - https://stackoverflow.com/a/1552105/1460057
-myappid = '{company}.{product}.{version}'.format(company='glab', product='PyVAQ', version=VERSION) # arbitrary string
-ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+try:
+    # Inform windows that this App should display its own icon, not python's
+    # Thanks to StackOverflow user @DamonJW - https://stackoverflow.com/a/1552105/1460057
+    myappid = '{company}.{product}.{version}'.format(company='glab', product='PyVAQ', version=VERSION) # arbitrary string
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+except:
+    # Whatever, it's not that important.
+    print('PyVAQ icon display failed')
 
 # Todo:
 #  - Add filename/directory entry for each stream
@@ -207,7 +211,10 @@ class GeneralVar:
 class PyVAQ:
     def __init__(self, master, settingsFilePath=None):
         self.master = master
-        self.master.wm_iconbitmap(ICON_PATH)
+        try:
+            self.master.wm_iconbitmap(ICON_PATH)
+        except:
+            print('Icon load failed')
         self.master.resizable(height=False, width=False)  # Disallow resizing window
         self.master.minsize(300, 0)
         self.customTitleBar = False
