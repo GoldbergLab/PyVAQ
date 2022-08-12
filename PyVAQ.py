@@ -367,11 +367,15 @@ class PyVAQ:
         self.preTriggerTimeVar =    tk.StringVar(); self.preTriggerTimeVar.set("4.5")
         self.preTriggerTimeEntry =  ttk.Entry(self.preTriggerTimeFrame, width=16, textvariable=self.preTriggerTimeVar)
 
+        self.acquisitionBufferSizeFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Acquisition buffer size (s)", style='SingleContainer.TLabelframe')
+        self.acquisitionBufferSizeVar =    tk.StringVar(); self.acquisitionBufferSizeVar.set("4.5")
+        self.acquisitionBufferSizeEntry =  ttk.Entry(self.acquisitionBufferSizeFrame, width=16, textvariable=self.acquisitionBufferSizeVar)
+
         self.recordTimeFrame =      ttk.LabelFrame(self.acquisitionParametersFrame, text="Record time (s)", style='SingleContainer.TLabelframe')
         self.recordTimeVar =        tk.StringVar(); self.recordTimeVar.set("10.0")
         self.recordTimeEntry =      ttk.Entry(self.recordTimeFrame, width=16, textvariable=self.recordTimeVar)
 
-        self.acquisitionSignalParametersFrame = ttk.LabelFrame(self.acquisitionParametersFrame, text="Hardware signal", style='SingleContainer.TLabelframe')
+        self.acquisitionSignalParametersFrame = ttk.LabelFrame(self.acquisitionParametersFrame, text="Acquisition HW signaling", style='SingleContainer.TLabelframe')
         self.startOnHWSignalVar = tk.BooleanVar(); self.startOnHWSignalVar.set(False)
         self.startOnHWSignalCheckbutton = ttk.Checkbutton(self.acquisitionSignalParametersFrame, text="Start acquisition on HW signal", variable=self.startOnHWSignalVar, offvalue=False, onvalue=True)
         self.writeEnableOnHWSignalVar = tk.BooleanVar(); self.writeEnableOnHWSignalVar.set(False)
@@ -581,6 +585,7 @@ class PyVAQ:
             # 'exposureTime':                     dict(get=lambda:int(self.exposureTimeVar.get()),                set=self.exposureTimeVar.set),
             'gain':                             dict(get=lambda:float(self.gainVar.get()),                      set=self.gainVar.set),
             'preTriggerTime':                   dict(get=lambda:float(self.preTriggerTimeVar.get()),            set=self.preTriggerTimeVar.set),
+            'acquisitionBufferSize':            dict(get=lambda:float(self.acquisitionBufferSizeVar.get()),     set=self.acquisitionBufferSizeVar.set),
             'recordTime':                       dict(get=lambda:float(self.recordTimeVar.get()),                set=self.recordTimeVar.set),
             'triggerHighLevel':                 dict(get=lambda:float(self.triggerHighLevelVar.get()),          set=self.triggerHighLevelVar.set),
             'triggerLowLevel':                  dict(get=lambda:float(self.triggerLowLevelVar.get()),           set=self.triggerLowLevelVar.set),
@@ -639,7 +644,7 @@ class PyVAQ:
         self.updateHardwareInputDisplay()
 
         self.update()
-        
+
         # Start automatic updating of video and audio monitors
         self.audioMonitorUpdateJob = None
         self.videoMonitorUpdateJob = None
@@ -1194,6 +1199,7 @@ him know. Otherwise, I had nothing to do with it.
         self.setAudioWriteEnable(audioWriteEnable, updateTextField=False)
     def videoWriteEnableChangeHandler(self, *args):
         videoWriteEnables = {}
+        breakpoint()
         for camSerial in self.cameraMonitors:
             videoWriteEnables[camSerial] = self.cameraMonitors[camSerial].getEnableWrite()
         self.setVideoWriteEnable(videoWriteEnables, updateTextField=False)
@@ -1223,6 +1229,12 @@ him know. Otherwise, I had nothing to do with it.
     def updateTriggerMode(self, *args):
         # Handle a user selection of a new trigger mode
         newMode = self.triggerModeVar.get()
+
+        if newMode in ["Continuous", "SimpleContinuous"]:
+            # PreTrigger value is not relevant
+            self.preTriggerTimeEntry['state'] = tk.DISABLED
+        else:
+            self.preTriggerTimeEntry.config(state=tk.NORMAL)
 
         if newMode != "Continuous":
             self.sendMessage(self.continuousTriggerProcess, (Messages.STOP, None))
@@ -2209,6 +2221,9 @@ him know. Otherwise, I had nothing to do with it.
     def setNumSyncedProcesses(self, *args):
         raise AttributeError('This attribute is a derived property, and is not directly settable')
     def getBufferSizeSeconds(self):
+        # This is the old way of deterining an appropriate buffer
+        #   size based on the pre-trigger time requested. It is not used
+        #   by VideoAcquirer any more - see param "acquisitionBufferSize" instead.
         preTriggerTime = self.getParams('preTriggerTime')
         return preTriggerTime * 2 + 1    # Twice the pretrigger time to make sure we don't miss stuff, plus one second for good measure
     def getBufferSizeAudioChunks(self):
@@ -2412,7 +2427,7 @@ him know. Otherwise, I had nothing to do with it.
                 requestedFrameRate=p["videoFrequency"],
                 monitorFrameRate=self.monitorMasterFrameRate,
                 verbose=self.videoAcquireVerbose,
-                bufferSizeSeconds=p["bufferSizeSeconds"],
+                bufferSizeSeconds=p["acquisitionBufferSize"],
                 ready=ready,
                 stdoutQueue=self.StdoutManager.queue)
 
@@ -2736,19 +2751,21 @@ him know. Otherwise, I had nothing to do with it.
         self.videoFrequencyEntry.grid()
         self.videoExposureTimeFrame.grid(           row=1, column=2, sticky=tk.EW)
         self.videoExposureTimeEntry.grid()
-        self.preTriggerTimeFrame.grid(              row=2, column=0, sticky=tk.EW)
-        self.preTriggerTimeEntry.grid()
-        self.recordTimeFrame.grid(                  row=2, column=1, sticky=tk.EW)
-        self.recordTimeEntry.grid()
-        self.gainFrame.grid(                        row=2, column=2, sticky=tk.EW)
+        self.gainFrame.grid(                        row=1, column=3, sticky=tk.EW)
         self.gainEntry.grid()
-        self.maxGPUVencFrame.grid(                  row=3, column=0, sticky=tk.NSEW)
+        self.acquisitionBufferSizeFrame.grid(           row=2, column=0, sticky=tk.EW)
+        self.acquisitionBufferSizeEntry.grid()
+        self.preTriggerTimeFrame.grid(              row=2, column=1, sticky=tk.EW)
+        self.preTriggerTimeEntry.grid()
+        self.recordTimeFrame.grid(                  row=2, column=2, sticky=tk.EW)
+        self.recordTimeEntry.grid()
+        self.maxGPUVencFrame.grid(                  row=2, column=3, sticky=tk.NSEW)
         self.maxGPUVEncEntry.grid()
-        self.acquisitionSignalParametersFrame.grid( row=3, column=1, columnspan=2, sticky=tk.NSEW)
+        self.acquisitionSignalParametersFrame.grid( row=3, column=0, columnspan=4, sticky=tk.NSEW)
         self.startOnHWSignalCheckbutton.grid(row=0, column=0)
         self.writeEnableOnHWSignalCheckbutton.grid(row=0, column=1)
-        self.selectAcquisitionHardwareButton.grid(  row=4, column=0, columnspan=3, sticky=tk.NSEW)
-        self.acquisitionHardwareText.grid(          row=5, column=0, columnspan=3)
+        self.selectAcquisitionHardwareButton.grid(  row=4, column=0, columnspan=4, sticky=tk.NSEW)
+        self.acquisitionHardwareText.grid(          row=5, column=0, columnspan=4)
 
         #### Children of self.mergeFrame
         self.mergeFilesCheckbutton.grid(            row=1, column=0, sticky=tk.NW)

@@ -3216,7 +3216,7 @@ class VideoAcquirer(StateMachineProcess):
         self.pixelFormat = None
         # self.imageQueue = mp.Queue()
         # self.imageQueue.cancel_join_thread()
-        self.bufferSize = int(2*bufferSizeSeconds * self.requestedFrameRate)
+        self.bufferSize = int(bufferSizeSeconds * self.requestedFrameRate)
 
         self.nChannels = psu.getColorChannelCount(camSerial=self.camSerial)
 
