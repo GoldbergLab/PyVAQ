@@ -407,7 +407,7 @@ class PyVAQ:
         self.maxGPUVEncVar = tk.StringVar(); self.maxGPUVEncVar.set(str(DEFAULT_NUM_GPU_VENC_SESSIONS))
         self.maxGPUVEncEntry = ttk.Entry(self.maxGPUVencFrame, width=16, textvariable=self.maxGPUVEncVar)
 
-        self.selectAcquisitionHardwareButton =  ttk.Button(self.acquisitionParametersFrame, text="Select audio/video inputs", command=self.selectInputs)
+        self.selectAcquisitionHardwareButton =  ttk.Button(self.acquisitionParametersFrame, text="Select audio/video inputs", command=self.selectAcquisitionHardware)
         self.acquisitionHardwareText = tk.Text(self.acquisitionParametersFrame)
 
         self.chunkSizeVar =         tk.StringVar(); self.chunkSizeVar.set(1000)
@@ -663,7 +663,7 @@ class PyVAQ:
 
         self.setupInputMonitoringWidgets()
 
-        self.updateHardwareInputDisplay()
+        self.updateAcquisitionHardwareDisplay()
 
         self.update()
 
@@ -686,13 +686,6 @@ class PyVAQ:
         # If provided, load settings file
         if settingsFilePath is not None:
             self.loadSettings(path=settingsFilePath)
-
-    # def createSetting(self, settingName, parent, varType, initialValue, labelText, width=None):
-    #     # Creates a set of widgets (label, input widget, variable). Only good for Entry-type inputs
-    #     newVar = varType()
-    #     newVar.set(initialValue)
-    #     newEntry = ttk.Entry(parent, width=width, )
-    #     setattr(self, settingName+"Var")
 
     def log(self, msg, *args, **kwargs):
         # Add another message to the currently accumulating log entry
@@ -897,17 +890,9 @@ him know. Otherwise, I had nothing to do with it.
         for camSerial in self.cameraMonitors:
             self.cameraMonitors[camSerial].setDisplaySize(newSize)
 
-    def selectInputs(self, *args):
-        # Create a popup for the user to select acquisition options
+    def selectAcquisitionHardware(self, *args):
+        """Create a popup for the user to select acquisition hardware.
 
-        # debug = False
-        # if debug:
-        #     self.log("GUI DEBUG MODE - using fake cameras and DAQ channels")
-        #     audioDAQChannels = ['fakeDebugAudioChannel1', 'fakeDebugAudioChannel2']
-        #     # availableClockChannels = ['fakeDebugClockChannel1', 'fakeDebugClockChannel2', 'fakeDebugClockChannel3', 'fakeDebugClockChannel4', 'fakeDebugClockChannel5', 'fakeDebugClockChannel6']
-        #     camSerials = ['fakeDebugCam1', 'fakeDebugCam2']
-        #     self.setupInputMonitoringWidgets(camSerials=camSerials, audioDAQChannels=audioDAQChannels)
-        #     return
 
         # Get current settings to use as defaults
         p = self.getParams(
@@ -1023,7 +1008,7 @@ him know. Otherwise, I had nothing to do with it.
                 self.setupInputMonitoringWidgets()
 
                 # Update display text
-                self.updateHardwareInputDisplay()
+                self.updateAcquisitionHardwareDisplay()
 
                 # Restart child processes with new acquisition values
                 self.createChildProcesses()
@@ -1103,10 +1088,6 @@ him know. Otherwise, I had nothing to do with it.
             del self.cameraMonitors[camSerial]
 
         self.cameraSpeeds = dict([(camSerial, psu.checkCameraSpeed(camSerial=camSerial)) for camSerial in camSerials])
-        # self.updateAllCamerasAttributes()
-        # with open('attributes.txt', 'w') as f:
-        #     pp = pprint.PrettyPrinter(stream=f, indent=2)
-        #     pp.pprint(self.cameraAttributes)
 
         # Create new video stream monitoring widgets and other entities
         for camSerial in camSerials:
@@ -2135,7 +2116,7 @@ him know. Otherwise, I had nothing to do with it.
             self.log("Loaded settings:")
             self.log(params)
             self.setParams(**params)
-            self.updateHardwareInputDisplay()
+            self.updateAcquisitionHardwareDisplay()
         self.endLog(inspect.currentframe().f_code.co_name)
 
     def setAudioWriteEnable(self, newAudioWriteEnable, *args, updateTextField=True):
