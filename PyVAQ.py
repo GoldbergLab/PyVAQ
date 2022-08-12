@@ -263,10 +263,16 @@ class PyVAQ:
 
         ########### GUI WIDGETS #####################
 
+        BG_COLOR = '#eeeeff'
+
         collapsableFrameStyle = {
             'relief':tk.GROOVE,
-            'borderwidth':3
+            'borderwidth':3,
+            'bg':BG_COLOR
             }
+        collapsableFrameButtonStyle = {
+            'bg':BG_COLOR
+        }
 
         self.mainFrame = ttk.Frame(self.master)
 
@@ -310,7 +316,7 @@ class PyVAQ:
 
         def reDockFunction(d):
             d.reDockButton.grid_forget()
-            d.unDockButton.grid(row=0, column=0, sticky=tk.NE)
+            d.unDockButton.grid(row=0, column=0, sticky=tk.NW)
             d.docker.grid(row=0, column=0)
             self.update()
 
@@ -318,7 +324,7 @@ class PyVAQ:
             self.monitorMasterFrame, root=self.master,
             unDockFunction=unDockFunction, reDockFunction=reDockFunction,
             unDockText='undock', reDockText='dock', background='#d9d9d9')
-        self.videoMonitorDocker.unDockButton.grid(row=0, column=0, sticky=tk.NE)
+        self.videoMonitorDocker.unDockButton.grid(row=0, column=0, sticky=tk.NW)
         self.videoMonitorDocker.reDockButton.grid(row=0, column=0, sticky=tk.NW)
         self.videoMonitorDocker.reDockButton.grid_forget()
 
@@ -331,10 +337,10 @@ class PyVAQ:
 
         self.controlFrame = ttk.Frame(self.mainFrame)
 
-        self.statusFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Status", **collapsableFrameStyle)
+        self.statusFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Status", **collapsableFrameStyle); self.statusFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
         self.childStatusText = tk.Text(self.statusFrame, tabs=('7c',))
 
-        self.acquisitionControlFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Control", **collapsableFrameStyle)
+        self.acquisitionControlFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Control", **collapsableFrameStyle); self.acquisitionControlFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
         self.acquisitionControlFrame.expand()
         # self.acquisitionFrame = ttk.LabelFrame(self.controlFrame, text="Acquisition")
 
@@ -343,7 +349,7 @@ class PyVAQ:
         self.restartAcquisitionButton =         ttk.Button(self.acquisitionControlFrame, text='Restart acquisition', command=self.restartAcquisition)
         self.shutDownAcquisitionButton =        ttk.Button(self.acquisitionControlFrame, text='Shut down acquisition', command=self.shutDownAcquisition)
 
-        self.acquisitionParametersFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Parameters", **collapsableFrameStyle)
+        self.acquisitionParametersFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Parameters", **collapsableFrameStyle); self.acquisitionParametersFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
 
         self.audioFrequencyFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Audio freq. (Hz)", style='SingleContainer.TLabelframe')
         self.audioFrequencyVar =    tk.StringVar(); self.audioFrequencyVar.set("44100")
@@ -391,7 +397,7 @@ class PyVAQ:
 
         self.chunkSizeVar =         tk.StringVar(); self.chunkSizeVar.set(1000)
 
-        self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", **collapsableFrameStyle)
+        self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", **collapsableFrameStyle); self.mergeFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
         # self.mergeFrame = ttk.LabelFrame(self.acquisitionFrame, text="AV File merging")
 
         self.mergeFileWidget = FileWritingEntry(
@@ -427,13 +433,13 @@ class PyVAQ:
         self.mergeCompression = ttk.Combobox(self.mergeCompressionFrame, textvariable=self.mergeCompressionVar, values=AVMerger.COMPRESSION_OPTIONS, width=12)
         self.mergeCompressionVar.trace('w', lambda *args: self.changeAVMergerParams(compression=self.mergeCompressionVar.get()))
 
-        self.fileSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="File writing settings", **collapsableFrameStyle)
+        self.fileSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="File writing settings", **collapsableFrameStyle); self.fileSettingsFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
 
         self.daySubfoldersVar = tk.BooleanVar(); self.daySubfoldersVar.set(True)
         self.daySubfoldersCheckbutton = ttk.Checkbutton(self.fileSettingsFrame, text="File in day subfolders", variable=self.daySubfoldersVar)
         self.daySubfoldersVar.trace('w', lambda *args: self.updateDaySubfolderSetting())
 
-        self.scheduleFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Recording Schedule", **collapsableFrameStyle)
+        self.scheduleFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Recording Schedule", **collapsableFrameStyle); self.scheduleFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
 
         self.scheduleEnabledVar = tk.BooleanVar(); self.scheduleEnabledVar.set(False)
         self.scheduleEnabledVar.trace('w', self.updateChildSchedulingState)
@@ -443,7 +449,7 @@ class PyVAQ:
         self.scheduleStopVar = TimeVar(); self.scheduleStopVar.trace('w', self.updateChildSchedulingState)
         self.scheduleStopTimeEntry = TimeEntry(self.scheduleFrame, text="Stop time")
 
-        self.triggerFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Triggering", **collapsableFrameStyle)
+        self.triggerFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Triggering", **collapsableFrameStyle); self.triggerFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
         # self.triggerFrame = ttk.LabelFrame(self.controlFrame, text='Triggering')
 
         self.triggerModes = ['Manual', 'Audio', 'Continuous', 'SimpleContinuous', 'None']
@@ -1099,7 +1105,7 @@ him know. Otherwise, I had nothing to do with it.
                 self.update()
             def reDockFunction(d):
                 d.reDockButton.grid_forget()
-                d.unDockButton.grid(row=0, column=0, sticky=tk.NE)
+                d.unDockButton.grid(row=0, column=0, sticky=tk.NW)
                 d.docker.grid(row=1, column=0)
                 self.update()
 
@@ -1107,7 +1113,7 @@ him know. Otherwise, I had nothing to do with it.
                 self.monitorMasterFrame, root=self.master,
                 unDockFunction=unDockFunction, reDockFunction=reDockFunction,
                 unDockText='undock', reDockText='dock', background='#d9d9d9')
-            self.audioMonitorDocker.unDockButton.grid(row=0, column=0, sticky=tk.NE)
+            self.audioMonitorDocker.unDockButton.grid(row=0, column=0, sticky=tk.NW)
             self.audioMonitorDocker.reDockButton.grid(row=0, column=0, sticky=tk.NW)
             self.audioMonitorDocker.reDockButton.grid_forget()
 
@@ -2698,7 +2704,7 @@ him know. Otherwise, I had nothing to do with it.
         audioDAQChannels = p["audioDAQChannels"]
 
         if (self.audioMonitorDocker.isDocked() and len(audioDAQChannels) > 0) or (self.videoMonitorDocker.isDocked() and len(camSerials) > 0):
-            self.monitorMasterFrame.grid(row=0, column=0)
+            self.monitorMasterFrame.grid(row=0, column=0, sticky=tk.NSEW)
         else:
             self.monitorMasterFrame.grid_forget()
 
