@@ -1238,7 +1238,10 @@ him know. Otherwise, I had nothing to do with it.
     def updateChildSchedulingState(self, *args):
         scheduleParams = self.getParams('scheduleEnabled', 'scheduleStart', 'scheduleStop')
         for camSerial in self.videoWriteProcesses:
-            self.sendMessage(Messages.SETPARAMS, self.videoWriteProcesses[camSerial], scheduleParams)
+            self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, scheduleParams))
+        if self.audioWriteProcess is not None:
+            self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, scheduleParams))
+
 
     def changeAVMergerParams(self, **params):
         self.sendMessage(self.mergeProcess, (Messages.SETPARAMS, params))
