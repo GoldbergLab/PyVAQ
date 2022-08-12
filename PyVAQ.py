@@ -244,14 +244,6 @@ class PyVAQ:
         self.ID = 'GUI'
         self.stdoutBuffer = []
 
-        # self.audioDAQChannels = []
-        # self.audioSyncSource = None
-        # self.audioSyncTerminal = None
-        # self.videoSyncSource = None
-        # self.videoSyncTerminal = None
-        # self.acquisitionStartTriggerSource = None
-        # self.audioChannelConfiguration = None
-        # self.camSerials = []
         self.videoBaseFileNames = GeneralVar(); self.videoBaseFileNames.set({})
         self.videoDirectories = GeneralVar(); self.videoDirectories.set({})
         self.audioBaseFileName = GeneralVar(); self.audioBaseFileName.set('')
@@ -266,7 +258,7 @@ class PyVAQ:
         self.videoSyncSource = GeneralVar(); self.videoSyncSource.set("PFI4")
         self.videoWriteEnable = GeneralVar(); self.videoWriteEnable.set({})
         self.audioWriteEnable = tk.BooleanVar(); self.audioWriteEnable.set(True)
-        self.acquisitionStartTriggerSource = GeneralVar(); self.acquisitionStartTriggerSource.set(None)
+        self.acquisitionSignalChannel = GeneralVar(); self.acquisitionSignalChannel.set(None)
         self.audioChannelConfiguration = GeneralVar(); self.audioChannelConfiguration.set(None)
 
         ########### GUI WIDGETS #####################
@@ -379,6 +371,17 @@ class PyVAQ:
         self.recordTimeVar =        tk.StringVar(); self.recordTimeVar.set("10.0")
         self.recordTimeEntry =      ttk.Entry(self.recordTimeFrame, width=14, textvariable=self.recordTimeVar)
 
+        self.acquisitionSignalParametersFrame = ttk.LabelFrame(self.acquisitionParametersFrame, text="Hardware signal", style='SingleContainer.TLabelframe')
+        self.startOnHWSignalVar = tk.BooleanVar(); self.startOnHWSignalVar.set(False)
+        self.startOnHWSignalCheckbutton = ttk.Checkbutton(self.acquisitionSignalParametersFrame, text="Start acquisition on HW signal", variable=self.startOnHWSignalVar, offvalue=False, onvalue=True)
+        self.writeEnableOnHWSignalVar = tk.BooleanVar(); self.writeEnableOnHWSignalVar.set(False)
+        self.writeEnableOnHWSignalCheckbutton = ttk.Checkbutton(self.acquisitionSignalParametersFrame, text="Write enable based on HW signal", variable=self.writeEnableOnHWSignalVar, offvalue=False, onvalue=True)
+
+        DEFAULT_NUM_GPU_VENC_SESSIONS = 3
+        self.maxGPUVencFrame = ttk.LabelFrame(self.acquisitionParametersFrame, text="Max GPU VEnc sessions")
+        self.maxGPUVEncVar = tk.StringVar(); self.maxGPUVEncVar.set(str(DEFAULT_NUM_GPU_VENC_SESSIONS))
+        self.maxGPUVEncEntry = ttk.Entry(self.maxGPUVencFrame, width=10, textvariable=self.maxGPUVEncVar)
+
         self.selectAcquisitionHardwareButton =  ttk.Button(self.acquisitionParametersFrame, text="Select audio/video inputs", command=self.selectInputs)
         self.acquisitionHardwareText = tk.Text(self.acquisitionParametersFrame)
 
@@ -425,11 +428,6 @@ class PyVAQ:
         self.daySubfoldersVar = tk.BooleanVar(); self.daySubfoldersVar.set(True)
         self.daySubfoldersCheckbutton = ttk.Checkbutton(self.fileSettingsFrame, text="File in day subfolders", variable=self.daySubfoldersVar)
         self.daySubfoldersVar.trace('w', lambda *args: self.updateDaySubfolderSetting())
-
-        DEFAULT_NUM_GPU_VENC_SESSIONS = 3
-        self.maxGPUVencFrame = ttk.LabelFrame(self.fileSettingsFrame, text="Max GPU VEnc sessions")
-        self.maxGPUVEncVar = tk.StringVar(); self.maxGPUVEncVar.set(str(DEFAULT_NUM_GPU_VENC_SESSIONS))
-        self.maxGPUVEncEntry = ttk.Entry(self.maxGPUVencFrame, width=10, textvariable=self.maxGPUVEncVar)
 
         self.scheduleFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Recording Schedule", **collapsableFrameStyle)
 
@@ -626,10 +624,12 @@ class PyVAQ:
             "videoSyncTerminal":                dict(get=self.videoSyncTerminal.get,                            set=self.videoSyncTerminal.set),
             "audioSyncSource":                  dict(get=self.audioSyncSource.get,                              set=self.audioSyncSource.set),
             "videoSyncSource":                  dict(get=self.videoSyncSource.get,                              set=self.videoSyncSource.set),
-            "acquisitionStartTriggerSource":    dict(get=self.acquisitionStartTriggerSource.get,                set=self.acquisitionStartTriggerSource.set),
+            "acquisitionSignalChannel":         dict(get=self.acquisitionSignalChannel.get,                     set=self.acquisitionSignalChannel.set),
             "audioChannelConfiguration":        dict(get=self.audioChannelConfiguration.get,                    set=self.audioChannelConfiguration.set),
             "videoWriteEnable":                 dict(get=self.videoWriteEnable.get,                             set=self.setVideoWriteEnable),
             "audioWriteEnable":                 dict(get=self.audioWriteEnable.get,                             set=self.setAudioWriteEnable),
+            "startOnHWSignal":                  dict(get=self.startOnHWSignalVar.get,                              set=self.startOnHWSignalVar.set),
+            "writeEnableOnHWSignal":            dict(get=self.writeEnableOnHWSignalVar.get,                        set=self.writeEnableOnHWSignalVar.set),
         }
 
         self.createAudioAnalysisMonitor()
@@ -862,7 +862,7 @@ him know. Otherwise, I had nothing to do with it.
             "videoSyncTerminal",
             "audioSyncSource",
             "videoSyncSource",
-            "acquisitionStartTriggerSource",
+            "acquisitionSignalChannel",
             "audioChannelConfiguration"
             )
 
@@ -872,7 +872,7 @@ him know. Otherwise, I had nothing to do with it.
         defaultVideoSyncTerminal = p["videoSyncTerminal"]
         defaultAudioSyncSource = p["audioSyncSource"]
         defaultVideoSyncSource = p["videoSyncSource"]
-        defaultAcquisitionStartTriggerSource = p["acquisitionStartTriggerSource"]
+        defaultAcquisitionSignalChannel = p["acquisitionSignalChannel"]
         defaultAudioChannelConfiguration = p["audioChannelConfiguration"]
 
         # Query the system to determine what DAQ channels and cameras are
@@ -901,7 +901,7 @@ him know. Otherwise, I had nothing to do with it.
             params.append(Param(name='Audio Sync PFI Interface', widgetType=Param.TEXT, options=None, default=defaultAudioSyncSource, description="This must match your selection for Audio Sync Channel. Check DAQ pinout for matching PFI channel."))
             params.append(Param(name='Video Sync PFI Interface', widgetType=Param.TEXT, options=None, default=defaultVideoSyncSource, description="This must match your selection for Video Sync Channel. Check DAQ pinout for matching PFI channel."))
         params.append(Param(name='Audio channel configuration', widgetType=Param.MONOCHOICE, options=audioChannelConfigurations, default=defaultAudioChannelConfiguration, description="Choose an analog channel configuration for audio acquisition. Recommend differential if you have a 3-wire XLR-type output, RSE if you only use two wires."))
-        params.append(Param(name='Acquisition start trigger channel', widgetType=Param.MONOCHOICE, options=availableDigitalChannels, default=defaultAcquisitionStartTriggerSource, description="Choose a channel that will trigger the acquisition start with a rising edge. Leave as None if you wish the acquisition to start without waiting for a digital trigger."))
+        params.append(Param(name='Acquisition start trigger channel', widgetType=Param.MONOCHOICE, options=availableDigitalChannels, default=defaultAcquisitionSignalChannel, description="Choose a channel that will trigger the acquisition start with a rising edge. Leave as None if you wish the acquisition to start without waiting for a digital trigger."))
         params.append(Param(name='Start acquisition immediately', widgetType=Param.MONOCHOICE, options=['Yes', 'No'], default='Yes'))
 
         choices = None
@@ -939,13 +939,13 @@ him know. Otherwise, I had nothing to do with it.
                     videoSyncSource = choices['Video Sync PFI Interface']
                 else:
                     videoSyncSource = None
-                if 'Acquisition start trigger channel' in choices and len(choices['Acquisition start trigger channel']) > 0:
+                if 'Acquisition signal channel' in choices and len(choices['Acquisition start trigger channel']) > 0:
                     if choices['Acquisition start trigger channel'] == 'None':
-                        acquisitionStartTriggerSource = None
+                        acquisitionSignalChannel = None
                     else:
-                        acquisitionStartTriggerSource = choices['Acquisition start trigger channel']
+                        acquisitionSignalChannel = choices['Acquisition start trigger channel']
                 else:
-                    acquisitionStartTriggerSource = None
+                    acquisitionSignalChannel = None
                 if 'Audio channel configuration' in choices and len(choices['Audio channel configuration']) > 0:
                     audioChannelConfiguration = choices['Audio channel configuration']
 
@@ -957,7 +957,7 @@ him know. Otherwise, I had nothing to do with it.
                     videoSyncTerminal=videoSyncTerminal,
                     audioSyncSource=audioSyncSource,
                     videoSyncSource=videoSyncSource,
-                    acquisitionStartTriggerSource=acquisitionStartTriggerSource,
+                    acquisitionSignalChannel=acquisitionSignalChannel,
                     audioChannelConfiguration=audioChannelConfiguration
                     )
 
@@ -993,7 +993,7 @@ him know. Otherwise, I had nothing to do with it.
             "videoSyncTerminal",
             "audioSyncSource",
             "videoSyncSource",
-            "acquisitionStartTriggerSource",
+            "acquisitionSignalChannel",
             "audioChannelConfiguration"
             )
 
@@ -1005,7 +1005,7 @@ him know. Otherwise, I had nothing to do with it.
             '  Video sync terminal:  {videoSyncTerminal}'.format(videoSyncTerminal=p['videoSyncTerminal']),
             '  Audio sync source:    {audioSyncSource}'.format(audioSyncSource=p['audioSyncSource']),
             '  Video sync source:    {videoSyncSource}'.format(videoSyncSource=p['videoSyncSource']),
-            '  Start trigger source: {acquisitionStartTriggerSource}'.format(acquisitionStartTriggerSource=p['acquisitionStartTriggerSource']),
+            '  Acq signal channel:   {acquisitionSignalChannel}'.format(acquisitionSignalChannel=p['acquisitionSignalChannel']),
             '  Audio channel config: {audioChannelConfiguration}'.format(audioChannelConfiguration=p['audioChannelConfiguration'])
         ])
 
@@ -1976,8 +1976,8 @@ him know. Otherwise, I had nothing to do with it.
         elif self.metaState == 'indeterminate':
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.DISABLED)
-            self.haltAcquisitionButton.config(state=tk.NORMAL)
-            self.restartAcquisitionButton.config(state=tk.NORMAL)
+            self.haltAcquisitionButton.config(state=tk.DISABLED)
+            self.restartAcquisitionButton.config(state=tk.DISABLED)
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.triggerModeRadioButtons[mode].config(state=tk.DISABLED)
@@ -2162,6 +2162,9 @@ him know. Otherwise, I had nothing to do with it.
                 print('Unable to set param: {paramName}'.format(paramName=paramName))
                 print('\tReason: {reason}'.format(reason=str(e)))
                 # traceback.print_exc()
+            except KeyError as e:
+                print('Unable to set param: {paramName}'.format(paramName=paramName))
+                print('\tReason: {reason}'.format(reason='This parameter is not valid - it will be ignored.'))
             except:
                 traceback.print_exc()
 
@@ -2325,7 +2328,9 @@ him know. Otherwise, I had nothing to do with it.
                 actualVideoFrequency=self.actualVideoFrequency,
                 actualAudioFrequency=self.actualAudioFrequency,
                 startTime=startTime,
-                startTriggerChannel=p["acquisitionStartTriggerSource"],
+                signalChannel=p['acquisitionSignalChannel'],
+                startOnHWSignal=p['startOnHWSignal'],
+                writeEnableOnHWSignal=p['writeEnableOnHWSignal'],
                 audioSyncChannel=p["audioSyncTerminal"],
                 videoSyncChannel=p["videoSyncTerminal"],
                 videoDutyCycle=convertExposureTimeToDutyCycle(p["videoExposureTime"]/1000, p["videoFrequency"]),
@@ -2736,8 +2741,13 @@ him know. Otherwise, I had nothing to do with it.
         self.recordTimeEntry.grid()
         self.gainFrame.grid(                        row=2, column=2, sticky=tk.EW)
         self.gainEntry.grid()
-        self.selectAcquisitionHardwareButton.grid(  row=3, column=0, columnspan=3, sticky=tk.NSEW)
-        self.acquisitionHardwareText.grid(          row=4, column=0, columnspan=3)
+        self.maxGPUVencFrame.grid(                  row=3, column=0, sticky=tk.NSEW)
+        self.maxGPUVEncEntry.grid()
+        self.acquisitionSignalParametersFrame.grid( row=3, column=1, columnspan=2, sticky=tk.NSEW)
+        self.startOnHWSignalCheckbutton.grid(row=0, column=0)
+        self.writeEnableOnHWSignalCheckbutton.grid(row=0, column=1)
+        self.selectAcquisitionHardwareButton.grid(  row=4, column=0, columnspan=3, sticky=tk.NSEW)
+        self.acquisitionHardwareText.grid(          row=5, column=0, columnspan=3)
 
         #### Children of self.mergeFrame
         self.mergeFilesCheckbutton.grid(            row=1, column=0, sticky=tk.NW)
@@ -2752,8 +2762,6 @@ him know. Otherwise, I had nothing to do with it.
 
         #### Children of self.fileSettingsFrame
         self.daySubfoldersCheckbutton.grid( row=0, column=0)
-        self.maxGPUVencFrame.grid(          row=0, column=1)
-        self.maxGPUVEncEntry.grid()
 
         #### Children of self.scheduleFrame
         self.scheduleEnabledCheckbutton.grid(   row=0, column=0, sticky=tk.NW)
