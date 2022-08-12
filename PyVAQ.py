@@ -1199,7 +1199,6 @@ him know. Otherwise, I had nothing to do with it.
         self.setAudioWriteEnable(audioWriteEnable, updateTextField=False)
     def videoWriteEnableChangeHandler(self, *args):
         videoWriteEnables = {}
-        breakpoint()
         for camSerial in self.cameraMonitors:
             videoWriteEnables[camSerial] = self.cameraMonitors[camSerial].getEnableWrite()
         self.setVideoWriteEnable(videoWriteEnables, updateTextField=False)
