@@ -1265,9 +1265,9 @@ him know. Otherwise, I had nothing to do with it.
             else:
                 self.sendMessage(self.audioTriggerProcess, (Messages.STOPANALYZE, None))
                 self.sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, dict(writeTriggerEnabled=False, tagTriggerEnabled=False)))
-        elif newMode == "SimpleContinuous":
-            # User selected "SimpleContinuous" trigger mode
-            self.restartAcquisition()
+        # elif newMode == "SimpleContinuous":
+        #     # User selected "SimpleContinuous" trigger mode
+        #     self.restartAcquisition()
 
         self.update()
 
@@ -2587,14 +2587,14 @@ him know. Otherwise, I had nothing to do with it.
             # Start merge process
             self.updateAVMergerState()
 
-    def restartAcquisition(self):
-        self.haltChildProcesses()
-        stopped = self.waitForChildProcessesToStop()
-        if stopped:
-            self.initializeChildProcesses()
-        else:
-            self.log("Attempted to restart child processes, but could not get them to stop.")
-            self.endLog(inspect.currentframe().f_code.co_name)
+    # def restartAcquisition(self):
+    #     self.haltChildProcesses()
+    #     stopped = self.waitForChildProcessesToStop()
+    #     if stopped:
+    #         self.initializeChildProcesses()
+    #     else:
+    #         self.log("Attempted to restart child processes, but could not get them to stop.")
+    #         self.endLog(inspect.currentframe().f_code.co_name)
 
     def haltChildProcesses(self):
         # Tell all child processes to go to stopped state
