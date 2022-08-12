@@ -248,6 +248,13 @@ class CameraMonitor(ttk.LabelFrame):
 
 #       self.cameraAttributeBrowserButton = ttk.Button(vFrame, text="Attribute browser", command=lambda:self.createCameraAttributeBrowser(camSerial))
 
+    def getDisplaySize(self):
+        return self.displaySize
+    def setDisplaySize(self, newSize):
+        self.displaySize = newSize
+        self.canvas['width'] = self.displaySize[0]
+        self.canvas['height'] = self.displaySize[1]
+
     def idle(self):
         if not self.isIdle:
             # Transitioning from active to idle

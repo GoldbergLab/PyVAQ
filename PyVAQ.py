@@ -203,10 +203,21 @@ WIDGET_COLORS = [
 class GeneralVar:
     def __init__(self):
         self.value = None
+        self.getCallback = None
+        self.setCallback = None
     def get(self):
+        if self.getCallback is not None:
+            self.getCallback()
         return self.value
     def set(self, value):
         self.value = value
+        if self.setCallback is not None:
+            self.setCallback()
+    def trace(self, mode, callback):
+        if mode == 'w':
+            self.setCallback = callback
+        elif mode == 'r':
+            self.readCallback = callback
 
 class PyVAQ:
     def __init__(self, master, settingsFilePath=None):
@@ -244,6 +255,7 @@ class PyVAQ:
         self.ID = 'GUI'
         self.stdoutBuffer = []
 
+        ########### PARAMETERS not directly associated with permanent widgets ##########
         self.videoBaseFileNames = GeneralVar(); self.videoBaseFileNames.set({})
         self.videoDirectories = GeneralVar(); self.videoDirectories.set({})
         self.audioBaseFileName = GeneralVar(); self.audioBaseFileName.set('')
@@ -260,6 +272,8 @@ class PyVAQ:
         self.audioWriteEnable = tk.BooleanVar(); self.audioWriteEnable.set(True)
         self.acquisitionSignalChannel = GeneralVar(); self.acquisitionSignalChannel.set(None)
         self.audioChannelConfiguration = GeneralVar(); self.audioChannelConfiguration.set(None)
+        self.videoMonitorDisplaySize = GeneralVar(); self.videoMonitorDisplaySize.set((400, 300))
+        self.videoMonitorDisplaySize.trace('w', self.updateVideoMonitorDisplaySize)
 
         ########### GUI WIDGETS #####################
 
@@ -295,6 +309,7 @@ class PyVAQ:
 
         self.monitoringMenu = tk.Menu(self.menuBar, tearoff=False)
         self.monitoringMenu.add_command(label="Configure audio monitoring", command=self.configureAudioMonitoring)
+        self.monitoringMenu.add_command(label="Configure video monitoring", command=self.configureVideoMonitoring)
 
         self.menuBar.add_cascade(label="Settings", menu=self.settingsMenu)
         self.menuBar.add_cascade(label="Monitoring", menu=self.monitoringMenu)
@@ -639,8 +654,9 @@ class PyVAQ:
             "audioChannelConfiguration":        dict(get=self.audioChannelConfiguration.get,                    set=self.audioChannelConfiguration.set),
             "videoWriteEnable":                 dict(get=self.videoWriteEnable.get,                             set=self.setVideoWriteEnable),
             "audioWriteEnable":                 dict(get=self.audioWriteEnable.get,                             set=self.setAudioWriteEnable),
-            "startOnHWSignal":                  dict(get=self.startOnHWSignalVar.get,                              set=self.startOnHWSignalVar.set),
-            "writeEnableOnHWSignal":            dict(get=self.writeEnableOnHWSignalVar.get,                        set=self.writeEnableOnHWSignalVar.set),
+            "startOnHWSignal":                  dict(get=self.startOnHWSignalVar.get,                           set=self.startOnHWSignalVar.set),
+            "writeEnableOnHWSignal":            dict(get=self.writeEnableOnHWSignalVar.get,                     set=self.writeEnableOnHWSignalVar.set),
+            "videoMonitorDisplaySize":          dict(get=self.videoMonitorDisplaySize.get,                      set=self.videoMonitorDisplaySize.set),
         }
 
         self.createAudioAnalysisMonitor()
@@ -822,7 +838,7 @@ him know. Otherwise, I had nothing to do with it.
     def configureAudioMonitoring(self):
         # Show popup for user to select audio monitoring options
         if self.audioMonitor is None:
-            showinfo('Please start acquisition before configuring audio monitor')
+            showinfo('Please initialize acquisition before configuring audio monitor')
             return
 
         p = self.getParams()
@@ -853,6 +869,33 @@ him know. Otherwise, I had nothing to do with it.
                     self.audioMonitor.historyLength = float(choices['Audio history length']) * p['audioFrequency']
                 except ValueError:
                     pass
+
+    def configureVideoMonitoring(self):
+        # Show popup for user to select video monitoring options
+        if len(self.cameraMonitors) == 0:
+            showinfo('Please initialize acquisition before configuring audio monitor')
+            return
+
+        w, h = self.getParams('videoMonitorDisplaySize')
+
+        params = [
+            Param(name='Video display width',  widgetType=Param.TEXT, options=None, default=str(w)),
+            Param(name='Video display height', widgetType=Param.TEXT, options=None, default=str(h))
+        ]
+        pd = ParamDialog(self.master, params=params, title="Configure video monitoring")
+        choices = pd.results
+        if choices is not None:
+            if 'Video display width' in choices:
+                w = int(choices['Video display width'])
+            if 'Video display height' in choices:
+                h = int(choices['Video display height'])
+        self.videoMonitorDisplaySize.set((w, h))
+
+    def updateVideoMonitorDisplaySize(self):
+        # Update all video monitors with the latest size
+        newSize = self.videoMonitorDisplaySize.get()
+        for camSerial in self.cameraMonitors:
+            self.cameraMonitors[camSerial].setDisplaySize(newSize)
 
     def selectInputs(self, *args):
         # Create a popup for the user to select acquisition options
@@ -1077,7 +1120,7 @@ him know. Otherwise, I had nothing to do with it.
                 videoBaseFileName = ''
             self.cameraMonitors[camSerial] = CameraMonitor(
                 self.videoMonitorMasterFrame,
-                displaySize=(400, 300),
+                displaySize=self.videoMonitorDisplaySize.get(),
                 camSerial=camSerial,
                 speedText=self.cameraSpeeds[camSerial],
                 initialDirectory=videoDirectory,
