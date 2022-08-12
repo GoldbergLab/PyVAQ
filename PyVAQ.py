@@ -347,29 +347,29 @@ class PyVAQ:
 
         self.audioFrequencyFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Audio freq. (Hz)", style='SingleContainer.TLabelframe')
         self.audioFrequencyVar =    tk.StringVar(); self.audioFrequencyVar.set("44100")
-        self.audioFrequencyEntry =  ttk.Entry(self.audioFrequencyFrame, width=15, textvariable=self.audioFrequencyVar);
+        self.audioFrequencyEntry =  ttk.Entry(self.audioFrequencyFrame, width=16, textvariable=self.audioFrequencyVar);
 
         self.videoFrequencyFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Video freq (fps)", style='SingleContainer.TLabelframe')
         self.videoFrequencyVar =    tk.StringVar(); self.videoFrequencyVar.set("30")
-        self.videoFrequencyEntry =  ttk.Entry(self.videoFrequencyFrame, width=15, textvariable=self.videoFrequencyVar)
+        self.videoFrequencyEntry =  ttk.Entry(self.videoFrequencyFrame, width=16, textvariable=self.videoFrequencyVar)
 
         self.videoExposureTimeFrame =    ttk.LabelFrame(self.acquisitionParametersFrame, text="Video exposure time (ms):", style='SingleContainer.TLabelframe')
         self.videoExposureTimeVar =      tk.StringVar(); self.videoExposureTimeVar.set("3")
-        self.videoExposureTimeEntry =    ttk.Entry(self.videoExposureTimeFrame, width=18, textvariable=self.videoExposureTimeVar)
+        self.videoExposureTimeEntry =    ttk.Entry(self.videoExposureTimeFrame, width=16, textvariable=self.videoExposureTimeVar)
         self.videoExposureTimeEntry.bind('<FocusOut>', self.validateVideoExposureTime)
 
         self.gainFrame =    ttk.LabelFrame(self.acquisitionParametersFrame, text="Gain", style='SingleContainer.TLabelframe')
         self.gainVar =      tk.StringVar(); self.gainVar.set("10")
-        self.gainEntry =    ttk.Entry(self.gainFrame, width=18, textvariable=self.gainVar)
+        self.gainEntry =    ttk.Entry(self.gainFrame, width=16, textvariable=self.gainVar)
         self.gainEntry.bind('<FocusOut>', self.validateGain)
 
         self.preTriggerTimeFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Pre-trigger record time (s)", style='SingleContainer.TLabelframe')
         self.preTriggerTimeVar =    tk.StringVar(); self.preTriggerTimeVar.set("4.5")
-        self.preTriggerTimeEntry =  ttk.Entry(self.preTriggerTimeFrame, width=26, textvariable=self.preTriggerTimeVar)
+        self.preTriggerTimeEntry =  ttk.Entry(self.preTriggerTimeFrame, width=16, textvariable=self.preTriggerTimeVar)
 
         self.recordTimeFrame =      ttk.LabelFrame(self.acquisitionParametersFrame, text="Record time (s)", style='SingleContainer.TLabelframe')
         self.recordTimeVar =        tk.StringVar(); self.recordTimeVar.set("10.0")
-        self.recordTimeEntry =      ttk.Entry(self.recordTimeFrame, width=14, textvariable=self.recordTimeVar)
+        self.recordTimeEntry =      ttk.Entry(self.recordTimeFrame, width=16, textvariable=self.recordTimeVar)
 
         self.acquisitionSignalParametersFrame = ttk.LabelFrame(self.acquisitionParametersFrame, text="Hardware signal", style='SingleContainer.TLabelframe')
         self.startOnHWSignalVar = tk.BooleanVar(); self.startOnHWSignalVar.set(False)
@@ -378,9 +378,9 @@ class PyVAQ:
         self.writeEnableOnHWSignalCheckbutton = ttk.Checkbutton(self.acquisitionSignalParametersFrame, text="Write enable based on HW signal", variable=self.writeEnableOnHWSignalVar, offvalue=False, onvalue=True)
 
         DEFAULT_NUM_GPU_VENC_SESSIONS = 3
-        self.maxGPUVencFrame = ttk.LabelFrame(self.acquisitionParametersFrame, text="Max GPU VEnc sessions")
+        self.maxGPUVencFrame = ttk.LabelFrame(self.acquisitionParametersFrame, text="Max GPU VEnc sessions", style='SingleContainer.TLabelframe')
         self.maxGPUVEncVar = tk.StringVar(); self.maxGPUVEncVar.set(str(DEFAULT_NUM_GPU_VENC_SESSIONS))
-        self.maxGPUVEncEntry = ttk.Entry(self.maxGPUVencFrame, width=10, textvariable=self.maxGPUVEncVar)
+        self.maxGPUVEncEntry = ttk.Entry(self.maxGPUVencFrame, width=16, textvariable=self.maxGPUVEncVar)
 
         self.selectAcquisitionHardwareButton =  ttk.Button(self.acquisitionParametersFrame, text="Select audio/video inputs", command=self.selectInputs)
         self.acquisitionHardwareText = tk.Text(self.acquisitionParametersFrame)
@@ -639,6 +639,7 @@ class PyVAQ:
         self.updateHardwareInputDisplay()
 
         self.update()
+        
         # Start automatic updating of video and audio monitors
         self.audioMonitorUpdateJob = None
         self.videoMonitorUpdateJob = None
