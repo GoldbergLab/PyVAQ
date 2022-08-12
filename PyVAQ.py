@@ -2641,7 +2641,6 @@ him know. Otherwise, I had nothing to do with it.
 
     def haltChildProcesses(self):
         # Tell all child processes to go to stopped state
-
         self.sendMessage(self.audioTriggerProcess, (Messages.STOP, None))
         self.sendMessage(self.continuousTriggerProcess, (Messages.STOP, None))
         for camSerial in self.videoAcquireProcesses:
@@ -2652,6 +2651,7 @@ him know. Otherwise, I had nothing to do with it.
         self.sendMessage(self.audioWriteProcess, (Messages.STOP, None))
         self.sendMessage(self.mergeProcess, (Messages.STOP, None))
         self.sendMessage(self.syncProcess, (Messages.STOP, None))
+
 
     def exitChildProcesses(self):
         self.sendMessage(self.audioTriggerProcess, (Messages.EXIT, None))
