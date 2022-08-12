@@ -2089,10 +2089,11 @@ class AudioAcquirer(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if not passedBarrier:
-                        self.nextState = States.READY
-                    elif msg in ['', Messages.START]:
-                        self.nextState = States.ACQUIRING
+                    if msg in ['', Messages.START]:
+                        if not passedBarrier:
+                            self.nextState = States.READY
+                        else:
+                            self.nextState = States.ACQUIRING
                     elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
                     elif msg == Messages.EXIT:
@@ -3385,10 +3386,11 @@ class VideoAcquirer(StateMachineProcess):
                     except queue.Empty: msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
-                    if not passedBarrier:
-                        self.nextState = States.READY
-                    elif msg in ['', Messages.START]:
-                        self.nextState = States.ACQUIRING
+                    if msg in ['', Messages.START]:
+                        if not passedBarrier:
+                            self.nextState = States.READY
+                        else:
+                            self.nextState = States.ACQUIRING
                     elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
                     elif msg == Messages.EXIT:
