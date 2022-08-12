@@ -688,16 +688,47 @@ class PyVAQ:
             self.loadSettings(path=settingsFilePath)
 
     def log(self, msg, *args, **kwargs):
+        """Add another tagged message to the currently accumulating log entry.
+
+        Note that you must call endLog to cause accumulated messages to be
+        logged together.
+
+        Args:
+            msg (str): The message to log
+            *args: Any arguments to pass to the print statement
+            **kwargs: Unused, I think
+
+        Returns:
+            None
+
+        """
         # Add another message to the currently accumulating log entry
         syncPrint('|| {ID} - {msg}'.format(ID=self.ID, msg=msg), *args, buffer=self.stdoutBuffer, **kwargs)
 
     def endLog(self, state):
-        # Output accumulated log entry and output it
+        """End accumulated log entry and output it.
+
+        Args:
+            state (str): Indication of what state the message sender is in.
+                To use the function name as the state, use the inspect module:
+                inspect.currentframe().f_code.co_name
+
+        Returns:
+            None
+
+        """
+        #
         if len(self.stdoutBuffer) > 0:
             self.log(r'*********************************** /\ {ID} {state} /\ ********************************************'.format(ID=self.ID, state=state))
             self.flushStdout()
 
     def flushStdout(self):
+        """Flush the accumulated log and clear the buffer for the next entry.
+
+        Returns:
+            None
+
+        """
         # Output currently accumulated log entry and clear buffer
         if len(self.stdoutBuffer) > 0:
             if self.StdoutManager is not None:
@@ -710,8 +741,14 @@ class PyVAQ:
         self.stdoutBuffer = []
 
     def cleanupAndExit(self):
-        # Attempt to gracefully shut everything down and exit
-        # Cancel automatic update jobs
+        """Attempt to gracefully shut everything down and exit.
+
+        Cancel any automatic update jobs.
+
+        Returns:
+            None
+
+        """
         self.stopMonitors()
         self.log("Stopping acquisition")
         self.haltChildProcesses()
@@ -722,8 +759,14 @@ class PyVAQ:
         self.endLog(inspect.currentframe().f_code.co_name)
 
     def setVerbosity(self):
-        # Produce popup for setting logging verbosity, then update all process
-        #   verbosity based on user selections.
+        """Produce popup dialog box for setting child process logging verbosity.
+
+        Get new verbosity settings, then update all child processes accordingly.
+
+        Returns:
+            None
+
+        """
         verbosityOptions = ['0', '1', '2', '3']
         names = [
             'AudioAcquirer verbosity',
@@ -764,7 +807,12 @@ class PyVAQ:
         self.updateChildProcessVerbosity()
 
     def updateChildProcessVerbosity(self):
-        # Update child process logging verbosity based on currently stored settings
+        """Update child process logging verbosity based on current settings
+
+        Returns:
+            None
+
+        """
         self.sendMessage(self.audioAcquireProcess, (Messages.SETPARAMS, {'verbose':self.audioAcquireVerbose}))
         self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, {'verbose':self.audioWriteVerbose}))
         self.sendMessage(self.syncProcess, (Messages.SETPARAMS, {'verbose':self.syncVerbose}))
@@ -776,7 +824,15 @@ class PyVAQ:
             self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'verbose':self.videoWriteVerbose}))
 
     def updateDaySubfolderSetting(self, *args):
-        # Change day subfolder setting in all child processes
+        """Change day subfolder setting in all child processes.
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         daySubfolders = self.getParams('daySubfolders')
         self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
         self.sendMessage(self.mergeProcess, (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
@@ -784,8 +840,15 @@ class PyVAQ:
             self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
 
     def validateVideoExposureTime(self, *args):
-        # Sanitize current video exposure time settings
+        """Sanitize current video exposure time settings.
 
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         videoExposureTime = self.getParams('videoExposureTime')/1000
         videoFrequency = self.getParams('videoFrequency')
 
@@ -803,7 +866,15 @@ class PyVAQ:
         self.setParams(videoExposureTime=videoExposureTime*1000)
 
     def validateGain(self, *args):
-        # Sanitize current gain settings (make sure it's >= 0)
+        """Sanitize current gain time settings.
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         gain = self.getParams('gain')
         if gain < 0:
             gain = 0
@@ -815,10 +886,28 @@ class PyVAQ:
         self.setParams(gain=gain)
 
     def showHelpDialog(self, *args):
+        """Show help dialog box (not implemented).
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         msg = 'Sorry, nothing here yet.'
         showinfo('PyVAQ Help', msg)
 
     def showAboutDialog(self, *args):
+        """Show about dialog box.
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         msg = '''Welcome to PyVAQ version {version}!
 
 If it's working perfectly, then contact Brian Kardon (bmk27@cornell.edu) to let \
@@ -829,7 +918,12 @@ him know. Otherwise, I had nothing to do with it.
         showinfo('About PyVAQ', msg)
 
     def configureAudioMonitoring(self):
-        # Show popup for user to select audio monitoring options
+        """Show popup for user to select audio monitoring options.
+
+        Returns:
+            None
+
+        """
         if self.audioMonitor is None:
             showinfo('Please initialize acquisition before configuring audio monitor')
             return
@@ -864,11 +958,17 @@ him know. Otherwise, I had nothing to do with it.
                     pass
 
     def configureVideoMonitoring(self):
-        # Show popup for user to select video monitoring options
+        """Show popup for user to select video monitoring options.
+
+        Returns:
+            None
+
+        """
         if len(self.cameraMonitors) == 0:
             showinfo('Please initialize acquisition before configuring audio monitor')
             return
 
+        # Get current video monitor display size, to use as default
         w, h = self.getParams('videoMonitorDisplaySize')
 
         params = [
@@ -882,10 +982,17 @@ him know. Otherwise, I had nothing to do with it.
                 w = int(choices['Video display width'])
             if 'Video display height' in choices:
                 h = int(choices['Video display height'])
+        # Set new video monitor display size
         self.videoMonitorDisplaySize.set((w, h))
 
     def updateVideoMonitorDisplaySize(self):
-        # Update all video monitors with the latest size
+        """Update all video monitors with the current size setting.
+
+        Returns:
+            None
+
+        """
+        #
         newSize = self.videoMonitorDisplaySize.get()
         for camSerial in self.cameraMonitors:
             self.cameraMonitors[camSerial].setDisplaySize(newSize)
@@ -893,6 +1000,14 @@ him know. Otherwise, I had nothing to do with it.
     def selectAcquisitionHardware(self, *args):
         """Create a popup for the user to select acquisition hardware.
 
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
+        # Create a popup for the user to select acquisition options
 
         # Get current settings to use as defaults
         p = self.getParams(
@@ -1023,7 +1138,13 @@ him know. Otherwise, I had nothing to do with it.
 
         self.endLog(inspect.currentframe().f_code.co_name)
 
-    def updateHardwareInputDisplay(self):
+    def updateAcquisitionHardwareDisplay(self):
+        """Update display showing selected acquisition hardware.
+
+        Returns:
+            None
+
+        """
         lines = []
 
         p = self.getParams(
@@ -1054,6 +1175,12 @@ him know. Otherwise, I had nothing to do with it.
         self.acquisitionHardwareText.insert('0.0', '\n'.join(lines))
 
     def destroyInputMonitoringWidgets(self):
+        """Destroy camera and audo monitor widgets.
+
+        Returns:
+            None
+
+        """
         oldCamSerials = self.cameraMonitors.keys()
         for camSerial in oldCamSerials:
             self.cameraMonitors[camSerial].grid_forget()
@@ -1061,8 +1188,13 @@ him know. Otherwise, I had nothing to do with it.
             del self.cameraMonitors[camSerial]
         self.audioMonitor
 
-
     def setupInputMonitoringWidgets(self):
+        """Set up widgets for selected audio and video inputs.
+
+        Returns:
+            None
+
+        """
         # Set up widgets and other entities for specific selected audio and video inputs
 
         p = self.getParams(
@@ -1163,6 +1295,15 @@ him know. Otherwise, I had nothing to do with it.
         self.update()
 
     def updateAudioTriggerSettings(self, *args):
+        """Update settings that determine parameters for audio-based triggering
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         # Update settings that determine for what audio values the GUI will
         #   send a record trigger.
         if self.audioTriggerProcess is not None:
@@ -1181,8 +1322,17 @@ him know. Otherwise, I had nothing to do with it.
             self.sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, params))
 
     def updateContinuousTriggerSettings(self, *args):
-        # Update settings for continuous triggering (sending consecutive
-        #   triggers, one after another)
+        """Update settings for continuous triggering
+
+        Continuous triggererer sends consecutive triggers, one after another
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         if self.continuousTriggerProcess is not None:
             paramList = [
                 'continuousTriggerPeriod',
@@ -1204,62 +1354,171 @@ him know. Otherwise, I had nothing to do with it.
                 self.endLog(inspect.currentframe().f_code.co_name)
 
     def updateAVMergerState(self, *args):
+        """Update GUI & AVMerger process to reflect current AV merging settings
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         merging = self.mergeFilesVar.get()
         if merging:
+            # User requests AV merging; enable settings and inform child process
             self.deleteMergedVideoFilesCheckbutton.config(state=tk.NORMAL)
             self.deleteMergedAudioFilesCheckbutton.config(state=tk.NORMAL)
             self.montageMergeCheckbutton.config(state=tk.NORMAL)
             self.sendMessage(self.mergeProcess, (Messages.START, None))
         else:
+            # User has not requested AV merging; disable settings and inform
+            #   child process
             self.deleteMergedVideoFilesCheckbutton.config(state=tk.DISABLED)
             self.deleteMergedAudioFilesCheckbutton.config(state=tk.DISABLED)
             self.montageMergeCheckbutton.config(state=tk.DISABLED)
             self.sendMessage(self.mergeProcess, (Messages.CHILL, None))
 
     def updateChildSchedulingState(self, *args):
+        """Inform relevant child processes of current record schedule settings.
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         scheduleParams = self.getParams('scheduleEnabled', 'scheduleStart', 'scheduleStop')
         for camSerial in self.videoWriteProcesses:
             self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, scheduleParams))
         if self.audioWriteProcess is not None:
             self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, scheduleParams))
 
-
     def changeAVMergerParams(self, **params):
+        """Inform AVMerger child process of current file merge settings.
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         self.sendMessage(self.mergeProcess, (Messages.SETPARAMS, params))
 
     def audioWriteEnableChangeHandler(self, *args):
+        """Handle changes in audioWriteEnable
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         audioWriteEnable = self.audioMonitor.getEnableWrite()
         self.setAudioWriteEnable(audioWriteEnable, updateTextField=False)
     def videoWriteEnableChangeHandler(self, *args):
+        """Handle changes in videoWriteEnable
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         videoWriteEnables = {}
         for camSerial in self.cameraMonitors:
             videoWriteEnables[camSerial] = self.cameraMonitors[camSerial].getEnableWrite()
         self.setVideoWriteEnable(videoWriteEnables, updateTextField=False)
     def videoBaseFileNameChangeHandler(self, *args):
+        """Handle changes in videoBaseFileName
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         videoBaseFileNames = {}
         for camSerial in self.cameraMonitors:
             videoBaseFileNames[camSerial] = self.cameraMonitors[camSerial].getBaseFileName()
         self.setVideoBaseFileNames(videoBaseFileNames, updateTextField=False)
     def videoDirectoryChangeHandler(self, *args):
+        """Handle changes in videoDirectory
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         videoDirectories = {}
         for camSerial in self.cameraMonitors:
             videoDirectories[camSerial] = self.cameraMonitors[camSerial].getDirectory()
         self.setVideoDirectories(videoDirectories, updateTextField=False)
     def audioBaseFileNameChangeHandler(self, *args):
+        """Handle changes in audioBaseFileName
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         newAudioBaseFileName = self.audioMonitor.getBaseFileName()
         self.setAudioBaseFileName(newAudioBaseFileName, updateTextField=False)
     def audioDirectoryChangeHandler(self, *args):
+        """Handle changes in audioDirectory
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         newAudioDirectory = self.audioMonitor.getDirectory()
         self.setAudioDirectory(newAudioDirectory, updateTextField=False)
     def mergeBaseFileNameChangeHandler(self, *args):
+        """Handle changes in mergeBaseFileName
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         newMergeBaseFileName = self.mergeFileWidget.getBaseFileName()
         self.setMergeBaseFileName(newMergeBaseFileName, updateTextField=False)
     def mergeDirectoryChangeHandler(self, *args):
+        """Handle changes in mergeDirectory
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
         newMergeDirectory = self.mergeFileWidget.getDirectory()
         self.setMergeDirectory(newMergeDirectory, updateTextField=False)
 
     def updateTriggerMode(self, *args):
-        # Handle a user selection of a new trigger mode
+        """Handle a user selection of a new trigger mode.
+
+        Args:
+            *args (type): Description of parameter `*args`.
+
+        Returns:
+            type: Description of returned object.
+
+        """
         newMode = self.triggerModeVar.get()
 
         if newMode in ["Continuous", "SimpleContinuous"]:
@@ -1299,8 +1558,15 @@ him know. Otherwise, I had nothing to do with it.
         self.update()
 
     def createAudioAnalysisMonitor(self):
-        # Set up matplotlib axes and plots to display audio analysis data from AudioTriggerer object
+        """Set up axes/plots to display audio analysis data from AudioTriggerer.
 
+        Uses matplotlib axes and plots to display audio analysis data from
+        AudioTriggerer object
+
+        Returns:
+            None
+
+        """
         audioDAQChannels = self.getParams("audioDAQChannels")
 
         # Create figure
@@ -1338,6 +1604,12 @@ him know. Otherwise, I had nothing to do with it.
         self.audioAnalysisWidgets['canvas'].draw()
 
     def stopMonitors(self):
+        """Stop automatic update jobs.
+
+        Returns:
+            None
+
+        """
         if self.audioMonitorUpdateJob is not None:
             self.master.after_cancel(self.audioMonitorUpdateJob)
             self.audioMonitorUpdateJob = None
@@ -1357,6 +1629,12 @@ him know. Otherwise, I had nothing to do with it.
         #     print('...done stopping update state display job')
 
     def startMonitors(self):
+        """Start automatic update jobs.
+
+        Returns:
+            None
+
+        """
         self.autoUpdateAudioMonitors()
         self.autoUpdateVideoMonitors()
         self.autoUpdateTriggerIndicator()
@@ -1364,10 +1642,25 @@ him know. Otherwise, I had nothing to do with it.
         # self.updateStateDisplay()
 
     def startSyncProcess(self):
-        # self.syncProcess.start()
+        """Instruct Synchronizer process to begin syncing
+
+        Returns:
+            None
+
+        """
         self.sendMessage(self.syncProcess, (Messages.SYNC, None))
 
     def autoUpdateAudioAnalysisMonitors(self, beginAuto=True):
+        """Begin updating audio analysis monitors
+
+        Args:
+            beginAuto (bool): Automatically continue updating on a time
+                interval? Defaults to True.
+
+        Returns:
+            None
+
+        """
         if self.audioTriggerProcess is not None:
             analysisSummary = None
             try:
@@ -1459,13 +1752,22 @@ him know. Otherwise, I had nothing to do with it.
         self.endLog(inspect.currentframe().f_code.co_name)
 
     def autoUpdateAudioMonitors(self, beginAuto=True):
+        """Begin updating audio monitors
+
+        Args:
+            beginAuto (bool): Automatically continue updating on a time
+                interval? Defaults to True.
+
+        Returns:
+            None
+
+        """
         if self.audioAcquireProcess is not None:
             newAudioData = None
             try:
                 for chunkCount in range(100):
                     # Get audio data from monitor queue
                     channels, chunkStartTime, audioData = self.audioAcquireProcess.monitorQueue.get(block=True, timeout=0.001)
-                    # audioData = np.ones(audioData.shape) * cc
                     # Accumulate all new audio chunks together
                     if newAudioData is not None:
                         newAudioData = np.concatenate((newAudioData, audioData), axis=1)
@@ -1473,18 +1775,28 @@ him know. Otherwise, I had nothing to do with it.
                         newAudioData = audioData
                 self.log("WARNING! Audio monitor is not getting data fast enough to keep up with stream.")
             except queue.Empty:
-#                self.log('exhausted audio monitoring queue, got', chunkCount)
                 pass
 
             if newAudioData is not None:
                 self.audioMonitor.addAudioData(newAudioData)
 
         if beginAuto:
+            # Schedule another automatic call to autoUpdateAudioMonitors
             self.audioMonitorUpdateJob = self.master.after(100, self.autoUpdateAudioMonitors)
 
         self.endLog(inspect.currentframe().f_code.co_name)
 
     def autoUpdateVideoMonitors(self, beginAuto=True):
+        """Begin updating video monitors
+
+        Args:
+            beginAuto (bool): Automatically continue updating on a time
+                interval? Defaults to True.
+
+        Returns:
+            None
+
+        """
         if self.videoAcquireProcesses is not None:
             availableImages = {}
             pixelFormats = {}
@@ -1503,14 +1815,13 @@ him know. Otherwise, I had nothing to do with it.
                 except queue.Empty:
                     pass
 
-            for camSerial in availableImages:   # Display the most recent available image for each camera
-                # pImage = availableImages[camSerial]
-                # imData = np.reshape(pImage.data, (pImage.height, pImage.width, 3))
-                # im = Image.fromarray(imData)
+            for camSerial in availableImages:
+                # Display the most recent available image for each camera
                 if availableImages[camSerial] is not None:
                     self.cameraMonitors[camSerial].updateImage(availableImages[camSerial], pixelFormat=pixelFormats[camSerial])
 
         if beginAuto:
+            # Schedule another automatic call to autoUpdateAudioMonitors
             period = int(round(1000.0/(2*self.monitorMasterFrameRate)))
             self.videoMonitorUpdateJob = self.master.after(period, self.autoUpdateVideoMonitors)
 
@@ -1519,6 +1830,16 @@ him know. Otherwise, I had nothing to do with it.
             self.triggerIndicatorUpdateJob = self.master.after(100, self.autoUpdateTriggerIndicator)
 
     def createCameraAttributeBrowser(self, camSerial):
+        """Create a window allowing user to browse camera settings.
+
+        Args:
+            camSerial (str): String representing the serial number of a camera
+                currently attached to the computer
+
+        Returns:
+            None
+
+        """
         main = tk.Toplevel()
         nb = ttk.Notebook(main)
         nb.grid(row=0)
@@ -1529,6 +1850,20 @@ him know. Otherwise, I had nothing to do with it.
         widgets = self.createAttributeBrowserNode(self.cameraAttributes[camSerial], nb, tooltipLabel, 1)
 
     def createAttributeBrowserNode(self, attributeNode, parent, tooltipLabel, gridRow):
+        """Create widgets for one camera attribute node in the browser.
+
+        See createCameraAttributeBrowser
+
+        Args:
+            attributeNode (type): Description of parameter `attributeNode`.
+            parent (type): Description of parameter `parent`.
+            tooltipLabel (type): Description of parameter `tooltipLabel`.
+            gridRow (type): Description of parameter `gridRow`.
+
+        Returns:
+            dict: Dictionary containing widgets created, organized by type
+
+        """
         frame = ttk.Frame(parent)
         frame.bind("<Enter>", lambda event: tooltipLabel.config(text=attributeNode["tooltip"]))  # Set tooltip rollover callback
         frame.grid(row=gridRow)
@@ -1587,9 +1922,46 @@ him know. Otherwise, I had nothing to do with it.
         return {'widgets':widgets, 'childWidgets':childWidgets, 'childCategoryWidgets':childCategoryWidgets, 'childCategoryHolder':childCategoryHolder}
 
     def updateAllCamerasAttributes(self):
+        """Update the current camera attributes from some camera??.
+
+        Returns:
+            None
+
+        """
         self.cameraAttributes = psu.getAllCamerasAttributes()
 
     def getQueueSizes(self, verbose=True):
+        """Determine the sizes of the various queues used by child processes
+
+        Args:
+            verbose (bool): Should the queue sizes be printed to stdout?
+                Defaults to True.
+
+        Returns:
+            dict: Queue sizes organized in a dictionary like so:
+                {
+                    videoMonitorQueueSizes={
+                        [[cam serial 1]]:[[queue size 1]],
+                        [[cam serial 2]]:[[queue size 2]],
+                        ...
+                        [[cam serial N]]:[[queue size N]],
+                    },
+                    imageQueueSizes={
+                        [[cam serial 1]]:[[queue size 1]],
+                        [[cam serial 2]]:[[queue size 2]],
+                        ...
+                        [[cam serial N]]:[[queue size N]],
+                    },
+                    audioAnalysisQueueSize=         [[queue size]],
+                    audioMonitorQueueSize=          [[queue size]],
+                    audioQueueSize=                 [[queue size]],
+                    audioAnalysisMonitorQueueSize=  [[queue size]],
+                    mergeQueueSize=                 [[queue size]],
+                    stdoutQueueSize=                [[queue size]],
+                }
+
+        """
+        # Initialize an empty dictionary to hold queue sizes
         queueSizes = dict(
             videoMonitorQueueSizes={},
             imageQueueSizes={},
@@ -1636,6 +2008,41 @@ him know. Otherwise, I had nothing to do with it.
         return queueSizes
 
     def getPIDs(self, verbose=True):
+        """Determine the PIDs (process IDs) of the various child processes
+
+        Knowing the child PIDs is useful when (for example) you want to find
+            them in the Windows Task Manager or Unix top output to monitor their
+            resource usage.
+
+        Args:
+            verbose (bool): Should the PIDs be printed to stdout?
+                Defaults to True.
+
+        Returns:
+            dict: Queue sizes organized in a dictionary like so:
+                {
+                    videoWritePIDs={
+                        [[cam serial 1]]:[[PID 1]],
+                        [[cam serial 2]]:[[PID 2]],
+                        ...
+                        [[cam serial N]]:[[PID N]],
+                    },
+                    videoAcquirePIDs={
+                        [[cam serial 1]]:[[PID 1]],
+                        [[cam serial 2]]:[[PID 2]],
+                        ...
+                        [[cam serial N]]:[[PID N]],
+                    },
+                    audioWritePID=         [[PID]],
+                    audioAcquirePID=       [[PID]],
+                    audioTriggerPID=       [[PID]],
+                    continuousTriggerPID=  [[PID]],
+                    syncPID=               [[PID]],
+                    mergePID=              [[PID]],
+                }
+
+        """
+        # Initialize an empty dictionary to hold PIDs
         PIDs = dict(
             videoWritePIDs = {},
             videoAcquirePIDs = {},
@@ -1685,6 +2092,38 @@ him know. Otherwise, I had nothing to do with it.
         return PIDs
 
     def checkStates(self, verbose=True):
+        """Determine the current published states of the various child processes
+
+        See StateMachineProcesses.States for a complete list of states.
+
+        Args:
+            verbose (bool): Should the PIDs be printed to stdout?
+                Defaults to True.
+
+        Returns:
+            dict: Child process states organized in a dictionary like so:
+                {
+                    videoWritePIDs={
+                        [[cam serial 1]]:[[PID 1]],
+                        [[cam serial 2]]:[[PID 2]],
+                        ...
+                        [[cam serial N]]:[[PID N]],
+                    },
+                    videoAcquirePIDs={
+                        [[cam serial 1]]:[[PID 1]],
+                        [[cam serial 2]]:[[PID 2]],
+                        ...
+                        [[cam serial N]]:[[PID N]],
+                    },
+                    audioWritePID=         [[PID]],
+                    audioAcquirePID=       [[PID]],
+                    audioTriggerPID=       [[PID]],
+                    continuousTriggerPID=  [[PID]],
+                    syncPID=               [[PID]],
+                    mergePID=              [[PID]],
+                }
+
+        """
         states = dict(
             videoWriteStates = {},
             videoAcquireStates = {},
