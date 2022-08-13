@@ -3642,7 +3642,6 @@ class VideoAcquirer(StateMachineProcess):
         return True
 
     def setCameraAttributes(self, nodemap, attributeValueTriplets):
-    #    print('Setting attributes')
         for attribute, value, type in attributeValueTriplets:
             result = self.setCameraAttribute(nodemap, attribute, value, type=type)
             if not result:

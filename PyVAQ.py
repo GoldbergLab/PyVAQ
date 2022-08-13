@@ -1,4 +1,4 @@
-import sys
+newMergeBaseFileNameimport sys
 import os
 import time
 import json
@@ -85,11 +85,11 @@ except:
 # 2 - Routine status messages
 # 3 - Everything
 
-r'''
+r"""
 cd "C:\Users\Brian Kardon\Dropbox\Documents\Work\Cornell Lab Tech\Projects\Video VI\PyVAQ\Source"
 python PyVAQ.py
 git add * & git commit -m "" & git push origin master
-'''
+"""
 
 ICON_PATH = r'Resources\PyVAQ.ico'
 
@@ -488,7 +488,7 @@ class PyVAQ:
         self.triggerModeVar.trace('w', self.updateTriggerMode)
 
         # Manual controls
-        self.manualWriteTriggerButton = ttk.Button(self.triggerModeControlGroupFrames['Manual'], text="Manual write trigger", command=self.writeButtonClick)
+        self.manualWriteTriggerButton = ttk.Button(self.triggerModeControlGroupFrames['Manual'], text="Manual write trigger", command=self.writeButtonClickHandler)
 
         # Audio trigger controls
         self.triggerHiLoFrame = ttk.Frame(self.triggerModeControlGroupFrames['Audio'])
@@ -642,7 +642,7 @@ class PyVAQ:
             "numStreams":                       dict(get=self.getNumStreams,                                    set=self.setNumStreams),
             "numProcesses":                     dict(get=self.getNumProcesses,                                  set=self.setNumProcesses),
             "numSyncedProcesses":               dict(get=self.getNumSyncedProcesses,                            set=self.setNumSyncedProcesses),
-            "acquireSettings":                  dict(get=self.getAcquireSettings,                               set=self.setAcquireSettings),
+            "acquireSettings":                  dict(get=self.getCameraSettings,                               set=self.setAcquireSettings),
             "continuousTriggerPeriod":          dict(get=lambda:float(self.continuousTriggerPeriodVar.get()),   set=self.continuousTriggerPeriodVar.set),
             "audioTagContinuousTrigs":          dict(get=self.audioTagContinuousTrigsVar.get,                   set=self.audioTagContinuousTrigsVar.set),
             "daySubfolders":                    dict(get=self.daySubfoldersVar.get,                             set=self.daySubfoldersVar.set),
@@ -679,9 +679,9 @@ class PyVAQ:
         if self.triggerModeVar.get() == "Audio":
             self.autoUpdateAudioAnalysisMonitors()
 
-        self.updateStateDisplayJob = None
+        self.updateStatusDisplayJob = None
         self.metaState = None
-        self.updateStateDisplay()
+        self.updateStatusDisplay()
 
         self.master.update_idletasks()
 
@@ -910,12 +910,12 @@ class PyVAQ:
             None
 
         """
-        msg = '''Welcome to PyVAQ version {version}!
+        msg = """Welcome to PyVAQ version {version}!
 
 If it's working perfectly, then contact Brian Kardon (bmk27@cornell.edu) to let \
 him know. Otherwise, I had nothing to do with it.
 
-'''.format(version=VERSION)
+""".format(version=VERSION)
 
         showinfo('About PyVAQ', msg)
 
@@ -1452,7 +1452,7 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         audioWriteEnable = self.audioMonitor.getEnableWrite()
-        self.setAudioWriteEnable(audioWriteEnable, updateTextField=False)
+        self.setAudioWriteEnable(audioWriteEnable, updateGUI=False)
     def videoWriteEnableChangeHandler(self, *args):
         """Handle changes in videoWriteEnable
 
@@ -1466,7 +1466,7 @@ him know. Otherwise, I had nothing to do with it.
         videoWriteEnables = {}
         for camSerial in self.cameraMonitors:
             videoWriteEnables[camSerial] = self.cameraMonitors[camSerial].getEnableWrite()
-        self.setVideoWriteEnable(videoWriteEnables, updateTextField=False)
+        self.setVideoWriteEnable(videoWriteEnables, updateGUI=False)
     def videoBaseFileNameChangeHandler(self, *args):
         """Handle changes in videoBaseFileName
 
@@ -1480,7 +1480,7 @@ him know. Otherwise, I had nothing to do with it.
         videoBaseFileNames = {}
         for camSerial in self.cameraMonitors:
             videoBaseFileNames[camSerial] = self.cameraMonitors[camSerial].getBaseFileName()
-        self.setVideoBaseFileNames(videoBaseFileNames, updateTextField=False)
+        self.setVideoBaseFileNames(videoBaseFileNames, updateGUI=False)
     def videoDirectoryChangeHandler(self, *args):
         """Handle changes in videoDirectory
 
@@ -1494,7 +1494,7 @@ him know. Otherwise, I had nothing to do with it.
         videoDirectories = {}
         for camSerial in self.cameraMonitors:
             videoDirectories[camSerial] = self.cameraMonitors[camSerial].getDirectory()
-        self.setVideoDirectories(videoDirectories, updateTextField=False)
+        self.setVideoDirectories(videoDirectories, updateGUI=False)
     def audioBaseFileNameChangeHandler(self, *args):
         """Handle changes in audioBaseFileName
 
@@ -1506,7 +1506,7 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         newAudioBaseFileName = self.audioMonitor.getBaseFileName()
-        self.setAudioBaseFileName(newAudioBaseFileName, updateTextField=False)
+        self.setAudioBaseFileName(newAudioBaseFileName, updateGUI=False)
     def audioDirectoryChangeHandler(self, *args):
         """Handle changes in audioDirectory
 
@@ -1518,7 +1518,7 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         newAudioDirectory = self.audioMonitor.getDirectory()
-        self.setAudioDirectory(newAudioDirectory, updateTextField=False)
+        self.setAudioDirectory(newAudioDirectory, updateGUI=False)
     def mergeBaseFileNameChangeHandler(self, *args):
         """Handle changes in mergeBaseFileName
 
@@ -1530,7 +1530,7 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         newMergeBaseFileName = self.mergeFileWidget.getBaseFileName()
-        self.setMergeBaseFileName(newMergeBaseFileName, updateTextField=False)
+        self.setMergeBaseFileName(newMergeBaseFileName, updateGUI=False)
     def mergeDirectoryChangeHandler(self, *args):
         """Handle changes in mergeDirectory
 
@@ -1542,7 +1542,7 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         newMergeDirectory = self.mergeFileWidget.getDirectory()
-        self.setMergeDirectory(newMergeDirectory, updateTextField=False)
+        self.setMergeDirectory(newMergeDirectory, updateGUI=False)
 
     def updateTriggerMode(self, *args):
         """Handle a user selection of a new trigger mode.
@@ -1657,10 +1657,10 @@ him know. Otherwise, I had nothing to do with it.
         if self.triggerIndicatorUpdateJob is not None:
             self.master.after_cancel(self.triggerIndicatorUpdateJob)
             self.triggerIndicatorUpdateJob = None
-        # if self.updateStateDisplayJob is not None:
+        # if self.updateStatusDisplayJob is not None:
         #     print('stopping update state display job...')
-        #     self.master.after_cancel(self.updateStateDisplayJob)
-        #     self.updateStateDisplayJob = None
+        #     self.master.after_cancel(self.updateStatusDisplayJob)
+        #     self.updateStatusDisplayJob = None
         #     print('...done stopping update state display job')
 
     def startMonitors(self):
@@ -1674,7 +1674,7 @@ him know. Otherwise, I had nothing to do with it.
         self.autoUpdateVideoMonitors()
         self.autoUpdateTriggerIndicator()
         self.autoUpdateAudioAnalysisMonitors()
-        # self.updateStateDisplay()
+        # self.updateStatusDisplay()
 
     def startSyncProcess(self):
         """Instruct Synchronizer process to begin syncing
@@ -2132,30 +2132,30 @@ him know. Otherwise, I had nothing to do with it.
         See StateMachineProcesses.States for a complete list of states.
 
         Args:
-            verbose (bool): Should the PIDs be printed to stdout?
+            verbose (bool): Should the states be printed to stdout?
                 Defaults to True.
 
         Returns:
             dict: Child process states organized in a dictionary like so:
                 {
-                    videoWritePIDs={
-                        [[cam serial 1]]:[[PID 1]],
-                        [[cam serial 2]]:[[PID 2]],
+                    videoWriteStates={
+                        [[cam serial 1]]:[[state 1]],
+                        [[cam serial 2]]:[[state 2]],
                         ...
-                        [[cam serial N]]:[[PID N]],
+                        [[cam serial N]]:[[state N]],
                     },
-                    videoAcquirePIDs={
-                        [[cam serial 1]]:[[PID 1]],
-                        [[cam serial 2]]:[[PID 2]],
+                    videoAcquireStates={
+                        [[cam serial 1]]:[[state 1]],
+                        [[cam serial 2]]:[[state 2]],
                         ...
-                        [[cam serial N]]:[[PID N]],
+                        [[cam serial N]]:[[state N]],
                     },
-                    audioWritePID=         [[PID]],
-                    audioAcquirePID=       [[PID]],
-                    audioTriggerPID=       [[PID]],
-                    continuousTriggerPID=  [[PID]],
-                    syncPID=               [[PID]],
-                    mergePID=              [[PID]],
+                    audioWriteState=         [[state]],
+                    audioAcquireState=       [[state]],
+                    audioTriggerState=       [[state]],
+                    continuousTriggerState=  [[state]],
+                    syncState=               [[state]],
+                    mergeState=              [[state]],
                 }
 
         """
@@ -2227,6 +2227,28 @@ him know. Otherwise, I had nothing to do with it.
     def checkInfo(self, verbose=True):
         # Check supplementary status information variable shared by processes
         # Note: All processes have this variable, but only the writers currently publish any info.
+        """Gather supplementary published info from the various child processes
+
+        Not all processes currently publish useful info, so only some are
+        currently gathered
+
+        Args:
+            verbose (bool): Should the info be printed to stdout?
+                Defaults to True.
+
+        Returns:
+            dict: Child published info organized in a dictionary like so:
+                {
+                    videoWriteInfo={
+                        [[cam serial 1]]:[[info 1]],
+                        [[cam serial 2]]:[[info 2]],
+                        ...
+                        [[cam serial N]]:[[info N]],
+                    },
+                    audioWriteInfo=[[info]],
+                }
+
+        """
 
         info = dict(
             videoWriteInfo = {},
@@ -2248,21 +2270,42 @@ him know. Otherwise, I had nothing to do with it.
 
         return info
 
-    def updateStateDisplay(self, log=False, interval=1000, repeat=True):
-        states, stateNames = self.checkStates(verbose=log)
-        PIDs = self.getPIDs(verbose=log)
-        queueSizes = self.getQueueSizes(verbose=log)
-        info = self.checkInfo(verbose=log)
+    def updateStatusDisplay(self, verbose=False, interval=1000, repeat=True):
+        """Update the Status display widget with the current status of the app.
 
-        self.checkAcquisitionState(states=states)
+        Args:
+            verbose (bool): Should the gathered information be printed to
+                stdout? Defaults to False.
+            interval (int): Interval in ms that this function will be repeated
+                if the repeat argument is True Defaults to 1000.
+            repeat (bool): Should this function be automatically repeated?
+                Defaults to True.
 
+        Returns:
+            None
+
+        """
+
+        # Gather all status information
+        states, stateNames = self.checkStates(verbose=verbose)
+        PIDs = self.getPIDs(verbose=verbose)
+        queueSizes = self.getQueueSizes(verbose=verbose)
+        info = self.checkInfo(verbose=verbose)
+
+        # Check and update the current app "meta state" (self.metaState)
+        self.determineApplicationMetaState(states=states)
+
+        # Make widget controls react to current meta state (mostly by enabling
+        #   or disabling)
         self.reactToAcquisitionState()
 
+        # Update meta state in Status frame label as a quick hint to the user
         if self.metaState is not None:
             self.statusFrame.setText('Status: {metaState}'.format(metaState=self.metaState))
         else:
             self.statusFrame.setText('Status')
 
+        # \/\/\/ formatting scheme is not implemented yet. But it's a good idea.
         # Format: Each line is a list of text to include in that line, separated
         #   into chunks based on what tag to apply The last element in the list
         #   is a list of tag names, one for each chunk in the line.
@@ -2310,9 +2353,22 @@ him know. Otherwise, I had nothing to do with it.
         self.childStatusText.insert(tk.END, '\n'.join(lines))
 
         if repeat:
-            self.updateStateDisplayJob = self.master.after(interval, self.updateStateDisplay)
+            self.updateStatusDisplayJob = self.master.after(interval, self.updateStatusDisplay)
 
     def getProcesses(self, audio=True, video=True, acquirers=True, writers=True, auxiliary=True):
+        """Gather a list of processes of the selected types.
+
+        Args:
+            audio (bool): Include "audio" type processes. Defaults to True.
+            video (bool): Include "video" type processes. Defaults to True.
+            acquirers (bool): Include "acquirers" type processes. Defaults to True.
+            writers (bool): Include "writers" type processes. Defaults to True.
+            auxiliary (bool): Include "auxiliary" type processes. Defaults to True.
+
+        Returns:
+            list: List of references to selected child process
+
+        """
         processes = []
         if video and writers:
             for camSerial in self.videoWriteProcesses:
@@ -2333,10 +2389,39 @@ him know. Otherwise, I had nothing to do with it.
                 ])
         return processes
 
-    def checkAcquisitionState(self, states=None):
+    def determineApplicationMetaState(self, states=None):
+        """Determine, record, and return an overall application "meta state".
+
+        The meta state is a representation of the overal gestalt of what the
+            child processes are doing.
+
+        List of metaStates
+            'initialized'   All processes running (inc at least one acquire),
+                                and acquisition/sync processes but in
+                                initializing or similar state
+            'acquiring'     All processes running (inc at least one acquire),
+                                and all in an acquire-ey state
+            'halted'        All processes running but in stopped state
+            'dead'          No processes running
+            'error'         At least one process in error state
+            'indeterminate' Some other combination of states
+
+        Args:
+            states (dict): Formatted dictionary containing information about
+                child process states. See checkStates function for details about
+                the format of the dictionary. If states is None, the checkStates
+                function will be called to gather the states. Defaults to None.
+
+        Returns:
+            str: Meta state of the application
+
+        """
+        # If not provided, check the states of the child processes
         if states is None:
             states, _ = self.checkStates()
 
+        # Count up how many processes of various types are in various types of
+        #   states
         numProcesses = 0
         numInitializing = 0
         numAcquirersRunning = 0
@@ -2356,13 +2441,6 @@ him know. Otherwise, I had nothing to do with it.
             state = states['videoAcquireStates'][camSerial]
             stateList.append(state); isAcquirer.append(True);  isWriter.append(False); isAux.append(False)
 
-        # print('audioAcquireState |', str(states['audioAcquireState']), '|')
-        # print('audioWriteState |', str(states['audioWriteState']), '|')
-        # print('syncState |', str(states['syncState']), '|')
-        # print('mergeState |', str(states['mergeState']), '|')
-        # print('audioTriggerState |', str(states['audioTriggerState']), '|')
-        # print('continuousTriggerState |', str(states['continuousTriggerState']), '|')
-
         stateList.append(states['audioAcquireState']);      isAcquirer.append(True);  isWriter.append(False); isAux.append(False)
         stateList.append(states['audioWriteState']);        isAcquirer.append(False); isWriter.append(True);  isAux.append(False)
         stateList.append(states['syncState']);              isAcquirer.append(False); isWriter.append(False); isAux.append(True)
@@ -2370,6 +2448,7 @@ him know. Otherwise, I had nothing to do with it.
         stateList.append(states['audioTriggerState']);      isAcquirer.append(False); isWriter.append(False); isAux.append(True)
         stateList.append(states['continuousTriggerState']); isAcquirer.append(False); isWriter.append(False); isAux.append(True)
 
+        # Define human readable state names
         allStates = {States.UNKNOWN:'UNKNOWN', States.STOPPED:'STOPPED',
             States.INITIALIZING:'INITIALIZING', States.READY:'READY',
             States.STOPPING:'STOPPING', States.ERROR:'ERROR',
@@ -2383,8 +2462,6 @@ him know. Otherwise, I had nothing to do with it.
 
         # Tally up the various types of states processes are in
         for state, acquirer, aux, writer in zip(stateList, isAcquirer, isAux, isWriter):
-            # print('state = ', state, allStates[state])
-
             if state is not None and state != States.EXITING:
                 numProcesses += 1
                 if acquirer:
@@ -2402,23 +2479,8 @@ him know. Otherwise, I had nothing to do with it.
             if state == States.ERROR:
                 numError += 1
 
-        # List of metaStates
-        # 'initialized'   # All processes running (inc at least one acquire), and acquisition/sync processes but in initializing or similar state
-        # 'acquiring'     # All processes running (inc at least one acquire), and all in an acquire-ey state
-        # 'halted'        # All processes running but in stopped state
-        # 'dead'          # No processes running
-        # 'error'         # At least one process in error state
-        # 'indeterminate' # Some other combination of states
-
-        # print('numProcesses = {numProcesses}'.format(numProcesses=numProcesses))
-        # print('numInitializing = {numInitializing}'.format(numInitializing=numInitializing))
-        # print('numAcquirersRunning = {numAcquirersRunning}'.format(numAcquirersRunning=numAcquirersRunning))
-        # print('numAuxiliariesRunning = {numAuxiliariesRunning}'.format(numAuxiliariesRunning=numAuxiliariesRunning))
-        # print('numWritersRunning = {numWritersRunning}'.format(numWritersRunning=numWritersRunning))
-        # print('numAcquiresAcquiring = {numAcquiresAcquiring}'.format(numAcquiresAcquiring=numAcquiresAcquiring))
-        # print('numStopped = {numStopped}'.format(numStopped=numStopped))
-        # print('numError = {numError}'.format(numError=numError))
-
+        # Determine an overall application meta state by examining the tallies
+        #   of the child states
         if numProcesses == 0:
             self.metaState = 'dead'
         elif numError > 0:
@@ -2435,6 +2497,15 @@ him know. Otherwise, I had nothing to do with it.
         return self.metaState
 
     def reactToAcquisitionState(self):
+        """Adjust GUI to reflect the meta state of the application.
+
+        Mostly, enable/disable buttons to prevent users from taking actions that
+            are incompatible with the application meta state.
+
+        Returns:
+            None
+
+        """
         if self.metaState is None:
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.DISABLED)
@@ -2512,6 +2583,18 @@ him know. Otherwise, I had nothing to do with it.
             self.acquisitionParametersFrame.enable()
 
     def initializeAcquisition(self):
+        """Initialize child processes to prepare for acquisition.
+
+        If the child processes are already in the "halted" meta state, we can
+            simply send them a start message. Otherwise, we have to recreate
+            them.
+        Normally, the user should be prevented from calling this method unless
+            the application meta state is "halted" or "stopped"
+
+        Returns:
+            None
+
+        """
         if self.metaState != 'halted':
             # If state is halted, we can just reinit the processes
             self.setupInputMonitoringWidgets()
@@ -2520,30 +2603,58 @@ him know. Otherwise, I had nothing to do with it.
         # Schedule button update after 100 ms to give child processes a chance to react
         # self.master.after(100, self.updateAcquisitionButton)
     def haltAcquisition(self):
+        """Halt child processes.
+
+        Child processes will keep running, but in the "STOPPED" state.
+
+        Returns:
+            None
+
+        """
         self.haltChildProcesses()
     def restartAcquisition(self):
-        print('restart:', 1)
-        self.haltChildProcesses()
-        print('restart:', 2)
-        self.setupInputMonitoringWidgets()
-        print('restart:', 3)
-        self.initializeChildProcesses()
-        print('restart:', 4)
+        """Restart child processes.
 
+        Returns:
+            None
+
+        """
+        self.haltChildProcesses()
+        self.setupInputMonitoringWidgets()
+        self.initializeChildProcesses()
     def shutDownAcquisition(self):
+        """Shut down child processes.
+
+        This actually terminates the processes. To acquire, the user will have
+        to recreate the processes.
+
+        Returns:
+            None
+
+        """
         self.haltChildProcesses()
         self.destroyChildProcesses()
 
-    # def updateAcquisitionButton(self):
-    #     if self.acquisitionActive():
-    #         self.initializeAcquisitionButton.config(text="Stop acquisition")
-    #     else:
-    #         self.initializeAcquisitionButton.config(text= "Start acquisition")
+    def writeButtonClickHandler(self):
+        """Send a manual trigger to write processes to trigger recording.
 
-    def writeButtonClick(self):
+        Normally will only be called in "Manual" trigger mode.
+
+        Returns:
+            None
+
+        """
         self.sendWriteTrigger()
 
     def continuousTriggerStartButtonClick(self):
+        """Send a message to ContinuousTriggerer process to begin triggering.
+
+        Normally will only be called in "Continuous" trigger mode.
+
+        Returns:
+            None
+
+        """
         success = self.sendMessage(self.continuousTriggerProcess, (Messages.START, None))
         if success:
             self.log("Sent start signal to continuous trigger process")
@@ -2552,6 +2663,14 @@ him know. Otherwise, I had nothing to do with it.
             showwarning(title="No continuous trigger process available", message="Continuous triggering process does not appear to be available. Try starting up acquisition first")
 
     def continuousTriggerStopButtonClick(self):
+        """Send a message to ContinuousTriggerer process to stop triggering.
+
+        Normally will only be called in "Continuous" trigger mode.
+
+        Returns:
+            None
+
+        """
         success = self.sendMessage(self.continuousTriggerProcess, (Messages.STOP, None))
         if success:
             self.log("Sent stop signal to continuous trigger process")
@@ -2560,6 +2679,18 @@ him know. Otherwise, I had nothing to do with it.
             showwarning(title="No continuous trigger process available", message="Continuous triggering process does not appear to be available. Try starting up acquisition first")
 
     def saveSettings(self, *args, path=None):
+        """Save all application settings/parameters to a settings file.
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+            path (str): A string representing the path to save the settings file
+                to. If None, a GUI dialog will prompt the user to provide one.
+                Defaults to None.
+
+        Returns:
+            None
+
+        """
         params = self.getParams()
         # datetime.time objects are not serializable, so we have to extract the time
         params['scheduleStart'] = timeToSerializable(params['scheduleStart'])
@@ -2576,6 +2707,18 @@ him know. Otherwise, I had nothing to do with it.
                 f.write(json.dumps(params))
 
     def loadSettings(self, *args, path=None):
+        """Load application settings/parameters from a saved settings file.
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+            path (str): A string representing the path to load the settings file
+                from. If None, a GUI dialog will prompt the user to provide one.
+                Defaults to None.
+
+        Returns:
+            None
+
+        """
         if path is None:
             path = askopenfilename(
                 title = "Choose a settings file to load.",
@@ -2593,88 +2736,224 @@ him know. Otherwise, I had nothing to do with it.
             self.updateAcquisitionHardwareDisplay()
         self.endLog(inspect.currentframe().f_code.co_name)
 
-    def setAudioWriteEnable(self, newAudioWriteEnable, *args, updateTextField=True):
-        # Expects newAudioWriteEnable to be True or False used
-        #   to enable or disable audio file writing for each camera.
+    def setAudioWriteEnable(self, newAudioWriteEnable, *args, updateGUI=True):
+        """Send a message to audio writer process to enable/disable file writing
+
+        Args:
+            newAudioWriteEnable (bool): Enable or disable writing? True=enable,
+                False=disable.
+            *args (any): Dummy variable to hold unused event data
+            updateGUI (bool): Should this method update the audio write enable
+                GUI checkbox? Set to False when called by the checkbox itself to
+                prevent an infinite event loop where the checkbox triggers this
+                method, and the method triggers the checkbox.
+
+        Returns:
+            None
+
+        """
         self.audioWriteEnable.set(newAudioWriteEnable)
-        if updateTextField:
+        if updateGUI:
             # Update text field
             self.audioMonitors.setWriteEnable(newAudioWriteEnable)
         # Notify AudioWriter child process of new write enable state
         self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(enableWrite=newAudioWriteEnable)))
 
-    def setVideoWriteEnable(self, newVideoWriteEnables, *args, updateTextField=True):
-        # Expects newVideoWriteEnables to be a dictionary of camserial:writeEnable, which will be used
-        #   to enable or disable video file writing for each camera.
+    def setVideoWriteEnable(self, newVideoWriteEnables, *args, updateGUI=True):
+        """Send messages to video writer processes to enable/disable file writing
+
+        Args:
+            newVideoWriteEnables (dict): A dictionary with camera serials as
+                keys, and booleans indicating whether to enable or disable
+                writing as values. True=enable, False=disable.
+            *args (any): Dummy variable to hold unused event data
+            updateGUI (bool): Should this method update the video write enable
+                GUI checkbox? Set to False when called by the checkbox itself to
+                prevent an infinite event loop where the checkbox triggers this
+                method, and the method triggers the checkbox.
+
+        Returns:
+            None
+
+        """
+        # Update stored parameter
         self.videoWriteEnable.set(newVideoWriteEnables)
+        # Loop over available cameras
         for camSerial in self.cameraMonitors:
+            # Check if we're changing enable state for this particular camera
             if camSerial in newVideoWriteEnables:
                 newVideoWriteEnable = newVideoWriteEnables[camSerial]
-                if updateTextField:
+                if updateGUI:
                     # Update text field
                     self.cameraMonitors[camSerial].setWriteEnable(newVideoWriteEnable)
                 if camSerial in self.videoWriteProcesses:
                     # Notify VideoWriter child process of new write enable state
                     self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(enableWrite=newVideoWriteEnable)))
 
-    def setVideoBaseFileNames(self, newVideoBaseFileNames, *args, updateTextField=True):
-        # Expects videoBaseFileNames to be a dictionary of camserial:videoBaseFileNames, which will be used
-        #   to assign base filenames to the cameras.
+    def setVideoBaseFileNames(self, newVideoBaseFileNames, *args, updateGUI=True):
+        """Send messages to video writer processes to change base filenames
+
+        Args:
+            newVideoBaseFileNames (dict): A dictionary with camera serials as
+                keys, and strings indicating new base filenames to use as values
+            *args (any): Dummy variable to hold unused event data
+            updateGUI (bool): Should this method update the video base filename
+                GUI textboxes? Set to False when called by the textbox itself to
+                prevent an infinite event loop where the textbox triggers this
+                method, and the method triggers the textbox.
+
+        Returns:
+            None
+
+        """
         self.videoBaseFileNames.set(newVideoBaseFileNames)
         for camSerial in self.cameraMonitors:
             if camSerial in newVideoBaseFileNames:
                 newVideoBaseFileName = newVideoBaseFileNames[camSerial]
-                if updateTextField:
+                if updateGUI:
                     # Update text field
                     self.cameraMonitors[camSerial].fileWidget.setBaseFileName(newVideoBaseFileName)
                 if camSerial in self.videoWriteProcesses:
                     # Notify VideoWriter child process of new write base filename
                     self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(videoBaseFileName=newVideoBaseFileName)))
-    def setVideoDirectories(self, newVideoDirectories, *args, updateTextField=True):
-        # See setVideoBaseFileNames for notes
+    def setVideoDirectories(self, newVideoDirectories, *args, updateGUI=True):
+        """Send messages to video writer processes to change video directories
+
+        Args:
+            newVideoDirectories (dict): A dictionary with camera serials as
+                keys, and strings indicating new video directories to save in
+            *args (any): Dummy variable to hold unused event data
+            updateGUI (bool): Should this method update the video directory
+                GUI textboxes? Set to False when called by the textbox itself to
+                prevent an infinite event loop where the textbox triggers this
+                method, and the method triggers the textbox.
+
+        Returns:
+            None
+
+        """
         self.videoDirectories.set(newVideoDirectories)
         for camSerial in self.cameraMonitors:
             if camSerial in newVideoDirectories:
                 newVideoDirectory = newVideoDirectories[camSerial]
-                if updateTextField:
+                if updateGUI:
                     # Update text field
                     self.cameraMonitors[camSerial].fileWidget.setDirectory(newVideoDirectory)
                 if camSerial in self.videoWriteProcesses and (len(newVideoDirectory) == 0 or os.path.isdir(newVideoDirectory)):
                     # Notify VideoWriter child process of new write directory
                     self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(videoDirectory=newVideoDirectory)))
-    def setAudioBaseFileName(self, audioBaseFileName, *args, updateTextField=True):
-        self.audioBaseFileName.set(audioBaseFileName)
-        if updateTextField and self.audioMonitor is not None:
+    def setAudioBaseFileName(self, newAudioBaseFileName, *args, updateGUI=True):
+        """Send message to audio writer process to change base filenames
+
+        Args:
+            newAudioBaseFileName (str): A string indicating a new base filename
+                to use to save audio files
+            *args (any): Dummy variable to hold unused event data
+            updateGUI (bool): Should this method update the base filename GUI
+                textbox? Set to False when called by the textbox itself to
+                prevent an infinite event loop where the textbox triggers this
+                method, and the method triggers the textbox.
+
+        Returns:
+            None
+
+        """
+        self.audioBaseFileName.set(newAudioBaseFileName)
+        if updateGUI and self.audioMonitor is not None:
             # Update text field
-            self.audioMonitor.fileWidget.setBaseFileName(audioBaseFileName)
+            self.audioMonitor.fileWidget.setBaseFileName(newAudioBaseFileName)
         # Notify AudioWriter child process of new write base filename
-        self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(audioBaseFileName=audioBaseFileName)))
-    def setAudioDirectory(self, audioDirectory, *args, updateTextField=True):
-        self.audioDirectory.set(audioDirectory)
-        if updateTextField and self.audioMonitor is not None:
+        self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(audioBaseFileName=newAudioBaseFileName)))
+    def setAudioDirectory(self, newAudioDirectory, *args, updateGUI=True):
+        """Send message to audio writer process to change audio directory
+
+        Args:
+            newAudioDirectory (str): A string indicating a new directory to use
+                to save audio files
+            *args (any): Dummy variable to hold unused event data
+            updateGUI (bool): Should this method update the audio directory GUI
+                textbox? Set to False when called by the textbox itself to
+                prevent an infinite event loop where the textbox triggers this
+                method, and the method triggers the textbox.
+
+        Returns:
+            None
+
+        """
+        self.audioDirectory.set(newAudioDirectory)
+        if updateGUI and self.audioMonitor is not None:
             # Update text field
-            self.audioMonitor.fileWidget.setDirectory(audioDirectory)
-        if len(audioDirectory) == 0 or os.path.isdir(audioDirectory):
+            self.audioMonitor.fileWidget.setDirectory(newAudioDirectory)
+        if len(newAudioDirectory) == 0 or os.path.isdir(newAudioDirectory):
             # Notify AudioWriter child process of new write directory
-            self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(audioDirectory=audioDirectory)))
-    def setMergeBaseFileName(self, mergeBaseFileName, *args, updateTextField=True):
-        self.mergeBaseFileName.set(mergeBaseFileName)
-        if updateTextField and self.mergeFileWidget is not None:
+            self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(audioDirectory=newAudioDirectory)))
+    def setMergeBaseFileName(self, newMergeBaseFileName, *args, updateGUI=True):
+        """Send message to AVMerger process to change merge base filename
+
+        Args:
+            newMergeBaseFileName (str): A string indicating a new base filename
+                to use to create merged audio/video files
+            *args (any): Dummy variable to hold unused event data
+            updateGUI (bool): Should this method update the merge base filename
+                GUI textbox? Set to False when called by the textbox itself to
+                prevent an infinite event loop where the textbox triggers this
+                method, and the method triggers the textbox.
+
+        Returns:
+            None
+
+        """
+        self.mergeBaseFileName.set(newMergeBaseFileName)
+        if updateGUI and self.mergeFileWidget is not None:
             # Update text field
-            self.mergeFileWidget.setBaseFileName(mergeBaseFileName)
+            self.mergeFileWidget.setBaseFileName(newMergeBaseFileName)
         # Notify AVMerger child process of new write base filename
-        self.sendMessage(self.mergeProcess, (Messages.SETPARAMS, dict(mergeBaseFileName=mergeBaseFileName)))
-    def setMergeDirectory(self, mergeDirectory, *args, updateTextField=True):
-        self.audioDirectory.set(mergeDirectory)
-        if updateTextField and self.mergeFileWidget is not None:
-        self.mergeDirectory.set(mergeDirectory)
+        self.sendMessage(self.mergeProcess, (Messages.SETPARAMS, dict(mergeBaseFileName=newMergeBaseFileName)))
+    def setMergeDirectory(self, newMergeDirectory, *args, updateGUI=True):
+        """Send message to AVMerger process to change merge directory
+
+        Args:
+            newMergeDirectory (str): A string indicating a new directory to use
+                to merge audio/video files into
+            *args (any): Dummy variable to hold unused event data
+            updateGUI (bool): Should this method update the merge directory
+                textbox? Set to False when called by the textbox itself to
+                prevent an infinite event loop where the textbox triggers this
+                method, and the method triggers the textbox.
+
+        Returns:
+            None
+
+        """
+        self.mergeDirectory.set(newMergeDirectory)
+        if updateGUI and self.mergeFileWidget is not None:
             # Update text field
-            self.mergeFileWidget.setDirectory(mergeDirectory)
-        if len(mergeDirectory) == 0 or os.path.isdir(mergeDirectory):
+            self.mergeFileWidget.setDirectory(newMergeDirectory)
+        if len(newMergeDirectory) == 0 or os.path.isdir(newMergeDirectory):
             # Notify AVMerger child process of new write directory
-            self.sendMessage(self.mergeProcess, (Messages.SETPARAMS, dict(directory=mergeDirectory)))
+            self.sendMessage(self.mergeProcess, (Messages.SETPARAMS, dict(directory=newMergeDirectory)))
 
     def setParams(self, ignoreErrors=True, **params):
+        """Set one or more GUI parameters.
+
+        The PyVAQ.paramInfo instance attribute is a dictionary containing the
+            getters and setters for all GUI parameters; essentially all the
+            user-alterable settings. The setParams function is a convenient way
+            to use one or more setters to set one or more GUI parameters.
+
+        See also: getParams
+
+        Args:
+            ignoreErrors (bool): Continue through dictionary of parameters to
+                set even if an unexpected error is encountered when setting one
+                of them? Defaults to True.
+            **params (dict): Keyword pairs of parameter names and values in the
+                form of a dictionary to set.
+
+        Returns:
+            None
+
+        """
         for paramName in params:
             try:
                 self.paramInfo[paramName]["set"](params[paramName])
@@ -2685,11 +2964,39 @@ him know. Otherwise, I had nothing to do with it.
             except KeyError as e:
                 print('Unable to set param: {paramName}'.format(paramName=paramName))
                 print('\tReason: {reason}'.format(reason='This parameter is not valid - it will be ignored.'))
-            except:
-                traceback.print_exc()
+            except Exception as e:
+                if ignoreErrors:
+                    # Print error message, then move on...
+                    traceback.print_exc()
+                else:
+                    # Stop the train, we've got an error!
+                    raise e
 
     def getParams(self, *paramNames, mapping=False):
-        # Extract parameters from GUI, and calculate a few derived parameters
+        """Get the current value of one or more GUI parameters.
+
+        The PyVAQ.paramInfo instance attribute is a dictionary containing the
+            getters and setters for all GUI parameters; essentially all the
+            user-alterable settings. The getParams function is a convenient way
+            to use one or more getters to get one or more GUI parameter values.
+
+        See also: setParams
+
+        Args:
+            mappping (bool): Return a dictionary of parameters, even if only one
+                parameter is requested. If False, requests for multiple
+                parameters will still return a dictionary, but requests for
+                single parameters will return just the plain value, not wrapped
+                in a dictionary, for convenience. Defaults to False.
+            *paramNames (list): A list of one or more parameter names,
+                corresponding to one or more keys of the PyVAQ.paramInfo
+                dictionary.
+
+        Returns:
+            dict: A dictionary composed of pairs of parameter names and values,
+                with parameter names corresponding to the requested parameters.
+
+        """
         if len(paramNames) == 1 and (not mapping):
             # If just one param was requested, just return the value, not a dictionary
             return self.paramInfo[paramNames[0]]["get"]()
@@ -2704,10 +3011,25 @@ him know. Otherwise, I had nothing to do with it.
             return params
 
     def sendMessage(self, process, msg):
-        # Send message msg to given process,
-        #   if it exists, and its attribute msgQueue exists.
-        #   Return True if the message was sent
-        #   Return False if not
+        """Send a message to a child process.
+
+        This is a convenient way to safely send a message to a process.
+
+        Args:
+            process (StateMachineProces): A descendant of StateMachineProcess
+            msg (2-tuple): A tuple of the following form:
+                (Messages.[[message type]], [[argument]])
+                Where the first element is a message type, as defined by the
+                StateMachineProcesses.Messages class, and the second argument is
+                an argument that depends on the message type. For example,
+                    (Messages.SETPARAM, {'verbose':2})
+                or
+                    (Messages.START, None)
+
+        Returns:
+            bool: A boolean indicating whether sending the message succeeded
+
+        """
         if process is None:
             return False
         else:
@@ -2718,40 +3040,69 @@ him know. Otherwise, I had nothing to do with it.
                 return True
 
     def setBufferSizeSeconds(self, *args):
+        """Placeholder param setter indicating this property is not settable"""
         raise AttributeError('This attribute is a derived property, and is not directly settable')
     def setBufferSizeAudioChunks(self, *args):
+        """Placeholder param setter indicating this property is not settable"""
         raise AttributeError('This attribute is a derived property, and is not directly settable')
     def setNumStreams(self, *args):
+        """Placeholder param setter indicating this property is not settable"""
         raise AttributeError('This attribute is a derived property, and is not directly settable')
     def setNumProcesses(self, *args):
+        """Placeholder param setter indicating this property is not settable"""
         raise AttributeError('This attribute is a derived property, and is not directly settable')
     def setNumSyncedProcesses(self, *args):
+        """Placeholder param setter indicating this property is not settable"""
         raise AttributeError('This attribute is a derived property, and is not directly settable')
+
     def getBufferSizeSeconds(self):
-        # This is the old way of deterining an appropriate buffer
-        #   size based on the pre-trigger time requested. It is not used
-        #   by VideoAcquirer any more - see param "acquisitionBufferSize" instead.
+        """Set bufferSizeSeconds parameter.
+
+        This is the old way of deterining an appropriate buffer
+            size based on the pre-trigger time requested. It is not used by
+            VideoAcquirer any more - see param "acquisitionBufferSize" instead.
+
+        See also: PyVAQ.paramInfo
+
+        Returns:
+            float: Calculated size of acquisition buffer in seconds
+
+        """
         preTriggerTime = self.getParams('preTriggerTime')
         return preTriggerTime * 2 + 1    # Twice the pretrigger time to make sure we don't miss stuff, plus one second for good measure
     def getBufferSizeAudioChunks(self):
+        """Calculate the number of chunks in the audio buffer - not in use"""
         p = self.getParams('bufferSizeSeconds', 'audioFrequency', 'chunkSize')
         return p['bufferSizeSeconds'] * p['audioFrequency'] / p['chunkSize']   # Will be rounded up to nearest integer
     def getNumStreams(self):
+        """Get # of audio/video streams in the current configuration."""
         audioDAQChannels = self.getParams('audioDAQChannels')
         camSerials = self.getParams('camSerials')
         return (len(audioDAQChannels)>0) + len(camSerials)
     def getNumProcesses(self):
+        """Get # of child processes in the current configuration."""
         audioDAQChannels = self.getParams('audioDAQChannels')
         camSerials = self.getParams('camSerials')
         return (len(audioDAQChannels)>0) + len(camSerials)*2 + 2
     def getNumSyncedProcesses(self):
+        """Get # of processes subject to synchronization in current config"""
         audioDAQChannels = self.getParams('audioDAQChannels')
         camSerials = self.getParams('camSerials')
         return (len(audioDAQChannels)>0) + len(camSerials) + 1  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
-    def getAcquireSettings(self):
-        #params = self.getParams('exposureTime', 'gain')
-        # exposureTime = params['exposureTime']
-        # gain = params['gain']
+    def getCameraSettings(self):
+        """Get the current set of camera settings.
+
+        These are settings for FLIR USB3 Vision cameras, such as the Flea3
+        and Blackfly S series of cameras.
+
+        See also: StateMachineProcesses.VideoAcquirer.setCameraAttributes
+
+        Returns:
+            list of tuples: A list of camera settings, formatted as a list of
+                3-tuples, where each tuple is of the form:
+                    ([[setting name]], [[setting value]], [[setting type]])
+
+        """
         gain = self.getParams('gain')
         return [
             ('AcquisitionMode', 'Continuous', 'enum'),
@@ -2768,13 +3119,28 @@ him know. Otherwise, I had nothing to do with it.
             ('Gain', gain, 'float'),
             ('ExposureAuto', 'Off', 'enum'),
             ('ExposureMode', 'TriggerWidth', 'enum')]
-#            ('ExposureTime', exposureTime, 'float')]   # List of attribute/value pairs to be applied to the camera in the given order
+#            ('ExposureTime', exposureTime, 'float')]
+
     def setAcquireSettings(self, *args):
+        """Placeholder param setter indicating this property is not settable"""
         raise NotImplementedError()
 
     def waitForChildProcessesToStop(self, attempts=10, timeout=5):
-        # Wait for all state machine child processes to stop, or until all attempts have been exhausted.
-        #   Returns true if all processes were found to have stopped, false if not.
+        """Wait for all state machine child processes to stop.
+
+        Wait for until all child processes stop, or all attempts have been
+        exhausted.
+
+        Args:
+            attempts (int): Number of attempts before giving up. Defaults to 10.
+            timeout (int): Amount of time in seconds to spread the attempts
+                over. Defaults to 5.
+
+        Returns:
+            bool: Returns true if all processes were found to have stopped,
+                false if not.
+
+        """
         for attempts in range(attempts):
             allStopped = False
             states, stateNames = self.checkStates(verbose=False)
@@ -2808,6 +3174,18 @@ him know. Otherwise, I had nothing to do with it.
         return False
 
     def createChildProcesses(self):
+        """Instantiate all child processes.
+
+        This method instantiates all child processes, but does not start them.
+            Each child process is a subclass of multiprocessing.Process.
+
+        In some cases, the type and number of child processes to start is
+            dictated by various parameters.
+
+        Returns:
+            None
+
+        """
         self.log("Creating child processes")
         p = self.getParams()
 
@@ -3055,8 +3433,12 @@ him know. Otherwise, I had nothing to do with it.
         self.endLog(inspect.currentframe().f_code.co_name)
 
     def initializeChildProcesses(self):
-        # Tell all child processes to start
+        """Send messages to all child processes to start.
 
+        Returns:
+            None
+
+        """
         p = self.getParams('audioDAQChannels', 'camSerials', 'triggerMode')
 
         if len(p["audioDAQChannels"]) > 0:
@@ -3099,6 +3481,15 @@ him know. Otherwise, I had nothing to do with it.
     #         self.endLog(inspect.currentframe().f_code.co_name)
 
     def haltChildProcesses(self):
+        """Tell all child processes to stop (but not close).
+
+        Send a message to all child processes to enter the "STOPPED" state, but
+            not to close/exit/stop running.
+
+        Returns:
+            None
+
+        """
         # Tell all child processes to go to stopped state
         self.sendMessage(self.audioTriggerProcess, (Messages.STOP, None))
         self.sendMessage(self.continuousTriggerProcess, (Messages.STOP, None))
@@ -3111,8 +3502,13 @@ him know. Otherwise, I had nothing to do with it.
         self.sendMessage(self.mergeProcess, (Messages.STOP, None))
         self.sendMessage(self.syncProcess, (Messages.STOP, None))
 
-
     def exitChildProcesses(self):
+        """Tell all child processes to exit.
+
+        Returns:
+            None
+
+        """
         self.sendMessage(self.audioTriggerProcess, (Messages.EXIT, None))
         self.sendMessage(self.continuousTriggerProcess, (Messages.EXIT, None))
         for camSerial in self.videoAcquireProcesses:
@@ -3126,6 +3522,14 @@ him know. Otherwise, I had nothing to do with it.
         #self.StdoutManager.queue.put(Messages.EXIT)
 
     def destroyChildProcesses(self):
+        """Exit then dereference all child processes.
+
+        Probably not really any different in effect from exitChildProcesses...
+
+        Returns:
+            None
+
+        """
         self.exitChildProcesses()
 
         self.actualVideoFrequency = None
@@ -3155,6 +3559,16 @@ him know. Otherwise, I had nothing to do with it.
         self.endLog(inspect.currentframe().f_code.co_name)
 
     def sendWriteTrigger(self, t=None):
+        """Send a manual trigger to write processes to trigger recording.
+
+        Normally will only be called in "Manual" trigger mode.
+
+        See writeButtonClickHandler
+
+        Returns:
+            None
+
+        """
         p = self.getParams('preTriggerTime', 'recordTime')
         if t is None:
             t = time.time_ns()/1000000000
@@ -3170,22 +3584,29 @@ him know. Otherwise, I had nothing to do with it.
         self.endLog(inspect.currentframe().f_code.co_name)
 
     def update(self):
-        # root window
-        #   titleBarFrame
-        #   mainFrame
-        #       monitorFrame
-        #           videoMonitorMasterFrame
-        #           audioMonitorMasterFrame
-        #       controlFrame
-        #           acquisitionFrame
-        #               mergeFrame
-        #               scheduleFrame
-        #               fileSettingsFrame
-        #           triggerFrame
-        #               triggerModeChooserFrame
-        #               triggerModeControlGroupFrame (only the active one is gridded)
-        #       settingsFrame
+        """Update GUI widget layout.
 
+        Layout sketch:
+
+        root window
+            titleBarFrame
+            mainFrame
+            monitorFrame
+                videoMonitorMasterFrame
+                audioMonitorMasterFrame
+            controlFrame
+                acquisitionControlFrame
+                statusFrame
+                acquisitionParametersFrame
+                mergeFrame
+                fileSettingsFrame
+                scheduleFrame
+                triggerFrame
+
+        Returns:
+            None
+
+        """
         if self.customTitleBar:
             self.titleBarFrame.grid(row=0, column=0, sticky=tk.NSEW)
             self.closeButton.grid(sticky=tk.E)
@@ -3370,7 +3791,7 @@ if __name__ == "__main__":
     root.mainloop()
 
 
-r'''
+r"""
 cd "C:\Users\Brian Kardon\Dropbox\Documents\Work\Cornell Lab Tech\Projects\Video VI\PyVAQ\Source"
 python PyVAQ.py
-'''
+"""
