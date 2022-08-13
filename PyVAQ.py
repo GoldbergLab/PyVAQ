@@ -2632,6 +2632,7 @@ him know. Otherwise, I had nothing to do with it.
     def setMergeDirectory(self, mergeDirectory, *args, updateTextField=True):
         self.audioDirectory.set(mergeDirectory)
         if updateTextField and self.mergeFileWidget is not None:
+        self.mergeDirectory.set(mergeDirectory)
             # Update text field
             self.mergeFileWidget.setDirectory(mergeDirectory)
         if len(mergeDirectory) == 0 or os.path.isdir(mergeDirectory):
