@@ -595,7 +595,7 @@ class PyVAQ:
         self.audioTriggerVerbose = 1
         self.continuousTriggerVerbose = 1
 
-        self.profiler =  cProfile.Profile()
+        # self.profiler =  cProfile.Profile()
 
         # the params dict defines how to access and set all the parameters in the GUI
         self.paramInfo = {
@@ -3099,13 +3099,13 @@ him know. Otherwise, I had nothing to do with it.
         # Give children a chance to register exit message
         time.sleep(0.5)
 
-        try:
-            s = io.StringIO()
-            ps = pstats.Stats(self.profiler, stream=s)
-            ps.print_stats()
-            self.log('', s.getvalue())
-        except:
-            self.log('Error printing profiler stats')
+        # try:
+        #     s = io.StringIO()
+        #     ps = pstats.Stats(self.profiler, stream=s)
+        #     ps.print_stats()
+        #     self.log('', s.getvalue())
+        # except:
+        #     self.log('Error printing profiler stats')
 
         self.audioTriggerProcess = None
         self.continuousTriggerProcess = None
