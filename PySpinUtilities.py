@@ -396,6 +396,12 @@ def initCams(camSerials=None, camList=None, system=None):
     return cams, camList, system
 
 @handleCam
+def getFrameSize(cam=None):
+    width = cam.Width.GetValue()
+    height = cam.Height.GetValue()
+    return width, height
+
+@handleCam
 def isBayerFiltered(cam=None):
     name, displayName = getCameraAttribute('PixelFormat', PySpin.CEnumerationPtr, nodemap=cam.GetNodeMap())
     return pixelFormats[displayName]['bayer']

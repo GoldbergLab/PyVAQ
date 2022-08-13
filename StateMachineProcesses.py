@@ -18,11 +18,6 @@ import unicodedata
 import re
 from ctypes import c_wchar
 import PySpinUtilities as psu
-try:
-    import PySpin
-except ModuleNotFoundError:
-    # pip seems to install PySpin as pyspin sometimes...
-    import pyspin as PySpin
 import sys
 
 simulatedHardware = False
@@ -47,19 +42,6 @@ else:
     import nidaqmx
     from nidaqmx.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
     from nidaqmx.constants import Edge, TriggerType
-
-def getFrameSize(camSerial):
-    system = PySpin.System.GetInstance()
-    camList = system.GetCameras()
-    cam = camList.GetBySerial(camSerial)
-    cam.Init()
-    width = cam.Width.GetValue()
-    height = cam.Height.GetValue()
-    camList.Clear()
-    cam.DeInit()
-    cam = None
-    system.ReleaseInstance()
-    return width, height
 
 def syncPrint(*args, sep=' ', end='\n', flush=True, buffer=None):
     kwargs = dict(sep=sep, end=end, flush=flush)
@@ -3228,7 +3210,7 @@ class VideoAcquirer(StateMachineProcess):
         self.nChannels = psu.getColorChannelCount(camSerial=self.camSerial)
 
         if self.verbose >= 3: self.log("Temporarily initializing camera to get image size...")
-        videoWidth, videoHeight = getFrameSize(self.camSerial)
+        videoWidth, videoHeight = psu.getFrameSize(self.camSerial)
         self.imageQueue = SharedImageSender(
             width=videoWidth,
             height=videoHeight,
@@ -3621,7 +3603,7 @@ class VideoAcquirer(StateMachineProcess):
         self.updatePublishedState(States.DEAD)
 
     def setCameraAttribute(self, nodemap, attributeName, attributeValue, type='enum'):
-        # Set camera attribute. ReturnRetrusn True if successful, False otherwise.
+        # Set camera attribute. Return True if successful, False otherwise.
         if self.verbose >= 1: self.log('Setting', attributeName, 'to', attributeValue, 'as', type)
         nodeAttribute = psu.nodeAccessorTypes[type](nodemap.GetNode(attributeName))
         if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsWritable(nodeAttribute):

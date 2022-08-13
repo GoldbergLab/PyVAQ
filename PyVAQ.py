@@ -59,37 +59,12 @@ except:
     print('PyVAQ icon display failed')
 
 # Todo:
-#  - Add filename/directory entry for each stream
-#  - Find and plug memory leak #  - Add video frameRate indicator
-#  - Make attributes settable
-#  - Make saved avis not gigantic (maybe switch to opencv for video writing?)
-#  - Add external record triggering
-# Done
-#  - Add help dialog that includes version
-#  - Fix acquire/write indicator positioing
-#  - Add volume-based triggering
-#  - Camera commands are not being collected properly
-#  - Separate acquire and write modes so it's possible to monitor w/o writing
-#  - Rework with each process as an individual state machine
-#  - Turn all acquire/write/sync processes into state machines
-#  - Figure out why video task isn't closing down properly
-#  - Add buffering capability
-#  - Fix camera monitor
-#  - Add video & audio frequency controls
-#  - Fix audio
-
 
 # Verbosity levels (cumulative):
 # 0 - Errors
 # 1 - Occasional major status updates
 # 2 - Routine status messages
 # 3 - Everything
-
-r"""
-cd "C:\Users\Brian Kardon\Dropbox\Documents\Work\Cornell Lab Tech\Projects\Video VI\PyVAQ\Source"
-python PyVAQ.py
-git add * & git commit -m "" & git push origin master
-"""
 
 ICON_PATH = r'Resources\PyVAQ.ico'
 
@@ -171,7 +146,7 @@ def slugify(value, allow_unicode=False):
     Remove characters that aren't alphanumerics, underscores, or hyphens.
     Convert to lowercase. Also strip leading and trailing whitespace.
 
-    Adapter from Django utils
+    Adapted from Django utils
     """
     value = str(value)
     if allow_unicode:
