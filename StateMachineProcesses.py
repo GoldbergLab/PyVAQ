@@ -1429,7 +1429,7 @@ class Synchronizer(StateMachineProcess):
 
 class AudioTriggerer(StateMachineProcess):
     '''
-    AudioTriggerer: A self.state machine class to generate audio-based for both audio
+    AudioTriggerer: a state machine class to generate audio-based for both audio
         and video writer processes.
     '''
 
@@ -3183,7 +3183,7 @@ class AudioWriter(StateMachineProcess):
 
 class VideoAcquirer(StateMachineProcess):
     '''
-    VideoAcquirer: A self.state machine class to pull frames from a camera and pass
+    VideoAcquirer: a state machine class to pull frames from a camera and pass
         to a VideoWriter process, when a received trigger becomes active.
     '''
 
@@ -3519,6 +3519,7 @@ class VideoAcquirer(StateMachineProcess):
 
                     # Inform image monitors that we're done sending images for now
                     if self.monitorImageSender is not None:
+                        if self.verbose >= 2: self.log('Sending "done" message to image monitor')
                         self.monitorImageSender.put(None, metadata={'done':True})
 
                     # CHECK FOR MESSAGES
@@ -4635,7 +4636,7 @@ class VideoWriter(StateMachineProcess):
 
 class ContinuousTriggerer(StateMachineProcess):
     '''
-    ContinuousTriggerer: A self.state machine class to automatically generate a
+    ContinuousTriggerer: a state machine class to automatically generate a
         continuous train of triggers for both audio and video writer processes.
     '''
 
