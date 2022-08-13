@@ -369,10 +369,12 @@ class PyVAQ:
         self.audioFrequencyFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Audio freq. (Hz)", style='SingleContainer.TLabelframe')
         self.audioFrequencyVar =    tk.StringVar(); self.audioFrequencyVar.set("44100")
         self.audioFrequencyEntry =  ttk.Entry(self.audioFrequencyFrame, width=16, textvariable=self.audioFrequencyVar);
+        self.audioFrequencyVar.trace('w', self.updateAudioFrequency)
 
         self.videoFrequencyFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Video freq (fps)", style='SingleContainer.TLabelframe')
         self.videoFrequencyVar =    tk.StringVar(); self.videoFrequencyVar.set("30")
         self.videoFrequencyEntry =  ttk.Entry(self.videoFrequencyFrame, width=16, textvariable=self.videoFrequencyVar)
+        self.videoFrequencyVar.trace('w', self.updateVideoFrequency)
 
         self.videoExposureTimeFrame =    ttk.LabelFrame(self.acquisitionParametersFrame, text="Video exposure time (ms):", style='SingleContainer.TLabelframe')
         self.videoExposureTimeVar =      tk.StringVar(); self.videoExposureTimeVar.set("3")
@@ -1393,6 +1395,39 @@ him know. Otherwise, I had nothing to do with it.
             self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, scheduleParams))
         if self.audioWriteProcess is not None:
             self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, scheduleParams))
+
+    def updateAudioFrequency(self, newFrequency):
+        """Send message to Synchronizer to update audio frequency
+
+        Note that this will not take effect until the Synchronizer passes
+        through the INITIALIZING state.
+
+        Args:
+            newFrequency (float): the new audio frequency to set
+
+        Returns:
+            None
+
+        """
+        # Get current audio frequency parameter
+        newFrequency = self.getParams('audioFrequency')
+        # Send it to the Synchronizer
+        self.sendMessage(self.syncProcess, (Messages.SETPARAM, {'audioFrequency':newFrequency}))
+
+    def updateVideoFrequency(self):
+        """Send message to Synchronizer to update video frequency
+
+        Note that this will not take effect until the Synchronizer passes
+        through the INITIALIZING state.
+
+        Returns:
+            None
+
+        """
+        # Get current video frequency parameter
+        newFrequency = self.getParams('videoFrequency')
+        # Send it to the Synchronizer
+        self.sendMessage(self.syncProcess, (Messages.SETPARAM, {'videoFrequency':newFrequency}))
 
     def changeAVMergerParams(self, **params):
         """Inform AVMerger child process of current file merge settings.

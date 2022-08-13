@@ -1031,6 +1031,8 @@ class Synchronizer(StateMachineProcess):
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
+        'requestedAudioFrequency',  # Will only take effect when INITIALIZING
+        'requestedVideoFrequency'   # Will only take effect when INITIALIZING
     ]
 
     def __init__(self,
@@ -1073,6 +1075,11 @@ class Synchronizer(StateMachineProcess):
             if key in Synchronizer.settableParams:
                 setattr(self, key, params[key])
                 if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
+                if self.verbose >= 0 and \
+                   key in ["requestedAudioFrequency", "requestedVideoFrequency"]:
+                    self.log('Warning: requested frequency won\'t take ' + \
+                             'effect until Synchronizer passes through the ' + \
+                             'INITIALIZING state.')
             else:
                 if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
 
