@@ -3210,7 +3210,7 @@ class VideoAcquirer(StateMachineProcess):
         self.nChannels = psu.getColorChannelCount(camSerial=self.camSerial)
 
         if self.verbose >= 3: self.log("Temporarily initializing camera to get image size...")
-        videoWidth, videoHeight = psu.getFrameSize(self.camSerial)
+        videoWidth, videoHeight = psu.getFrameSize(camSerial=self.camSerial)
         self.imageQueue = SharedImageSender(
             width=videoWidth,
             height=videoHeight,
