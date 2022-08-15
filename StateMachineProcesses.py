@@ -2432,16 +2432,16 @@ class SimpleAudioWriter(StateMachineProcess):
                         elif not writeEnabled and writeEnabledPrevious:
                             self.logTime('Audio write now disabled')
 
+                    if audioFile is not None:
+                        # Close file
+                        audioFile.writeframes(b'')  # Causes recompute of header info?
+                        audioFile.close()
+                        audioFile = None
+
+                    audioFileStartTime = seriesStartTime + numSamplesInCurrentSeries / self.audioFrequency
+                    numSamplesInCurrentFile = 0
+
                     if writeEnabled:
-                        audioFileStartTime = seriesStartTime + numSamplesInCurrentSeries / self.audioFrequency
-                        numSamplesInCurrentFile = 0
-
-                        if audioFile is not None:
-                            # Close file
-                            audioFile.writeframes(b'')  # Causes recompute of header info?
-                            audioFile.close()
-                            audioFile = None
-
                         # Generate new audio file path
                         audioFileNameTags = [','.join(self.channelNames), generateTimeString(timestamp=seriesStartTime), '{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
                         if self.daySubfolders:
@@ -2498,8 +2498,8 @@ class SimpleAudioWriter(StateMachineProcess):
 
                         # Calculate how many more samples needed to complete the file
                         samplesUntilEOF = round(numSamplesPerFile) - numSamplesInCurrentFile
+                        samplesUntilEOF_2 = round(numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile))
                         if self.verbose >= 3:
-                            samplesUntilEOF_2 = round(numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile))
                             self.log('Old counting method:')
                             self.log('  Samples remaining in file: {s}'.format(s=samplesUntilEOF))
                             self.log('New counting method:')
@@ -2512,7 +2512,8 @@ class SimpleAudioWriter(StateMachineProcess):
                             self.log("Post chunk:", audioChunkLeftover)
 
                         # Write chunk of audio to file that was previously retrieved from the buffer
-                        audioFile.writeframes(audioChunk.getAsBytes())
+                        if writeEnabled:
+                            audioFile.writeframes(audioChunk.getAsBytes())
                         numSamplesInCurrentFile += audioChunk.getSampleCount()
                         numSamplesInCurrentSeries += audioChunk.getSampleCount()
 
