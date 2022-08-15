@@ -2384,7 +2384,7 @@ class SimpleAudioWriter(StateMachineProcess):
                         actualVideoLength = actualFramesPerVideo / self.frameRate
                         # Actual # of samples per video we should record. Note thta this will have an accuracy of +/- 0.5 audio samples.
                         #   At 44100 Hz, and 30 fps, the audio may be as much as whole frame de-synced after 2900 videos. This is acceptable for now.
-                        numSamplesPerFile = round(actualVideoLength * self.audioFrequency)
+                        numSamplesPerFile = actualVideoLength * self.audioFrequency
 
                         if self.verbose >= 1:
                             self.log('Audio writer initialized:')
@@ -2497,7 +2497,13 @@ class SimpleAudioWriter(StateMachineProcess):
                         # We have an audio chunk to write.
 
                         # Calculate how many more samples needed to complete the file
-                        samplesUntilEOF = numSamplesPerFile - numSamplesInCurrentFile
+                        samplesUntilEOF = round(numSamplesPerFile) - numSamplesInCurrentFile
+                        if verbose >= 3:
+                            samplesUntilEOF_2 = round(numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile))
+                            self.log('Old counting method:')
+                            self.log('  Samples remaining in file: {s}'.format(samplesUntilEOF))
+                            self.log('New counting method:')
+                            self.log('  Samples remaining in file: {s}'.format(samplesUntilEOF_2))
 
                         # Split chunk to part before end of file, and part after end of file.
                         [audioChunk, audioChunkLeftover] = audioChunk.splitAtSample(samplesUntilEOF)
@@ -2541,7 +2547,7 @@ class SimpleAudioWriter(StateMachineProcess):
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     elif msg in ['', Messages.START]:
-                        if numSamplesInCurrentFile == numSamplesPerFile:
+                        if numSamplesInCurrentFile == round(numSamplesPerFile):
                             # We've reached the desired sample count. Start a new audio file.
                             self.nextState = States.AUDIOINIT
                             # If requested, merge with video
@@ -2563,7 +2569,7 @@ class SimpleAudioWriter(StateMachineProcess):
                             else:
                                 if self.verbose >= 3:
                                     self.log('No merge message queue available, cannot send to AVMerger')
-                        elif numSamplesInCurrentFile < numSamplesPerFile:
+                        elif numSamplesInCurrentFile < round(numSamplesPerFile):
                             # Not enough audio samples written to this file yet. Keep writing.
                             self.nextState = States.WRITING
                         else:
