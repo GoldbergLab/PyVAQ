@@ -2498,12 +2498,12 @@ class SimpleAudioWriter(StateMachineProcess):
 
                         # Calculate how many more samples needed to complete the file
                         samplesUntilEOF = round(numSamplesPerFile) - numSamplesInCurrentFile
-                        if verbose >= 3:
+                        if self.verbose >= 3:
                             samplesUntilEOF_2 = round(numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile))
                             self.log('Old counting method:')
-                            self.log('  Samples remaining in file: {s}'.format(samplesUntilEOF))
+                            self.log('  Samples remaining in file: {s}'.format(s=samplesUntilEOF))
                             self.log('New counting method:')
-                            self.log('  Samples remaining in file: {s}'.format(samplesUntilEOF_2))
+                            self.log('  Samples remaining in file: {s}'.format(s=samplesUntilEOF_2))
 
                         # Split chunk to part before end of file, and part after end of file.
                         [audioChunk, audioChunkLeftover] = audioChunk.splitAtSample(samplesUntilEOF)
@@ -2527,8 +2527,8 @@ class SimpleAudioWriter(StateMachineProcess):
                             # There are leftover samples. Include those at the start of this chunk.
                             if self.verbose >= 3:
                                 self.log('Prepending leftover chunk to new chunk:')
-                                self.log('Leftover: ' + audioChunkLeftover)
-                                self.log('New:      ' + audioChunk)
+                                self.log('Leftover: ', audioChunkLeftover)
+                                self.log('New:      ', audioChunk)
                             audioChunk.addChunkToStart(audioChunkLeftover)
                             audioChunkLeftover = None
 
