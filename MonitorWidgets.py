@@ -22,8 +22,8 @@ WIDGET_COLORS = [
 ]
 LINE_STYLES = [c+'-' for c in 'bykcmgr']
 
-with Image.open(r'Resources\NoImages_000.png') as f:
-    NO_IMAGES_IMAGE = f.load()
+with Image.open(r'Resources\NoImages_000.png') as NO_IMAGES_IMAGE:
+    NO_IMAGES_IMAGE.load()
 
 class AudioMonitor(ttk.LabelFrame):
     def __init__(self, *args, historyLength=44100*2, displayAmplitude=5, autoscale=False, initialDirectory='', initialBaseFileName='', **kwargs):
