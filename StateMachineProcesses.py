@@ -19,6 +19,7 @@ import re
 from ctypes import c_wchar
 import PySpinUtilities as psu
 import sys
+from math import floor
 
 simulatedHardware = False
 for arg in sys.argv[1:]:
@@ -222,6 +223,8 @@ class AudioChunk():
         # Split audio chunk into two so the first chunk has sampleSplitNum
         #   samples in it, and the second chunk has the rest.
         #   Returns the two resultant chunks in a tuple
+        # Note that in addition to returning the 2nd part of the chunk, the
+        #   original object is also modified.
 
         if sampleSplitNum < 0:
             sampleSplitNum = 0
@@ -2382,8 +2385,10 @@ class SimpleAudioWriter(StateMachineProcess):
                         actualFramesPerVideo = round(self.videoLength * self.frameRate)
                         # Actual video length that SimpleVideoWriter will be using
                         actualVideoLength = actualFramesPerVideo / self.frameRate
-                        # Actual # of samples per video we should record. Note thta this will have an accuracy of +/- 0.5 audio samples.
-                        #   At 44100 Hz, and 30 fps, the audio may be as much as whole frame de-synced after 2900 videos. This is acceptable for now.
+                        # Actual # of samples per video we should record. If
+                        #   this is not an integer, the # of samples per file
+                        #   will vary by 1 sample, but over time the error will
+                        #   not accumulate.
                         numSamplesPerFile = actualVideoLength * self.audioFrequency
 
                         if self.verbose >= 1:
@@ -2489,6 +2494,17 @@ class SimpleAudioWriter(StateMachineProcess):
                     if self.verbose >= 3:
                         self.log("Audio queue size: ", self.audioQueue.qsize())
 
+                    # Calculate how many more samples needed to complete the file
+                    samplesUntilEOF = numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile)
+                    if samplesUntilEOF < 1:
+                        # Can't write a fractional frame - this video is actually done
+                        samplesUntilEOF = floor(samplesUntilEOF + numSamplesPerFile)
+                    else:
+                        # Can't write a fractional frame
+                        samplesUntilEOF = floor(samplesUntilEOF)
+
+                    audioChunk = self.getNextChunk()
+
                     # Write all or part of last audio chunk to file
                     if audioChunk is None:
                         # No audio chunk yet
@@ -2496,17 +2512,22 @@ class SimpleAudioWriter(StateMachineProcess):
                     else:
                         # We have an audio chunk to write.
 
-                        # Calculate how many more samples needed to complete the file
-                        samplesUntilEOF = round(numSamplesPerFile) - numSamplesInCurrentFile
-                        samplesUntilEOF_2 = round(numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile))
-                        if self.verbose >= 3:
-                            self.log('Old counting method:')
-                            self.log('  Samples remaining in file: {s}'.format(s=samplesUntilEOF))
-                            self.log('New counting method:')
-                            self.log('  Samples remaining in file: {s}'.format(s=samplesUntilEOF_2))
+                        # Tack on audio chunk leftover, if there is one
+                        if audioChunkLeftover is not None:
+                            if audioChunkLeftover.getSampleCount() != 0:
+                                # There are leftover samples. Include those at the start of this chunk.
+                                if self.verbose >= 3:
+                                    self.log('Prepending leftover chunk to new chunk:')
+                                    self.log('Leftover: ', audioChunkLeftover)
+                                    self.log('New:      ', audioChunk)
+                                audioChunk.addChunkToStart(audioChunkLeftover)
+                                audioChunkLeftover = None
 
                         # Split chunk to part before end of file, and part after end of file.
-                        [audioChunk, audioChunkLeftover] = audioChunk.splitAtSample(samplesUntilEOF)
+                        #   If the whole chunk is needed in this file, the leftover will be
+                        #   None
+                        if samplesUntilEOF > 0:
+                            [audioChunk, audioChunkLeftover] = audioChunk.splitAtSample(samplesUntilEOF)
                         if self.verbose >= 3:
                             self.log("Pre chunk:", audioChunk)
                             self.log("Post chunk:", audioChunkLeftover)
@@ -2517,21 +2538,16 @@ class SimpleAudioWriter(StateMachineProcess):
                         numSamplesInCurrentFile += audioChunk.getSampleCount()
                         numSamplesInCurrentSeries += audioChunk.getSampleCount()
 
+                        # Calculate how many more samples needed to complete the file
+                        samplesUntilEOF = floor(numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile))
+
                         if self.verbose >= 3:
+                            self.log('audio file num: {num}'.format(num=audioFileCount))
+                            self.log('  numSamplesInCurrentFile     = {ns}'.format(ns=numSamplesInCurrentFile))
+                            self.log('  numSamplesInCurrentSeries   = {ns}'.format(ns=numSamplesInCurrentSeries))
                             self.log("Wrote audio chunk {id}".format(id=audioChunk.id))
                             timeWrote += (audioChunk.getSampleCount() / audioChunk.audioFrequency)
                             self.log("Audio time wrote: {time}".format(time=timeWrote))
-
-                    audioChunk = self.getNextChunk()
-                    if audioChunkLeftover is not None:
-                        if audioChunkLeftover.getSampleCount() != 0:
-                            # There are leftover samples. Include those at the start of this chunk.
-                            if self.verbose >= 3:
-                                self.log('Prepending leftover chunk to new chunk:')
-                                self.log('Leftover: ', audioChunkLeftover)
-                                self.log('New:      ', audioChunk)
-                            audioChunk.addChunkToStart(audioChunkLeftover)
-                            audioChunkLeftover = None
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
                     try:
@@ -2548,7 +2564,7 @@ class SimpleAudioWriter(StateMachineProcess):
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     elif msg in ['', Messages.START]:
-                        if numSamplesInCurrentFile == round(numSamplesPerFile):
+                        if samplesUntilEOF == 0:
                             # We've reached the desired sample count. Start a new audio file.
                             self.nextState = States.AUDIOINIT
                             # If requested, merge with video
@@ -2570,7 +2586,7 @@ class SimpleAudioWriter(StateMachineProcess):
                             else:
                                 if self.verbose >= 3:
                                     self.log('No merge message queue available, cannot send to AVMerger')
-                        elif numSamplesInCurrentFile < round(numSamplesPerFile):
+                        elif samplesUntilEOF > 0:
                             # Not enough audio samples written to this file yet. Keep writing.
                             self.nextState = States.WRITING
                         else:
@@ -2698,9 +2714,10 @@ class SimpleAudioWriter(StateMachineProcess):
         try:
             # Get new audio chunk and return it
             newAudioChunk = self.audioQueue.get(block=True, timeout=0.1)
-            if self.verbose >= 3: self.log("Got audio chunk {id} from acquirer. Pushing into the buffer.".format(id=newAudioChunk.id))
+            if self.verbose >= 3: self.log("Got audio chunk {id} from acquirer.".format(id=newAudioChunk.id))
         except queue.Empty: # None available
             newAudioChunk = None
+            if self.verbose >= 3: self.log("No audio chunk available.")
         return newAudioChunk
 
 class AudioWriter(StateMachineProcess):
