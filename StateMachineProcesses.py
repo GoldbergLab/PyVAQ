@@ -321,6 +321,16 @@ class AudioChunk():
 
 #  audioChunkBytes = b''.join(map(lambda x:struct.pack(bytePackingPattern, *x), audioChunk.transpose().tolist()))
 
+def inSchedule(startTime, stopTime, currentTime=None):
+    if currentTime is None:
+        currentTime. dt.datetime.now().time()
+    if stopTime >= startTime:
+        # Schedule on time does not overlap midnight
+        return startTime < currentTime and currentTime < stopTime
+    else:
+        # Schedule on time overlaps midnight
+        return startTime < currentTime or currentTime < stopTime
+
 DATE_FORMAT = '%Y-%m-%d'
 TIME_FORMAT = '%Y-%m-%d-%H-%M-%S-%f'
 
@@ -1445,8 +1455,8 @@ class AudioTriggerer(StateMachineProcess):
         'multiChannelStopBehavior',
         'verbose',
         'scheduleEnabled',
-        'scheduleStart',
-        'scheduleStop',
+        'scheduleStartTime',
+        'scheduleStopTime',
         'tagTriggerEnabled',
         'writeTriggerEnabled'
         ]
@@ -1664,7 +1674,7 @@ class AudioTriggerer(StateMachineProcess):
                         chunkStartTime, audioChunk = self.audioQueue.get(block=True, timeout=0.1)
                         chunkEndTime = chunkStartTime + self.chunkSize / self.audioFrequency
 
-                        currentTimeOfDay = dt.datetime.now()
+                        currentTimeOfDay = dt.datetime.now().time()
                         if not self.scheduleEnabled or (self.scheduleStartTime <= currentTimeOfDay and self.scheduleStopTime <= currentTimeOfDay):
                             # If the scheduling feature is disabled, or it's enabled and we're between start/stop times, then:
 
@@ -2273,8 +2283,8 @@ class SimpleAudioWriter(StateMachineProcess):
         'daySubfolders',
         'enableWrite',
         'scheduleEnabled',
-        'scheduleStart',
-        'scheduleStop'
+        'scheduleStartTime',
+        'scheduleStopTime'
         ]
 
     def __init__(self,
@@ -2424,7 +2434,7 @@ class SimpleAudioWriter(StateMachineProcess):
                 elif self.state == States.AUDIOINIT:
                     # Start a new audio file
                     # DO STUFF
-                    currentTimeOfDay = dt.datetime.now()
+                    currentTimeOfDay = dt.datetime.now().time()
                     writeEnabledPrevious = writeEnabled
                     writeEnabled = (self.enableWrite and
                                         (not self.scheduleEnabled or
@@ -3673,8 +3683,8 @@ class SimpleVideoWriter(StateMachineProcess):
         'gpuVEnc',
         'enableWrite',
         'scheduleEnabled',
-        'scheduleStart',
-        'scheduleStop'
+        'scheduleStartTime',
+        'scheduleStopTime'
         ]
 
     def __init__(self,
@@ -3814,12 +3824,19 @@ class SimpleVideoWriter(StateMachineProcess):
                     #   2. Video write is scheduled to be on or off
                     numFramesInCurrentVideo = 0
 
-                    currentTimeOfDay = dt.datetime.now()
+                    currentTimeOfDay = dt.datetime.now().time()
                     writeEnabledPrevious = writeEnabled
                     writeEnabled = (self.enableWrite and
                                         (not self.scheduleEnabled or
                                             (self.scheduleStartTime <= currentTimeOfDay and
-                                             self.scheduleStopTime <= currentTimeOfDay)))
+                                             currentTimeOfDay <= self.scheduleStopTime)))
+
+                    if self.verbose >= 3:
+                        self.logTime('Schedule enabled: {e}'.format(e=self.scheduleEnabled))
+                        self.logTime('  Current time:   {t}'.format(t=currentTimeOfDay))
+                        self.logTime('  Start time:     {t}'.format(t=self.scheduleStartTime))
+                        self.logTime('  Current time:   {t}'.format(t=self.scheduleStopTime))
+                        self.logTime('  Write enabled:  {e}'.format(e=writeEnabled))
 
                     if self.verbose >= 1:
                         if writeEnabled and not writeEnabledPrevious:
@@ -4658,8 +4675,8 @@ class ContinuousTriggerer(StateMachineProcess):
     settableParams = [
         'continuousTriggerPeriod',
         'scheduleEnabled',
-        'scheduleStart',
-        'scheduleStop'
+        'scheduleStartTime',
+        'scheduleStopTime'
         ]
 
     def __init__(self,
@@ -4775,7 +4792,7 @@ class ContinuousTriggerer(StateMachineProcess):
                 elif self.state == States.TRIGGERING:
                     # DO STUFF
 
-                    currentTimeOfDay = dt.datetime.now()
+                    currentTimeOfDay = dt.datetime.now().time()
                     if not self.scheduleEnabled or (self.scheduleStartTime <= currentTimeOfDay and self.scheduleStopTime <= currentTimeOfDay):
                         # If the scheduling feature is disabled, or it's enabled and we're between start/stop times, then:
                         currentTime = time.time_ns()/1000000000
