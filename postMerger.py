@@ -126,7 +126,28 @@ def mergeFiles(videoFiles, audioFile, reencodeVideo=False, reencodeAudio=False, 
         else:
             status = os.system(mergeCommand)
 
+def printHelp():
+        print('''
+postMerger.py
+    A script to merge audio/video produced by PyVAQ in SimpleContinuous trigger
+        mode after acquisition has finished.
+
+    Usage:
+        python postMerger.py folder1 folder2 ... folderN
+
+    Where folder1, folder2, ... folderN are paths to folders containing audio
+        or video streams from the same acquisition session
+
+    If multiple video streams exist, postMerger will attempt to merge the audio
+        stream with each of them.
+''')
+
+
 if __name__ == "__main__":
     # A utility to make all files and folders within a tree as short a name as possible.
-    folderPaths = [Path(p) for p in sys.argv[1:]]
-    mergeFolder(folderPaths, dryRun=False)
+    if len(sys.argv) == 1:
+        # Display help
+        printHelp()
+    else:
+        folderPaths = [Path(p) for p in sys.argv[1:]]
+        mergeFolder(folderPaths, dryRun=False)
