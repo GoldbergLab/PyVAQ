@@ -103,6 +103,10 @@ class Camera:
         return self.images is not None
     def IsAcquisitionStarted(self):
         return self.imageID is not None
+    def IsStreaming(self):
+        # Not sure exactly what the difference is,
+        #   but this is probably good enough.
+        return self.IsAcquisitionStarted()
     def GetTLDeviceNodeMap(self):
         if not self.IsInitialized():
             raise RuntimeError('You must call Init and BeginAcquistion on camera before getting images.')
