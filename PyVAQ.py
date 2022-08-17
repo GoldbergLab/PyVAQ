@@ -1371,14 +1371,14 @@ him know. Otherwise, I had nothing to do with it.
         if self.audioWriteProcess is not None:
             self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, scheduleParams))
 
-    def updateAudioFrequency(self, newFrequency):
+    def updateAudioFrequency(self, *args):
         """Send message to Synchronizer to update audio frequency
 
         Note that this will not take effect until the Synchronizer passes
         through the INITIALIZING state.
 
         Args:
-            newFrequency (float): the new audio frequency to set
+            *args (any): Dummy variable to hold unused event data
 
         Returns:
             None
@@ -1387,13 +1387,16 @@ him know. Otherwise, I had nothing to do with it.
         # Get current audio frequency parameter
         newFrequency = self.getParams('audioFrequency')
         # Send it to the Synchronizer
-        self.sendMessage(self.syncProcess, (Messages.SETPARAM, {'audioFrequency':newFrequency}))
+        self.sendMessage(self.syncProcess, (Messages.SETPARAMS, {'audioFrequency':newFrequency}))
 
-    def updateVideoFrequency(self):
+    def updateVideoFrequency(self, *args):
         """Send message to Synchronizer to update video frequency
 
         Note that this will not take effect until the Synchronizer passes
         through the INITIALIZING state.
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
 
         Returns:
             None
@@ -1402,7 +1405,7 @@ him know. Otherwise, I had nothing to do with it.
         # Get current video frequency parameter
         newFrequency = self.getParams('videoFrequency')
         # Send it to the Synchronizer
-        self.sendMessage(self.syncProcess, (Messages.SETPARAM, {'videoFrequency':newFrequency}))
+        self.sendMessage(self.syncProcess, (Messages.SETPARAMS, {'videoFrequency':newFrequency}))
 
     def changeAVMergerParams(self, **params):
         """Inform AVMerger child process of current file merge settings.
@@ -2997,7 +3000,7 @@ him know. Otherwise, I had nothing to do with it.
                 Where the first element is a message type, as defined by the
                 StateMachineProcesses.Messages class, and the second argument is
                 an argument that depends on the message type. For example,
-                    (Messages.SETPARAM, {'verbose':2})
+                    (Messages.SETPARAMS, {'verbose':2})
                 or
                     (Messages.START, None)
 
