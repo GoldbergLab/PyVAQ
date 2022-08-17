@@ -436,10 +436,10 @@ class PyVAQ:
         self.scheduleEnabledVar = tk.BooleanVar(); self.scheduleEnabledVar.set(False)
         self.scheduleEnabledVar.trace('w', self.updateChildSchedulingState)
         self.scheduleEnabledCheckbutton = ttk.Checkbutton(self.scheduleFrame, text="Restrict trigger to schedule", variable=self.scheduleEnabledVar)
-        self.scheduleStartVar = TimeVar(); self.scheduleStartVar.trace('w', self.updateChildSchedulingState)
-        self.scheduleStartTimeEntry = TimeEntry(self.scheduleFrame, text="Start time", style=self.style)
-        self.scheduleStopVar = TimeVar(); self.scheduleStopVar.trace('w', self.updateChildSchedulingState)
-        self.scheduleStopTimeEntry = TimeEntry(self.scheduleFrame, text="Stop time")
+        self.scheduleStartTimeVar = TimeVar(); self.scheduleStartTimeVar.trace('w', self.updateChildSchedulingState)
+        self.scheduleStartTimeEntry = TimeEntry(self.scheduleFrame, text="Start time", timevar=self.scheduleStartTimeVar, style=self.style)
+        self.scheduleStopTimeVar = TimeVar(); self.scheduleStopTimeVar.trace('w', self.updateChildSchedulingState)
+        self.scheduleStopTimeEntry = TimeEntry(self.scheduleFrame, text="Stop time", timevar=self.scheduleStopTimeVar, style=self.style)
 
         self.triggerFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Triggering", **collapsableFrameStyle); self.triggerFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
         # self.triggerFrame = ttk.LabelFrame(self.controlFrame, text='Triggering')
@@ -607,8 +607,8 @@ class PyVAQ:
             'montageMerge':                     dict(get=self.montageMergeVar.get,                              set=self.montageMergeVar.set),
             'mergeCompression':                 dict(get=self.mergeCompressionVar.get,                          set=self.mergeCompressionVar.set),
             'scheduleEnabled':                  dict(get=self.scheduleEnabledVar.get,                           set=self.scheduleEnabledVar.set),
-            'scheduleStart':                    dict(get=self.scheduleStartVar.get,                             set=self.scheduleStartVar.set),
-            'scheduleStop':                     dict(get=self.scheduleStopVar.get,                              set=self.scheduleStopVar.set),
+            'scheduleStartTime':                dict(get=self.scheduleStartTimeVar.get,                         set=self.scheduleStartTimeVar.set),
+            'scheduleStopTime':                 dict(get=self.scheduleStopTimeVar.get,                          set=self.scheduleStopTimeVar.set),
             'triggerMode':                      dict(get=self.triggerModeVar.get,                               set=self.triggerModeVar.set),
             'multiChannelStopBehavior':         dict(get=self.multiChannelStopBehaviorVar.get,                  set=self.multiChannelStopBehaviorVar.set),
             'multiChannelStartBehavior':        dict(get=self.multiChannelStartBehaviorVar.get,                 set=self.multiChannelStartBehaviorVar.set),
@@ -1365,7 +1365,7 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
-        scheduleParams = self.getParams('scheduleEnabled', 'scheduleStart', 'scheduleStop')
+        scheduleParams = self.getParams('scheduleEnabled', 'scheduleStartTime', 'scheduleStopTime')
         for camSerial in self.videoWriteProcesses:
             self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, scheduleParams))
         if self.audioWriteProcess is not None:
@@ -2671,8 +2671,8 @@ him know. Otherwise, I had nothing to do with it.
         """
         params = self.getParams()
         # datetime.time objects are not serializable, so we have to extract the time
-        params['scheduleStart'] = timeToSerializable(params['scheduleStart'])
-        params['scheduleStop'] = timeToSerializable(params['scheduleStop'])
+        params['scheduleStartTime'] = timeToSerializable(params['scheduleStartTime'])
+        params['scheduleStopTime'] = timeToSerializable(params['scheduleStopTime'])
         if path is None:
             path = asksaveasfilename(
                 title = "Choose a filename to save current settings to.",
@@ -2706,8 +2706,10 @@ him know. Otherwise, I had nothing to do with it.
         if path is not None and len(path) > 0:
             with open(path, 'r') as f:
                 params = json.loads(f.read())
-            params['scheduleStart'] = serializableToTime(params['scheduleStart'])
-            params['scheduleStop'] = serializableToTime(params['scheduleStop'])
+            if 'scheduleStartTime' in params:
+                params['scheduleStartTime'] = serializableToTime(params['scheduleStartTime'])
+            if 'scheduleStopTime' in params:
+                params['scheduleStopTime'] = serializableToTime(params['scheduleStopTime'])
             self.log("Loaded settings:")
             self.log(params)
             self.setParams(**params)
@@ -3318,8 +3320,8 @@ him know. Otherwise, I had nothing to do with it.
                     stdoutQueue=self.StdoutManager.queue,
                     gpuVEnc=gpuOk,
                     scheduleEnabled=p['scheduleEnabled'],
-                    scheduleStartTime=p['scheduleStart'],
-                    scheduleStopTime=p['scheduleStop'],
+                    scheduleStartTime=p['scheduleStartTime'],
+                    scheduleStopTime=p['scheduleStopTime'],
                     enableWrite=videoWriteEnable
                     )
                 gpuCount += 1
