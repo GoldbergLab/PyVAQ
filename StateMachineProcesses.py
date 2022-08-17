@@ -629,7 +629,7 @@ class AVMerger(StateMachineProcess):
             self.updatePublishedState()
 
             try:
-# AVMerger: *********************** STOPPPED *********************************
+# AVMerger: *********************** STOPPED *********************************
                 if self.state == States.STOPPED:
                     # DO STUFF
 
@@ -1087,7 +1087,7 @@ class Synchronizer(StateMachineProcess):
             self.updatePublishedState()
 
             try:
-# Synchronizer: **************** STOPPPED *********************************
+# Synchronizer: **************** STOPPED *********************************
                 if self.state == States.STOPPED:
                     # DO STUFF
 
@@ -1101,6 +1101,12 @@ class Synchronizer(StateMachineProcess):
                     if self.exitFlag:
                         self.nextState = States.EXITING
                     elif msg == '':
+                        self.nextState = self.state
+                    elif msg == Messages.SYNC:
+                        if self.verbose >= 0:
+                            self.log('Warning: Got sync start message. \
+                                      Synchronizer not initialized yet, \
+                                      cannot start synchronizing yet.')
                         self.nextState = self.state
                     elif msg == Messages.STOP:
                         self.nextState = States.STOPPED
@@ -1572,7 +1578,7 @@ class AudioTriggerer(StateMachineProcess):
             self.updatePublishedState()
 
             try:
-# AudioTriggerer: ************ STOPPPED *********************************
+# AudioTriggerer: ************ STOPPED *********************************
                 if self.state == States.STOPPED:
                     # DO STUFF
 
@@ -1993,7 +1999,7 @@ class AudioAcquirer(StateMachineProcess):
             self.updatePublishedState()
 
             try:
-# AudioAcquirer: ***************** STOPPPED *********************************
+# AudioAcquirer: ***************** STOPPED *********************************
                 if self.state == States.STOPPED:
                     # DO STUFF
 
@@ -2344,7 +2350,7 @@ class SimpleAudioWriter(StateMachineProcess):
             self.updatePublishedState()
 
             try:
-# SimpleAudioWriter: **************** STOPPPED *********************************
+# SimpleAudioWriter: **************** STOPPED *********************************
                 if self.state == States.STOPPED:
                     # DO STUFF
 
@@ -2798,7 +2804,7 @@ class AudioWriter(StateMachineProcess):
             self.updatePublishedState()
 
             try:
-# AudioWriter: ******************* STOPPPED *********************************
+# AudioWriter: ******************* STOPPED *********************************
                 if self.state == States.STOPPED:
                     # DO STUFF
 
@@ -3303,7 +3309,7 @@ class VideoAcquirer(StateMachineProcess):
             self.updatePublishedState()
 
             try:
-# VideoAcquirer: ******************** STOPPPED *********************************
+# VideoAcquirer: ******************** STOPPED *********************************
                 if self.state == States.STOPPED:
                     # DO STUFF
 
@@ -3744,7 +3750,7 @@ class SimpleVideoWriter(StateMachineProcess):
             self.updatePublishedState()
 
             try:
-# SimpleVideoWriter: ***************** STOPPPED *********************************
+# SimpleVideoWriter: ***************** STOPPED *********************************
                 if self.state == States.STOPPED:
                     # DO STUFF
 
@@ -4238,7 +4244,7 @@ class VideoWriter(StateMachineProcess):
             self.updatePublishedState()
 
             try:
-# VideoWriter: ******************** STOPPPED *********************************
+# VideoWriter: ******************** STOPPED *********************************
                 if self.state == States.STOPPED:
                     # DO STUFF
 
@@ -4734,7 +4740,7 @@ class ContinuousTriggerer(StateMachineProcess):
             self.updatePublishedState()
 
             try:
-# ContinuousTriggerer: ************* STOPPPED *********************************
+# ContinuousTriggerer: ************* STOPPED *********************************
                 if self.state == States.STOPPED:
                     # DO STUFF
 
