@@ -156,7 +156,7 @@ class Camera:
         self.startTime = time.time()
         self.imageID = self.GetCurrentImageID()
 
-    def GetNextImage(self):
+    def GetNextImage(self, timeout):
         if not self.IsInitialized() or not self.IsAcquisitionStarted():
             raise RuntimeError('You must call Init and BeginAcquistion on camera before getting images.')
         currentImageID = self.imageID
