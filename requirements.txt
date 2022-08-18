@@ -10,4 +10,3 @@ pyparsing==2.4.7
 python-dateutil==2.8.1
 scipy==1.6.3
 six==1.16.0
-spinnaker-python @ file:///C:/Users/Brian%20Kardon/Downloads/Latest%20Python%20Spinnaker/spinnaker_python-2.4.0.144-cp38-cp38-win_amd64/spinnaker_python-2.4.0.144-cp38-cp38-win_amd64.whl
