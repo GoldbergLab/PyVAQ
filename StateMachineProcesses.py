@@ -483,6 +483,10 @@ class StateMachineProcess(mp.Process):
         States.DEAD :          'DEAD'
     }
 
+    settableParams = [
+        'verbose'
+    ]
+
     def __init__(self, *args, stdoutQueue=None, daemon=True, verbose=1, **kwargs):
         mp.Process.__init__(self, *args, daemon=daemon, **kwargs)
         self.ID = "X"                                   # An ID for logging purposes to identify the source of log messages
@@ -533,6 +537,26 @@ class StateMachineProcess(mp.Process):
                 self.publishedStateVar.value = self.state
                 L.release()
 
+    def checkMessages(self, block=False, timeout=None):
+        try:
+            msg, arg = self.msgQueue.get(block=block, timeout=timeout)
+            if msg == Messages.SETPARAMS:
+                self.setParams(**arg)
+                msg = ''
+                arg=None
+        except queue.Empty:
+            msg = ''
+            arg = None
+        return msg, arg
+
+    def setParams(self, **params):
+        for key in params:
+            if key in self.settableParams:
+                setattr(self, key, params[key])
+                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
+            else:
+                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
+
     def log(self, msg, *args, **kwargs):
         # Queue up another ID-tagged log message
         syncPrint('|| {ID} - {msg}'.format(ID=self.ID, msg=msg), *args, buffer=self.stdoutBuffer, **kwargs)
@@ -551,6 +575,45 @@ class StateMachineProcess(mp.Process):
         if len(self.stdoutBuffer) > 0:
             self.stdoutQueue.put(self.stdoutBuffer)
         self.stdoutBuffer = []
+
+    def handleError(self, msg=None, arg=None):
+        # DO STUFF
+        if self.verbose >= 0:
+            self.log("ERROR STATE. Error messages:\n\n")
+            self.log("\n\n".join(self.errorMessages))
+
+        self.updatePublishedInfo("\n".join(self.errorMessages))
+
+        self.errorMessages = []
+
+        if msg is None:
+            # CHECK FOR MESSAGES
+            msg, arg = self.checkMessages(block=False)
+
+        # CHOOSE NEXT STATE
+        if self.lastState == States.ERROR:
+            # Error ==> Error, let's just exit
+            self.nextState = States.EXITING
+        elif msg == '':
+            if self.lastState == States.STOPPING:
+                # We got an error in stopping state? Better just stop.
+                self.nextState = States.STOPPED
+            elif self.lastState ==States.STOPPED:
+                # We got an error in the stopped state? Better just exit.
+                self.nextState = States.EXITING
+            else:
+                self.nextState = States.STOPPING
+        elif msg == Messages.STOP:
+            self.nextState = States.STOPPING
+        elif msg == Messages.EXIT:
+            self.exitFlag = True
+            if self.lastState == States.STOPPING:
+                self.nextState = States.EXITING
+            else:
+                self.nextState = States.STOPPING
+        else:
+            raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+
 
 class AVMerger(StateMachineProcess):
     # Class for merging audio and video files using ffmpeg
@@ -612,14 +675,6 @@ class AVMerger(StateMachineProcess):
             if self.verbose >= 0: self.log("Warning! AVMerger can't merge less than 2 files!")
         self.daySubfolders = daySubfolders
 
-    def setParams(self, **params):
-        for key in params:
-            if key in AVMerger.settableParams:
-                setattr(self, key, params[key])
-                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
-            else:
-                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
-
     def run(self):
         super().run()
         msg = ''; arg = None
@@ -634,10 +689,7 @@ class AVMerger(StateMachineProcess):
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -669,10 +721,7 @@ class AVMerger(StateMachineProcess):
                     groupedFileEventList = []
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -706,10 +755,7 @@ class AVMerger(StateMachineProcess):
                     self.ignoreFlag = False
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True, timeout=0.1)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True, timeout=0.1)
 
                     # CHOOSE NEXT STATE
                     if msg == Messages.MERGE and arg is not None:
@@ -773,10 +819,7 @@ class AVMerger(StateMachineProcess):
                             self.log("Ready:    ", [tuple([p['filePath'] for p in fileEvent]) for fileEvent in groupedFileEventList])
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True, timeout=0.1)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True, timeout=0.1)
 
                     # CHOOSE NEXT STATE
                     if msg == Messages.MERGE and arg is not None:
@@ -886,10 +929,7 @@ class AVMerger(StateMachineProcess):
                     groupedFileEventList = []
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True, timeout=0.1)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True, timeout=0.1)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -915,10 +955,7 @@ class AVMerger(StateMachineProcess):
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -936,44 +973,7 @@ class AVMerger(StateMachineProcess):
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # AVMerger: *********************** ERROR *********************************
                 elif self.state == States.ERROR:
-                    # DO STUFF
-                    if self.verbose >= 0:
-                        self.log("ERROR STATE. Error messages:\n\n")
-                        self.log("\n\n".join(self.errorMessages))
-
-                    self.updatePublishedInfo("\n".join(self.errorMessages))
-
-                    self.errorMessages = []
-
-                    # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
-
-                    # CHOOSE NEXT STATE
-                    if self.lastState == States.ERROR:
-                        # Error ==> Error, let's just exit
-                        self.nextState = States.EXITING
-                    elif msg == '':
-                        if self.lastState == States.STOPPING:
-                            # We got an error in stopping state? Better just stop.
-                            self.nextState = States.STOPPED
-                        elif self.lastState ==States.STOPPED:
-                            # We got an error in the stopped state? Better just exit.
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    elif msg == Messages.STOP:
-                        self.nextState = States.STOPPED
-                    elif msg == Messages.EXIT:
-                        self.exitFlag = True
-                        if self.lastState == States.STOPPING:
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+                    self.handleError()
 # AVMerger: *********************** EXIT *********************************
                 elif self.state == States.EXITING:
                     break
@@ -1066,17 +1066,11 @@ class Synchronizer(StateMachineProcess):
         self.errorMessages = []
 
     def setParams(self, **params):
-        for key in params:
-            if key in Synchronizer.settableParams:
-                setattr(self, key, params[key])
-                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
-                if self.verbose >= 0 and \
-                   key in ["requestedAudioFrequency", "requestedVideoFrequency"]:
-                    self.log('Warning: requested frequency won\'t take ' + \
-                             'effect until Synchronizer passes through the ' + \
-                             'INITIALIZING state.')
-            else:
-                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
+        super().setParams(**params)
+        if "requestedAudioFrequency" in params or "requestedVideoFrequency" in params:
+            self.log('Warning: requested frequency won\'t take ' + \
+                     'effect until Synchronizer passes through the ' + \
+                     'INITIALIZING state.')
 
     def run(self):
         super().run()
@@ -1092,10 +1086,7 @@ class Synchronizer(StateMachineProcess):
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -1194,10 +1185,7 @@ class Synchronizer(StateMachineProcess):
                         #     samps_per_chan=1)
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -1220,10 +1208,7 @@ class Synchronizer(StateMachineProcess):
                     time.sleep(0.1)
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if msg in ['', Messages.START]:
@@ -1274,10 +1259,7 @@ class Synchronizer(StateMachineProcess):
                         time.sleep(0.1)
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if not passedBarrier:
@@ -1307,10 +1289,7 @@ class Synchronizer(StateMachineProcess):
                                 writerMsgQueue.put((Messages.SETPARAMS, {'enableWrite', writeEnable}))
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True, timeout=0.1)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True, timeout=0.1)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -1339,10 +1318,7 @@ class Synchronizer(StateMachineProcess):
                         self.actualVideoFrequency.value = -1
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -1360,44 +1336,7 @@ class Synchronizer(StateMachineProcess):
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # Synchronizer: ******************* ERROR *********************************
                 elif self.state == States.ERROR:
-                    # DO STUFF
-                    if self.verbose >= 0:
-                        self.log("ERROR STATE. Error messages:\n\n")
-                        self.log("\n\n".join(self.errorMessages))
-
-                    self.updatePublishedInfo("\n".join(self.errorMessages))
-
-                    self.errorMessages = []
-
-                    # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
-
-                    # CHOOSE NEXT STATE
-                    if self.lastState == States.ERROR:
-                        # Error ==> Error, let's just exit
-                        self.nextState = States.EXITING
-                    elif msg == '':
-                        if self.lastState == States.STOPPING:
-                            # We got an error in stopping state? Better just stop.
-                            self.nextState = States.STOPPED
-                        elif self.lastState ==States.STOPPED:
-                            # We got an error in the stopped state? Better just exit.
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    elif msg == Messages.STOP:
-                        self.nextState = States.STOPPED
-                    elif msg == Messages.EXIT:
-                        self.exitFlag = True
-                        if self.lastState == States.STOPPING:
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+                    self.handleError()
 # Synchronizer: ******************* EXIT *********************************
                 elif self.state == States.EXITING:
                     break
@@ -1556,18 +1495,14 @@ class AudioTriggerer(StateMachineProcess):
         self.lowLevelBuffer.extend(previousLowLevelBuffer)
 
     def setParams(self, **params):
+        super().setParams(**params)
         for key in params:
-            if key in AudioTriggerer.settableParams:
-                setattr(self, key, params[key])
-                if key in ["triggerHighTime", 'chunkSize']:
-                    self.updateHighBuffer()
-                if key in ["triggerLowTime", 'chunkSize']:
-                    self.updateLowBuffer()
-                if key == 'bandpassFrequencies' or key == 'butterworthOrder':
-                    self.updateFilter()
-                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
-            else:
-                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
+            if key in ["triggerHighTime", 'chunkSize']:
+                self.updateHighBuffer()
+            if key in ["triggerLowTime", 'chunkSize']:
+                self.updateLowBuffer()
+            if key == 'bandpassFrequencies' or key == 'butterworthOrder':
+                self.updateFilter()
 
     def run(self):
         super().run()
@@ -1583,10 +1518,7 @@ class AudioTriggerer(StateMachineProcess):
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True)
 
                     # CHOOSE NEXT STATE
                     if msg == Messages.EXIT or self.exitFlag:
@@ -1620,10 +1552,7 @@ class AudioTriggerer(StateMachineProcess):
                         self.updateLowBuffer()
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if msg == Messages.EXIT or self.exitFlag:
@@ -1652,10 +1581,7 @@ class AudioTriggerer(StateMachineProcess):
                         pass
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if msg == Messages.STOP:
@@ -1775,10 +1701,7 @@ class AudioTriggerer(StateMachineProcess):
                         pass # No audio data to analyze
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
 #                    if self.verbose >= 3: self.log("|{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
@@ -1798,10 +1721,7 @@ class AudioTriggerer(StateMachineProcess):
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -1819,44 +1739,7 @@ class AudioTriggerer(StateMachineProcess):
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # AudioTriggerer: ***************** ERROR *********************************
                 elif self.state == States.ERROR:
-                    # DO STUFF
-                    if self.verbose >= 0:
-                        self.log("ERROR STATE. Error messages:\n\n")
-                        self.log("\n\n".join(self.errorMessages))
-
-                    self.updatePublishedInfo("\n".join(self.errorMessages))
-
-                    self.errorMessages = []
-
-                    # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
-
-                    # CHOOSE NEXT STATE
-                    if self.lastState == States.ERROR:
-                        # Error ==> Error, let's just exit
-                        self.nextState = States.EXITING
-                    elif msg == '':
-                        if self.lastState == States.STOPPING:
-                            # We got an error in stopping state? Better just stop.
-                            self.nextState = States.STOPPED
-                        elif self.lastState ==States.STOPPED:
-                            # We got an error in the stopped state? Better just exit.
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    elif msg == Messages.STOP:
-                        self.nextState = States.STOPPED
-                    elif msg == Messages.EXIT:
-                        self.exitFlag = True
-                        if self.lastState == States.STOPPING:
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+                    self.handleError()
 # AudioTriggerer: ***************** EXIT *********************************
                 elif self.state == States.EXITING:
                     break
@@ -1979,14 +1862,6 @@ class AudioAcquirer(StateMachineProcess):
         self.errorMessages = []
         self.exitFlag = False
 
-    def setParams(self, **params):
-        for key in params:
-            if key in AudioAcquirer.settableParams:
-                setattr(self, key, params[key])
-                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
-            else:
-                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
-
     def rescaleAudio(data, maxV=10, minV=-10, maxD=32767, minD=-32767):
         return (data * ((maxD-minD)/(maxV-minV))).astype('int16')
 
@@ -2004,10 +1879,7 @@ class AudioAcquirer(StateMachineProcess):
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -2056,10 +1928,7 @@ class AudioAcquirer(StateMachineProcess):
                         sampleCount = 0
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -2091,10 +1960,7 @@ class AudioAcquirer(StateMachineProcess):
 #                    if self.verbose >= 1: self.log('passed barrier')
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if msg in ['', Messages.START]:
@@ -2154,10 +2020,7 @@ class AudioAcquirer(StateMachineProcess):
                         if self.verbose >= 0: self.log("Audio Chunk acquisition timed out.")
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -2178,10 +2041,7 @@ class AudioAcquirer(StateMachineProcess):
                         readTask.close()
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -2199,44 +2059,7 @@ class AudioAcquirer(StateMachineProcess):
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # AudioAcquirer: ****************** ERROR *********************************
                 elif self.state == States.ERROR:
-                    # DO STUFF
-                    if self.verbose >= 0:
-                        self.log("ERROR STATE. Error messages:\n\n")
-                        self.log("\n\n".join(self.errorMessages))
-
-                    self.updatePublishedInfo("\n".join(self.errorMessages))
-
-                    self.errorMessages = []
-
-                    # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
-
-                    # CHOOSE NEXT STATE
-                    if self.lastState == States.ERROR:
-                        # Error ==> Error, let's just exit
-                        self.nextState = States.EXITING
-                    elif msg == '':
-                        if self.lastState == States.STOPPING:
-                            # We got an error in stopping state? Better just stop.
-                            self.nextState = States.STOPPED
-                        elif self.lastState == States.STOPPED:
-                            # We got an error in the stopped state? Better just exit.
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    elif msg == Messages.STOP:
-                        self.nextState = States.STOPPING
-                    elif msg == Messages.EXIT:
-                        self.exitFlag = True
-                        if self.lastState == States.STOPPING:
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+                    self.handleError()
 # AudioAcquirer: ****************** EXIT *********************************
                 elif self.state == States.EXITING:
                     if self.verbose >= 1: self.log('Exiting!')
@@ -2333,14 +2156,6 @@ class SimpleAudioWriter(StateMachineProcess):
         self.scheduleStartTime = scheduleStartTime
         self.scheduleStopTime = scheduleStopTime
 
-    def setParams(self, **params):
-        for key in params:
-            if key in SimpleAudioWriter.settableParams:
-                setattr(self, key, params[key])
-                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
-            else:
-                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
-
     def run(self):
         super().run()
         msg = ''; arg = None
@@ -2355,10 +2170,7 @@ class SimpleAudioWriter(StateMachineProcess):
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -2414,10 +2226,7 @@ class SimpleAudioWriter(StateMachineProcess):
                             self.log('\tTime per file = {t} s'.format(t=actualVideoLength))
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -2487,10 +2296,7 @@ class SimpleAudioWriter(StateMachineProcess):
                     audioFileCount += 1
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -2565,11 +2371,8 @@ class SimpleAudioWriter(StateMachineProcess):
                             timeWrote += (audioChunk.getSampleCount() / audioChunk.audioFrequency)
                             self.log("Audio time wrote: {time}".format(time=timeWrote))
 
-                    # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    # CHECK FOR MESSAGES
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -2636,10 +2439,7 @@ class SimpleAudioWriter(StateMachineProcess):
                             self.log('No merge message queue available, cannot send to AVMerger')
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -2657,44 +2457,7 @@ class SimpleAudioWriter(StateMachineProcess):
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # SimpleAudioWriter: ************** ERROR *********************************
                 elif self.state == States.ERROR:
-                    # DO STUFF
-                    if self.verbose >= 0:
-                        self.log("ERROR STATE. Error messages:\n\n")
-                        self.log("\n\n".join(self.errorMessages))
-
-                    self.updatePublishedInfo("\n".join(self.errorMessages))
-
-                    self.errorMessages = []
-
-                    # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
-
-                    # CHOOSE NEXT STATE
-                    if self.lastState == States.ERROR:
-                        # Error ==> Error, let's just exit
-                        self.nextState = States.EXITING
-                    elif msg == '':
-                        if self.lastState == States.STOPPING:
-                            # We got an error in stopping state? Better just stop.
-                            self.nextState = States.STOPPED
-                        elif self.lastState ==States.STOPPED:
-                            # We got an error in the stopped state? Better just exit.
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    elif msg == Messages.STOP:
-                        self.nextState = States.STOPPED
-                    elif msg == Messages.EXIT:
-                        self.exitFlag = True
-                        if self.lastState == States.STOPPING:
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+                    self.handleError()
 # SimpleAudioWriter: ************** EXIT *********************************
                 elif self.state == States.EXITING:
                     break
@@ -2787,14 +2550,6 @@ class AudioWriter(StateMachineProcess):
         self.audioDepthBytes = audioDepthBytes
         self.daySubfolders = daySubfolders
 
-    def setParams(self, **params):
-        for key in params:
-            if key in AudioWriter.settableParams:
-                setattr(self, key, params[key])
-                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
-            else:
-                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
-
     def run(self):
         super().run()
         msg = ''; arg = None
@@ -2809,10 +2564,7 @@ class AudioWriter(StateMachineProcess):
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -2850,10 +2602,7 @@ class AudioWriter(StateMachineProcess):
                         self.buffer = deque() #maxlen=self.bufferSize)
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -2900,11 +2649,7 @@ class AudioWriter(StateMachineProcess):
                         newAudioChunk = None
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == Messages.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if msg == Messages.STOP:
@@ -3013,11 +2758,7 @@ class AudioWriter(StateMachineProcess):
                         newAudioChunk = None
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == Messages.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -3093,10 +2834,7 @@ class AudioWriter(StateMachineProcess):
                     triggers = []
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -3114,44 +2852,7 @@ class AudioWriter(StateMachineProcess):
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # AudioWriter: ******************** ERROR *********************************
                 elif self.state == States.ERROR:
-                    # DO STUFF
-                    if self.verbose >= 0:
-                        self.log("ERROR STATE. Error messages:\n\n")
-                        self.log("\n\n".join(self.errorMessages))
-
-                    self.updatePublishedInfo("\n".join(self.errorMessages))
-
-                    self.errorMessages = []
-
-                    # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
-
-                    # CHOOSE NEXT STATE
-                    if self.lastState == States.ERROR:
-                        # Error ==> Error, let's just exit
-                        self.nextState = States.EXITING
-                    elif msg == '':
-                        if self.lastState == States.STOPPING:
-                            # We got an error in stopping state? Better just stop.
-                            self.nextState = States.STOPPED
-                        elif self.lastState ==States.STOPPED:
-                            # We got an error in the stopped state? Better just exit.
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    elif msg == Messages.STOP:
-                        self.nextState = States.STOPPED
-                    elif msg == Messages.EXIT:
-                        self.exitFlag = True
-                        if self.lastState == States.STOPPING:
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+                    self.handleError()
 # AudioWriter: ******************** EXIT *********************************
                 elif self.state == States.EXITING:
                     break
@@ -3288,14 +2989,6 @@ class VideoAcquirer(StateMachineProcess):
         self.exitFlag = False
         self.errorMessages = []
 
-    def setParams(self, **params):
-        for key in params:
-            if key in VideoAcquirer.settableParams:
-                setattr(self, key, params[key])
-                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
-            else:
-                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
-
     def run(self):
         super().run()
 
@@ -3314,10 +3007,7 @@ class VideoAcquirer(StateMachineProcess):
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -3371,10 +3061,7 @@ class VideoAcquirer(StateMachineProcess):
                         droppedFrameCount = 0
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -3409,10 +3096,7 @@ class VideoAcquirer(StateMachineProcess):
                     if self.verbose >= 3: self.log('{ID} passed barrier'.format(ID=self.ID))
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if msg in ['', Messages.START]:
@@ -3508,10 +3192,7 @@ class VideoAcquirer(StateMachineProcess):
                         if self.verbose >= 0: self.log("Video frame acquisition timed out.")
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -3545,10 +3226,7 @@ class VideoAcquirer(StateMachineProcess):
                         self.monitorImageSender.put(None, metadata={'done':True})
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -3566,44 +3244,7 @@ class VideoAcquirer(StateMachineProcess):
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # VideoAcquirer: ****************** ERROR *********************************
                 elif self.state == States.ERROR:
-                    # DO STUFF
-                    if self.verbose >= 0:
-                        self.log("ERROR STATE. Error messages:\n\n")
-                        self.log("\n\n".join(self.errorMessages))
-
-                    self.updatePublishedInfo("\n".join(self.errorMessages))
-
-                    self.errorMessages = []
-
-                    # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
-
-                    # CHOOSE NEXT STATE
-                    if self.lastState == States.ERROR:
-                        # Error ==> Error, let's just exit
-                        self.nextState = States.EXITING
-                    elif msg == '':
-                        if self.lastState == States.STOPPING:
-                            # We got an error in stopping state? Better just stop.
-                            self.nextState = States.STOPPED
-                        elif self.lastState ==States.STOPPED:
-                            # We got an error in the stopped state? Better just exit.
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    elif msg == Messages.STOP:
-                        self.nextState = States.STOPPING
-                    elif msg == Messages.EXIT:
-                        self.exitFlag = True
-                        if self.lastState == States.STOPPING:
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+                    self.handleError()
 # VideoAcquirer: ****************** EXIT *********************************
                 elif self.state == States.EXITING:
                     break
@@ -3732,14 +3373,6 @@ class SimpleVideoWriter(StateMachineProcess):
         self.scheduleStartTime = scheduleStartTime
         self.scheduleStopTime = scheduleStopTime
 
-    def setParams(self, **params):
-        for key in params:
-            if key in SimpleVideoWriter.settableParams:
-                setattr(self, key, params[key])
-                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
-            else:
-                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
-
     def run(self):
         super().run()
 
@@ -3755,10 +3388,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -3798,10 +3428,7 @@ class SimpleVideoWriter(StateMachineProcess):
                         self.log("Video frame count = {n}".format(n=self.videoFrameCount))
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -3902,11 +3529,8 @@ class SimpleVideoWriter(StateMachineProcess):
 
                     videoCount += 1
 
-                    # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    # CHECK FOR MESSAGES
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -3977,10 +3601,7 @@ class SimpleVideoWriter(StateMachineProcess):
                         numFramesInCurrentSeries += 1
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -4068,10 +3689,7 @@ class SimpleVideoWriter(StateMachineProcess):
                         videoFileInterface = None
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -4089,44 +3707,7 @@ class SimpleVideoWriter(StateMachineProcess):
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # SimpleVideoWriter: ************** ERROR *********************************
                 elif self.state == States.ERROR:
-                    # DO STUFF
-                    if self.verbose >= 0:
-                        self.log("ERROR STATE. Error messages:\n\n")
-                        self.log("\n\n".join(self.errorMessages))
-
-                    self.updatePublishedInfo("\n".join(self.errorMessages))
-
-                    self.errorMessages = []
-
-                    # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
-
-                    # CHOOSE NEXT STATE
-                    if self.lastState == States.ERROR:
-                        # Error ==> Error, let's just exit
-                        self.nextState = States.EXITING
-                    elif msg == '':
-                        if self.lastState == States.STOPPING:
-                            # We got an error in stopping state? Better just stop.
-                            self.nextState = States.STOPPED
-                        elif self.lastState ==States.STOPPED:
-                            # We got an error in the stopped state? Better just exit.
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    elif msg == Messages.STOP:
-                        self.nextState = States.STOPPED
-                    elif msg == Messages.EXIT:
-                        self.exitFlag = True
-                        if self.lastState == States.STOPPING:
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+                    self.handleError()
 # SimpleVideoWriter: ************** EXIT *********************************
                 elif self.state == States.EXITING:
                     break
@@ -4226,14 +3807,6 @@ class VideoWriter(StateMachineProcess):
         self.videoWriteMethod = 'PySpin'   # options are ffmpeg, PySpin, OpenCV
         self.daySubfolders = daySubfolders
 
-    def setParams(self, **params):
-        for key in params:
-            if key in VideoWriter.settableParams:
-                setattr(self, key, params[key])
-                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
-            else:
-                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
-
     def run(self):
         super().run()
 
@@ -4249,10 +3822,7 @@ class VideoWriter(StateMachineProcess):
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -4285,10 +3855,7 @@ class VideoWriter(StateMachineProcess):
                         self.frameRate = self.frameRateVar.value
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -4315,11 +3882,10 @@ class VideoWriter(StateMachineProcess):
                     im, frameTime, imageID = self.rotateImageBuffer()
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == Messages.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
+                    if msg == Messages.TRIGGER:
+                        self.updateTriggers(triggers, arg)
+                        msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if msg == Messages.STOP:
@@ -4417,11 +3983,10 @@ class VideoWriter(StateMachineProcess):
                     im, frameTime, imageID = self.rotateImageBuffer(fillBuffer=False)
 
                     # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == Messages.TRIGGER: self.updateTriggers(triggers, arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
+                    if msg == Messages.TRIGGER:
+                        self.updateTriggers(triggers, arg)
+                        msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -4507,10 +4072,7 @@ class VideoWriter(StateMachineProcess):
                     triggers = []
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -4528,44 +4090,7 @@ class VideoWriter(StateMachineProcess):
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # VideoWriter: ******************** ERROR *********************************
                 elif self.state == States.ERROR:
-                    # DO STUFF
-                    if self.verbose >= 0:
-                        self.log("ERROR STATE. Error messages:\n\n")
-                        self.log("\n\n".join(self.errorMessages))
-
-                    self.updatePublishedInfo("\n".join(self.errorMessages))
-
-                    self.errorMessages = []
-
-                    # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
-
-                    # CHOOSE NEXT STATE
-                    if self.lastState == States.ERROR:
-                        # Error ==> Error, let's just exit
-                        self.nextState = States.EXITING
-                    elif msg == '':
-                        if self.lastState == States.STOPPING:
-                            # We got an error in stopping state? Better just stop.
-                            self.nextState = States.STOPPED
-                        elif self.lastState ==States.STOPPED:
-                            # We got an error in the stopped state? Better just exit.
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    elif msg == Messages.STOP:
-                        self.nextState = States.STOPPED
-                    elif msg == Messages.EXIT:
-                        self.exitFlag = True
-                        if self.lastState == States.STOPPING:
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+                    self.handleError()
 # VideoWriter: ******************** EXIT *********************************
                 elif self.state == States.EXITING:
                     break
@@ -4713,18 +4238,14 @@ class ContinuousTriggerer(StateMachineProcess):
         self.errorMessages = []
 
     def setParams(self, **params):
+        super().setParams(**params)
         for key in params:
-            if key in ContinuousTriggerer.settableParams:
-                setattr(self, key, params[key])
-                if key == 'continuousTriggerPeriod':
-                    if params[key] > 0:
-                        self.recordPeriod = params[key]
-                        self.updateUpdatePeriod()
-                    else:
-                        raise AttributeError('Record period must be greater than zero')
-                if self.verbose >= 1: self.log("Param set: {key}={val}".format(key=key, val=params[key]))
-            else:
-                if self.verbose >= 0: self.log("Param not settable: {key}={val}".format(key=key, val=params[key]))
+            if key == 'continuousTriggerPeriod':
+                if params[key] > 0:
+                    self.recordPeriod = params[key]
+                    self.updateUpdatePeriod()
+                else:
+                    raise AttributeError('Record period must be greater than zero')
 
     def updateUpdatePeriod(self):
         self.updatePeriod = min(self.recordPeriod/20, 0.1)
@@ -4745,11 +4266,9 @@ class ContinuousTriggerer(StateMachineProcess):
                     # DO STUFF
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == Messages.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we haven't started yet
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True)
+                    if msg == Messages.TAGTRIGGER:
+                        msg = ''; arg = None  # Ignore tag triggers if we haven't started yet
 
                     # CHOOSE NEXT STATE
                     if msg == Messages.EXIT or self.exitFlag:
@@ -4778,11 +4297,9 @@ class ContinuousTriggerer(StateMachineProcess):
                     if self.verbose >= 1: self.log("Got start time from sync process: "+str(startTime))
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == Messages.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we haven't started yet
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
+                    if msg == Messages.TAGTRIGGER:
+                        msg = ''; arg = None  # Ignore tag triggers if we haven't started yet
 
                     # CHOOSE NEXT STATE
                     if msg == Messages.EXIT or self.exitFlag:
@@ -4841,11 +4358,10 @@ class ContinuousTriggerer(StateMachineProcess):
                                     self.log('\t{t}'.format(t=at))
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=True, timeout=self.updatePeriod)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == Messages.TAGTRIGGER: self.updateTagTriggers(tagTriggers, arg); msg = ''; arg=None
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=True, timeout=self.updatePeriod)
+                    if msg == Messages.TAGTRIGGER:
+                        self.updateTagTriggers(tagTriggers, arg)
+                        msg = ''; arg = None
 
                     # CHOOSE NEXT STATE
 #                    if self.verbose >= 3: self.log("|{startState} ---- {endState}|".format(startState=chunkStartTriggerState, endState=chunkEndTriggerState))
@@ -4864,11 +4380,9 @@ class ContinuousTriggerer(StateMachineProcess):
                     self.cancelTriggers(activeTriggers)
 
                     # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == Messages.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we are stopping
-                    except queue.Empty: msg = ''; arg = None
+                    msg, arg = self.checkMessages(block=False)
+                    if msg == Messages.TAGTRIGGER:
+                        msg = ''; arg = None  # Ignore tag triggers if we are stopping
 
                     # CHOOSE NEXT STATE
                     if self.exitFlag:
@@ -4886,45 +4400,10 @@ class ContinuousTriggerer(StateMachineProcess):
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # ContinuousTriggerer: ************ ERROR *********************************
                 elif self.state == States.ERROR:
-                    # DO STUFF
-                    if self.verbose >= 0:
-                        self.log("ERROR STATE. Error messages:\n\n")
-                        self.log("\n\n".join(self.errorMessages))
-
-                    self.updatePublishedInfo("\n".join(self.errorMessages))
-
-                    self.errorMessages = []
-
-                    # CHECK FOR MESSAGES
-                    try:
-                        msg, arg = self.msgQueue.get(block=False)
-                        if msg == Messages.SETPARAMS: self.setParams(**arg); msg = ''; arg=None
-                        elif msg == Messages.TAGTRIGGER: msg = ''; arg=None  # Ignore tag triggers if we are in an error state
-                    except queue.Empty: msg = ''; arg = None
-
-                    # CHOOSE NEXT STATE
-                    if self.lastState == States.ERROR:
-                        # Error ==> Error, let's just exit
-                        self.nextState = States.EXITING
-                    elif msg == '':
-                        if self.lastState == States.STOPPING:
-                            # We got an error in stopping state? Better just stop.
-                            self.nextState = States.STOPPED
-                        elif self.lastState ==States.STOPPED:
-                            # We got an error in the stopped state? Better just exit.
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    elif msg == Messages.STOP:
-                        self.nextState = States.STOPPED
-                    elif msg == Messages.EXIT:
-                        self.exitFlag = True
-                        if self.lastState == States.STOPPING:
-                            self.nextState = States.EXITING
-                        else:
-                            self.nextState = States.STOPPING
-                    else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+                    msg, arg = self.checkMessages(block=False)
+                    if msg == Messages.TAGTRIGGER:
+                        msg = ''; arg = None  # Ignore tag triggers if we are in an error state
+                    self.handleError(msg=msg, arg=arg)
 # ContinuousTriggerer: **************** EXIT *********************************
                 elif self.state == States.EXITING:
                     break
