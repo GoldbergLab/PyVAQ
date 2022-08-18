@@ -498,6 +498,7 @@ class StateMachineProcess(mp.Process):
         self.publishedInfoVar = mp.Array(c_wchar, self.publishedInfoLength)  # A thread-safe variable so other processes can query this process's latest info
         self.exitFlag = False                           # A flag to set to ensure the process exits ASAP
         self.stdoutBuffer = []                          # A buffer to accumulate log messages before sending out
+        self.errorMessages = []                         # Place to accumulate error messages before arriving at ERROR state
         self.state = None
         self.lastState = None
         self.nextState = None
@@ -614,6 +615,18 @@ class StateMachineProcess(mp.Process):
         else:
             raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 
+    def endLoop(self, msg=''):
+        # Add an end cap for this loop's log entry, if there was one
+        if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
+            self.log("msg={msg}".format(msg=msg))
+            self.logEnd()
+
+        # Write the log entry
+        self.flushStdout()
+
+        # Prepare to advance to next state
+        self.lastState = self.state
+        self.state = self.nextState
 
 class AVMerger(StateMachineProcess):
     # Class for merging audio and video files using ffmpeg
@@ -663,7 +676,6 @@ class AVMerger(StateMachineProcess):
         # Store inputs in instance variables for later access
         self.ID = "M"
         self.ignoreFlag = True
-        self.errorMessages = []
         self.numFilesPerTrigger = numFilesPerTrigger
         self.directory = directory
         self.baseFileName = baseFileName
@@ -989,14 +1001,7 @@ class AVMerger(StateMachineProcess):
                 self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
                 self.nextState = States.ERROR
 
-            if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}".format(msg=msg))
-                self.logEnd()
-
-            # Prepare to advance to next state
-            self.lastState = self.state
-            self.state = self.nextState
-            self.flushStdout()
+            self.endLoop(msg=msg)
 
         clearQueue(self.msgQueue)
         if self.verbose >= 1: self.log("AVMerger process STOPPED")
@@ -1063,7 +1068,6 @@ class Synchronizer(StateMachineProcess):
         self.writeEnableOnHWSignal = writeEnableOnHWSignal
         self.writerMsgQueues = writerMsgQueues
         self.ready = ready
-        self.errorMessages = []
 
     def setParams(self, **params):
         super().setParams(**params)
@@ -1352,15 +1356,7 @@ class Synchronizer(StateMachineProcess):
                 self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
                 self.nextState = States.ERROR
 
-            if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}".format(msg=msg))
-                self.logEnd()
-
-            self.flushStdout()
-
-            # Prepare to advance to next state
-            self.lastState = self.state
-            self.state = self.nextState
+            self.endLoop(msg=msg)
 
         clearQueue(self.msgQueue)
         if self.verbose >= 1: self.log("Synchronization process STOPPED")
@@ -1470,7 +1466,6 @@ class AudioTriggerer(StateMachineProcess):
         # Generate butterworth filter coefficients...or something...
         self.filter = None
 
-        self.errorMessages = []
         self.analyzeFlag = False
 
         self.highLevelBuffer = None
@@ -1755,15 +1750,7 @@ class AudioTriggerer(StateMachineProcess):
                 self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
                 self.nextState = States.ERROR
 
-            if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}".format(msg=msg))
-                self.logEnd()
-
-            self.flushStdout()
-
-            # Prepare to advance to next state
-            self.lastState = self.state
-            self.state = self.nextState
+            self.endLoop(msg=msg)
 
         clearQueue(self.msgQueue)
         clearQueue(self.analysisMonitorQueue)
@@ -1859,7 +1846,6 @@ class AudioAcquirer(StateMachineProcess):
             self.channelConfig = nidaqmx.constants.TerminalConfiguration.RSE
         self.syncChannel = syncChannel
         self.ready = ready
-        self.errorMessages = []
         self.exitFlag = False
 
     def rescaleAudio(data, maxV=10, minV=-10, maxD=32767, minD=-32767):
@@ -1957,7 +1943,7 @@ class AudioAcquirer(StateMachineProcess):
                         if self.verbose >= 2: self.log("No simultaneous start - retrying")
                         time.sleep(0.1)
 
-#                    if self.verbose >= 1: self.log('passed barrier')
+                    if self.verbose >= 3: self.log('Passed barrier.')
 
                     # CHECK FOR MESSAGES
                     msg, arg = self.checkMessages(block=False)
@@ -2076,15 +2062,7 @@ class AudioAcquirer(StateMachineProcess):
                 self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
                 self.nextState = States.ERROR
 
-            if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}".format(msg=msg))
-                self.logEnd()
-
-            self.flushStdout()
-
-            # Prepare to advance to next state
-            self.lastState = self.state
-            self.state = self.nextState
+            self.endLoop(msg=msg)
 
         clearQueue(self.msgQueue)
         clearQueue(self.monitorQueue)
@@ -2148,7 +2126,6 @@ class SimpleAudioWriter(StateMachineProcess):
         self.numChannels = numChannels
         self.videoLength = videoLength
         self.mergeMessageQueue = mergeMessageQueue
-        self.errorMessages = []
         self.audioDepthBytes = audioDepthBytes
         self.daySubfolders = daySubfolders
         self.enableWrite = enableWrite
@@ -2473,11 +2450,7 @@ class SimpleAudioWriter(StateMachineProcess):
                 self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
                 self.nextState = States.ERROR
 
-            if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}".format(msg=msg))
-                self.logEnd()
-
-            self.flushStdout()
+            self.endLoop(msg=msg)
 
             # Prepare to advance to next state
             self.lastState = self.state
@@ -2546,7 +2519,6 @@ class AudioWriter(StateMachineProcess):
         self.mergeMessageQueue = mergeMessageQueue
         self.bufferSize = None
         self.buffer = None
-        self.errorMessages = []
         self.audioDepthBytes = audioDepthBytes
         self.daySubfolders = daySubfolders
 
@@ -2868,15 +2840,7 @@ class AudioWriter(StateMachineProcess):
                 self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
                 self.nextState = States.ERROR
 
-            if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}".format(msg=msg))
-                self.logEnd()
-
-            self.flushStdout()
-
-            # Prepare to advance to next state
-            self.lastState = self.state
-            self.state = self.nextState
+            self.endLoop(msg=msg)
 
         clearQueue(self.msgQueue)
         if self.verbose >= 1: self.log("Audio write process STOPPED")
@@ -2987,7 +2951,6 @@ class VideoAcquirer(StateMachineProcess):
         self.monitorStopwatch = Stopwatch()
         self.acquireStopwatch = Stopwatch()
         self.exitFlag = False
-        self.errorMessages = []
 
     def run(self):
         super().run()
@@ -3093,7 +3056,7 @@ class VideoAcquirer(StateMachineProcess):
                         if self.verbose >= 2: self.log("No simultaneous start - retrying")
                         time.sleep(0.1)
 
-                    if self.verbose >= 3: self.log('{ID} passed barrier'.format(ID=self.ID))
+                    if self.verbose >= 3: self.log('Passed barrier')
 
                     # CHECK FOR MESSAGES
                     msg, arg = self.checkMessages(block=False)
@@ -3260,15 +3223,7 @@ class VideoAcquirer(StateMachineProcess):
                 self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
                 self.nextState = States.ERROR
 
-            if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}".format(msg=msg))
-                self.logEnd()
-
-            self.flushStdout()
-
-            # Prepare to advance to next state
-            self.lastState = self.state
-            self.state = self.nextState
+            self.endLoop(msg=msg)
 
         clearQueue(self.msgQueue)
         # clearQueue(self.imageQueue)
@@ -3362,7 +3317,6 @@ class SimpleVideoWriter(StateMachineProcess):
         self.frameRateVar = frameRate
         self.frameRate = None
         self.mergeMessageQueue = mergeMessageQueue
-        self.errorMessages = []
         self.videoWriteMethod = 'ffmpeg'   # options are ffmpeg, PySpin, OpenCV
         self.daySubfolders = daySubfolders
         self.videoLength = videoLength
@@ -3723,15 +3677,7 @@ class SimpleVideoWriter(StateMachineProcess):
                 self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
                 self.nextState = States.ERROR
 
-            if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}".format(msg=msg))
-                self.logEnd()
-
-            self.flushStdout()
-
-            # Prepare to advance to next state
-            self.lastState = self.state
-            self.state = self.nextState
+            self.endLoop(msg=msg)
 
         if self.verbose >= 1: self.log("Video write process STOPPED")
         # if self.verbose > 1:
@@ -3803,7 +3749,6 @@ class VideoWriter(StateMachineProcess):
         self.mergeMessageQueue = mergeMessageQueue
         self.bufferSize = int(1.6*bufferSizeSeconds * self.requestedFrameRate)
         self.buffer = deque() #maxlen=self.bufferSize)
-        self.errorMessages = []
         self.videoWriteMethod = 'PySpin'   # options are ffmpeg, PySpin, OpenCV
         self.daySubfolders = daySubfolders
 
@@ -4106,15 +4051,7 @@ class VideoWriter(StateMachineProcess):
                 self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
                 self.nextState = States.ERROR
 
-            if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}".format(msg=msg))
-                self.logEnd()
-
-            self.flushStdout()
-
-            # Prepare to advance to next state
-            self.lastState = self.state
-            self.state = self.nextState
+            self.endLoop(msg=msg)
 
         if self.verbose >= 1: self.log("Video write process STOPPED")
         # if self.verbose > 1:
@@ -4234,8 +4171,6 @@ class ContinuousTriggerer(StateMachineProcess):
         self.scheduleEnabled = scheduleEnabled
         self.scheduleStartTime = scheduleStartTime
         self.scheduleStopTime = scheduleStopTime
-
-        self.errorMessages = []
 
     def setParams(self, **params):
         super().setParams(**params)
@@ -4419,15 +4354,7 @@ class ContinuousTriggerer(StateMachineProcess):
                 self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
                 self.nextState = States.ERROR
 
-            if (self.verbose >= 1 and (len(msg) > 0 or self.exitFlag)) or len(self.stdoutBuffer) > 0 or self.verbose >= 3:
-                self.log("msg={msg}".format(msg=msg))
-                self.logEnd()
-
-            self.flushStdout()
-
-            # Prepare to advance to next state
-            self.lastState = self.state
-            self.state = self.nextState
+            self.endLoop(msg=msg)
 
         clearQueue(self.msgQueue)
         if self.verbose >= 1: self.log("Audio write process STOPPED")
