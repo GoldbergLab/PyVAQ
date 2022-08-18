@@ -1034,7 +1034,6 @@ him know. Otherwise, I had nothing to do with it.
             params.append(Param(name='Video Sync PFI Interface', widgetType=Param.TEXT, options=None, default=defaultVideoSyncSource, description="This must match your selection for Video Sync Channel. Check DAQ pinout for matching PFI channel."))
         params.append(Param(name='Audio channel configuration', widgetType=Param.MONOCHOICE, options=audioChannelConfigurations, default=defaultAudioChannelConfiguration, description="Choose an analog channel configuration for audio acquisition. Recommend differential if you have a 3-wire XLR-type output, RSE if you only use two wires."))
         params.append(Param(name='Acquisition start trigger channel', widgetType=Param.MONOCHOICE, options=availableDigitalChannels, default=defaultAcquisitionSignalChannel, description="Choose a channel that will trigger the acquisition start with a rising edge. Leave as None if you wish the acquisition to start without waiting for a digital trigger."))
-        params.append(Param(name='Start acquisition immediately', widgetType=Param.MONOCHOICE, options=['Yes', 'No'], default='No'))
 
         choices = None
         if len(params) > 0:
@@ -1096,18 +1095,8 @@ him know. Otherwise, I had nothing to do with it.
                 self.log('Got audioDAQChannels:', audioDAQChannels)
                 self.log('Got camSerials:', camSerials)
 
-                # Create GUI elements for monitoring the chosen inputs
-                self.setupInputMonitoringWidgets()
-
                 # Update display text
                 self.updateAcquisitionHardwareDisplay()
-
-                # Restart child processes with new acquisition values
-                self.createChildProcesses()
-                if 'Start acquisition immediately' in choices and choices['Start acquisition immediately'] == 'Yes':
-                    self.initializeChildProcesses()
-                # self.updateAcquisitionButton()
-                self.startMonitors()
             else:
                 self.log('User input cancelled.')
         else:
@@ -1158,12 +1147,15 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
-        oldCamSerials = self.cameraMonitors.keys()
+        oldCamSerials = list(self.cameraMonitors.keys())
         for camSerial in oldCamSerials:
             self.cameraMonitors[camSerial].grid_forget()
             self.cameraMonitors[camSerial].destroy()
             del self.cameraMonitors[camSerial]
-        self.audioMonitor
+        self.cameraMonitors = {}
+        self.audioMonitor.destroy()
+        self.audioMonitor = None
+        self.update()
 
     def setupInputMonitoringWidgets(self):
         """Set up widgets for selected audio and video inputs.
@@ -1650,7 +1642,6 @@ him know. Otherwise, I had nothing to do with it.
         """
         self.autoUpdateAudioMonitors()
         self.autoUpdateVideoMonitors()
-        self.autoUpdateTriggerIndicator()
         self.autoUpdateAudioAnalysisMonitors()
         # self.updateStatusDisplay()
 
@@ -1837,10 +1828,6 @@ him know. Otherwise, I had nothing to do with it.
             # Schedule another automatic call to autoUpdateAudioMonitors
             period = int(round(1000.0/(2*self.monitorMasterFrameRate)))
             self.videoMonitorUpdateJob = self.master.after(period, self.autoUpdateVideoMonitors)
-
-    def autoUpdateTriggerIndicator(self, beginAuto=True):
-        if beginAuto:
-            self.triggerIndicatorUpdateJob = self.master.after(100, self.autoUpdateTriggerIndicator)
 
     def createCameraAttributeBrowser(self, camSerial):
         """Create a window allowing user to browse camera settings.
@@ -2612,6 +2599,7 @@ him know. Otherwise, I had nothing to do with it.
         """
         self.haltChildProcesses()
         self.destroyChildProcesses()
+        self.destroyInputMonitoringWidgets()
 
     def writeButtonClickHandler(self):
         """Send a manual trigger to write processes to trigger recording.
@@ -3606,18 +3594,23 @@ him know. Otherwise, I had nothing to do with it.
         camSerials = p["camSerials"]
         audioDAQChannels = p["audioDAQChannels"]
 
-        if (self.audioMonitorDocker.isDocked() and len(audioDAQChannels) > 0) or (self.videoMonitorDocker.isDocked() and len(camSerials) > 0):
+        if (self.audioMonitorDocker.isDocked() and
+            len(audioDAQChannels) > 0 and
+            self.audioMonitor is not None) or \
+            (self.videoMonitorDocker.isDocked() and
+            len(camSerials) > 0 and
+            len(self.cameraMonitors) > 0):
             self.monitorMasterFrame.grid(row=0, column=1, sticky=tk.NSEW)
+            
+            wV, hV = getOptimalMonitorGrid(len(camSerials))
+            for k, camSerial in enumerate(camSerials):
+                self.cameraMonitors[camSerial].grid(row=1+2*(k // wV), column = k % wV)
+                # self.cameraAttributeBrowserButtons[camSerial].grid(row=1, column=0)
         else:
             self.monitorMasterFrame.grid_forget()
 
         if self.videoMonitorDocker.isDocked():
             self.videoMonitorMasterFrame.grid(row=0, column=0, sticky=tk.NSEW)
-        camSerials = self.getParams('camSerials')
-        wV, hV = getOptimalMonitorGrid(len(camSerials))
-        for k, camSerial in enumerate(camSerials):
-            self.cameraMonitors[camSerial].grid(row=1+2*(k // wV), column = k % wV)
-            # self.cameraAttributeBrowserButtons[camSerial].grid(row=1, column=0)
 
         if self.audioMonitorDocker.isDocked():
             self.audioMonitorDocker.docker.grid(row=1, column=0, sticky=tk.NSEW)
