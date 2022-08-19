@@ -41,7 +41,7 @@ except ModuleNotFoundError:
 
 from MonitorWidgets import AudioMonitor, CameraMonitor
 from DockableFrame import Docker
-from StateMachineProcesses import States, Messages, Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter
+from StateMachineProcesses import sendMessage, States, Messages, Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter
 import inspect
 import CollapsableFrame as cf
 import PySpinUtilities as psu
@@ -790,15 +790,15 @@ class PyVAQ:
             None
 
         """
-        self.sendMessage(self.audioAcquireProcess, (Messages.SETPARAMS, {'verbose':self.audioAcquireVerbose}))
-        self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, {'verbose':self.audioWriteVerbose}))
-        self.sendMessage(self.syncProcess, (Messages.SETPARAMS, {'verbose':self.syncVerbose}))
-        self.sendMessage(self.mergeProcess, (Messages.SETPARAMS, {'verbose':self.mergeVerbose}))
-        self.sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, {'verbose':self.audioTriggerVerbose}))
-        self.sendMessage(self.continuousTriggerProcess, (Messages.SETPARAMS, {'verbose':self.continuousTriggerVerbose}))
+        sendMessage(self.audioAcquireProcess, (Messages.SETPARAMS, {'verbose':self.audioAcquireVerbose}))
+        sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, {'verbose':self.audioWriteVerbose}))
+        sendMessage(self.syncProcess, (Messages.SETPARAMS, {'verbose':self.syncVerbose}))
+        sendMessage(self.mergeProcess, (Messages.SETPARAMS, {'verbose':self.mergeVerbose}))
+        sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, {'verbose':self.audioTriggerVerbose}))
+        sendMessage(self.continuousTriggerProcess, (Messages.SETPARAMS, {'verbose':self.continuousTriggerVerbose}))
         for camSerial in self.videoAcquireProcesses:
-            self.sendMessage(self.videoAcquireProcesses[camSerial], (Messages.SETPARAMS, {'verbose':self.videoAcquireVerbose}))
-            self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'verbose':self.videoWriteVerbose}))
+            sendMessage(self.videoAcquireProcesses[camSerial], (Messages.SETPARAMS, {'verbose':self.videoAcquireVerbose}))
+            sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'verbose':self.videoWriteVerbose}))
 
     def updateDaySubfolderSetting(self, *args):
         """Change day subfolder setting in all child processes.
@@ -811,10 +811,10 @@ class PyVAQ:
 
         """
         daySubfolders = self.getParams('daySubfolders')
-        self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
-        self.sendMessage(self.mergeProcess, (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
+        sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
+        sendMessage(self.mergeProcess, (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
         for camSerial in self.videoWriteProcesses:
-            self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
+            sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
 
     def validateVideoExposureTime(self, *args):
         """Sanitize current video exposure time settings.
@@ -1288,7 +1288,7 @@ him know. Otherwise, I had nothing to do with it.
                 'multiChannelStopBehavior'
             ]
             params = self.getParams(*paramList)
-            self.sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, params))
+            sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, params))
 
     def updateContinuousTriggerSettings(self, *args):
         """Update settings for continuous triggering
@@ -1307,17 +1307,17 @@ him know. Otherwise, I had nothing to do with it.
                 'continuousTriggerPeriod',
             ]
             params = self.getParams(*paramList, mapping=True)
-            self.sendMessage(self.continuousTriggerProcess, (Messages.SETPARAMS, params))
+            sendMessage(self.continuousTriggerProcess, (Messages.SETPARAMS, params))
 
             if self.audioTriggerProcess is not None:
                 if self.getParams('audioTagContinuousTrigs'):
                     # Tell audio triggerer to start analyzing and send any tag triggers.
-                    self.sendMessage(self.audioTriggerProcess, (Messages.STARTANALYZE, None))
-                    self.sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, dict(tagTriggerEnabled=True)))
+                    sendMessage(self.audioTriggerProcess, (Messages.STARTANALYZE, None))
+                    sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, dict(tagTriggerEnabled=True)))
                 else:
                     # Tell audio triggerer to stop analyzing and don't send any tag triggers.
-                    self.sendMessage(self.audioTriggerProcess, (Messages.STOPANALYZE, None))
-                    self.sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, dict(tagTriggerEnabled=False)))
+                    sendMessage(self.audioTriggerProcess, (Messages.STOPANALYZE, None))
+                    sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, dict(tagTriggerEnabled=False)))
             else:
                 self.log('Warning, audio trigger process not available for continuous trigger tagging')
                 self.endLog(inspect.currentframe().f_code.co_name)
@@ -1338,14 +1338,14 @@ him know. Otherwise, I had nothing to do with it.
             self.deleteMergedVideoFilesCheckbutton.config(state=tk.NORMAL)
             self.deleteMergedAudioFilesCheckbutton.config(state=tk.NORMAL)
             self.montageMergeCheckbutton.config(state=tk.NORMAL)
-            self.sendMessage(self.mergeProcess, (Messages.START, None))
+            sendMessage(self.mergeProcess, (Messages.START, None))
         else:
             # User has not requested AV merging; disable settings and inform
             #   child process
             self.deleteMergedVideoFilesCheckbutton.config(state=tk.DISABLED)
             self.deleteMergedAudioFilesCheckbutton.config(state=tk.DISABLED)
             self.montageMergeCheckbutton.config(state=tk.DISABLED)
-            self.sendMessage(self.mergeProcess, (Messages.CHILL, None))
+            sendMessage(self.mergeProcess, (Messages.CHILL, None))
 
     def updateChildSchedulingState(self, *args):
         """Inform relevant child processes of current record schedule settings.
@@ -1359,9 +1359,9 @@ him know. Otherwise, I had nothing to do with it.
         """
         scheduleParams = self.getParams('scheduleEnabled', 'scheduleStartTime', 'scheduleStopTime')
         for camSerial in self.videoWriteProcesses:
-            self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, scheduleParams))
+            sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, scheduleParams))
         if self.audioWriteProcess is not None:
-            self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, scheduleParams))
+            sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, scheduleParams))
 
     def updateAudioFrequency(self, *args):
         """Send message to Synchronizer to update audio frequency
@@ -1379,7 +1379,7 @@ him know. Otherwise, I had nothing to do with it.
         # Get current audio frequency parameter
         newFrequency = self.getParams('audioFrequency')
         # Send it to the Synchronizer
-        self.sendMessage(self.syncProcess, (Messages.SETPARAMS, {'audioFrequency':newFrequency}))
+        sendMessage(self.syncProcess, (Messages.SETPARAMS, {'audioFrequency':newFrequency}))
 
     def updateVideoFrequency(self, *args):
         """Send message to Synchronizer to update video frequency
@@ -1397,7 +1397,7 @@ him know. Otherwise, I had nothing to do with it.
         # Get current video frequency parameter
         newFrequency = self.getParams('videoFrequency')
         # Send it to the Synchronizer
-        self.sendMessage(self.syncProcess, (Messages.SETPARAMS, {'videoFrequency':newFrequency}))
+        sendMessage(self.syncProcess, (Messages.SETPARAMS, {'videoFrequency':newFrequency}))
 
     def changeAVMergerParams(self, **params):
         """Inform AVMerger child process of current file merge settings.
@@ -1409,7 +1409,7 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
-        self.sendMessage(self.mergeProcess, (Messages.SETPARAMS, params))
+        sendMessage(self.mergeProcess, (Messages.SETPARAMS, params))
 
     def audioWriteEnableChangeHandler(self, *args):
         """Handle changes in audioWriteEnable
@@ -1533,10 +1533,10 @@ him know. Otherwise, I had nothing to do with it.
             self.preTriggerTimeEntry.config(state=tk.NORMAL)
 
         if newMode != "Continuous":
-            self.sendMessage(self.continuousTriggerProcess, (Messages.STOP, None))
+            sendMessage(self.continuousTriggerProcess, (Messages.STOP, None))
         if newMode != "Audio":
             # May as well stop analyzing audio if we're not in audio mode.
-            self.sendMessage(self.audioTriggerProcess, (Messages.STOPANALYZE, None))
+            sendMessage(self.audioTriggerProcess, (Messages.STOPANALYZE, None))
 
         if self.audioAnalysisMonitorUpdateJob is not None:
             # If there was already an audio analysis monitoring job running, cancel it
@@ -1544,18 +1544,18 @@ him know. Otherwise, I had nothing to do with it.
 
         if newMode == "Audio":
             # User selected "Audio" trigger mode
-            self.sendMessage(self.audioTriggerProcess, (Messages.STARTANALYZE, None))
-            self.sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, dict(writeTriggerEnabled=True, tagTriggerEnabled=False)))
+            sendMessage(self.audioTriggerProcess, (Messages.STARTANALYZE, None))
+            sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, dict(writeTriggerEnabled=True, tagTriggerEnabled=False)))
             self.autoUpdateAudioAnalysisMonitors()
         elif newMode == "Continuous":
             # User selected "Continuous" trigger mode
-            self.sendMessage(self.continuousTriggerProcess, (Messages.START, None))
+            sendMessage(self.continuousTriggerProcess, (Messages.START, None))
             if self.getParams('audioTagContinuousTrigs'):
-                self.sendMessage(self.audioTriggerProcess, (Messages.STARTANALYZE, None))
-                self.sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, dict(writeTriggerEnabled=False, tagTriggerEnabled=True)))
+                sendMessage(self.audioTriggerProcess, (Messages.STARTANALYZE, None))
+                sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, dict(writeTriggerEnabled=False, tagTriggerEnabled=True)))
             else:
-                self.sendMessage(self.audioTriggerProcess, (Messages.STOPANALYZE, None))
-                self.sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, dict(writeTriggerEnabled=False, tagTriggerEnabled=False)))
+                sendMessage(self.audioTriggerProcess, (Messages.STOPANALYZE, None))
+                sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, dict(writeTriggerEnabled=False, tagTriggerEnabled=False)))
         # elif newMode == "SimpleContinuous":
         #     # User selected "SimpleContinuous" trigger mode
         #     self.restartAcquisition()
@@ -1652,7 +1652,7 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
-        self.sendMessage(self.syncProcess, (Messages.SYNC, None))
+        sendMessage(self.syncProcess, (Messages.SYNC, None))
 
     def autoUpdateAudioAnalysisMonitors(self, beginAuto=True):
         """Begin updating audio analysis monitors
@@ -2621,7 +2621,7 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
-        success = self.sendMessage(self.continuousTriggerProcess, (Messages.START, None))
+        success = sendMessage(self.continuousTriggerProcess, (Messages.START, None))
         if success:
             self.log("Sent start signal to continuous trigger process")
             self.endLog(inspect.currentframe().f_code.co_name)
@@ -2637,7 +2637,7 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
-        success = self.sendMessage(self.continuousTriggerProcess, (Messages.STOP, None))
+        success = sendMessage(self.continuousTriggerProcess, (Messages.STOP, None))
         if success:
             self.log("Sent stop signal to continuous trigger process")
             self.endLog(inspect.currentframe().f_code.co_name)
@@ -2725,7 +2725,7 @@ him know. Otherwise, I had nothing to do with it.
             # Update text field
             self.audioMonitors.setWriteEnable(newAudioWriteEnable)
         # Notify AudioWriter child process of new write enable state
-        self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(enableWrite=newAudioWriteEnable)))
+        sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(enableWrite=newAudioWriteEnable)))
 
     def setVideoWriteEnable(self, newVideoWriteEnables, *args, updateGUI=True):
         """Send messages to video writer processes to enable/disable file writing
@@ -2756,7 +2756,7 @@ him know. Otherwise, I had nothing to do with it.
                     self.cameraMonitors[camSerial].setWriteEnable(newVideoWriteEnable)
                 if camSerial in self.videoWriteProcesses:
                     # Notify VideoWriter child process of new write enable state
-                    self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(enableWrite=newVideoWriteEnable)))
+                    sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(enableWrite=newVideoWriteEnable)))
 
     def setVideoBaseFileNames(self, newVideoBaseFileNames, *args, updateGUI=True):
         """Send messages to video writer processes to change base filenames
@@ -2783,7 +2783,7 @@ him know. Otherwise, I had nothing to do with it.
                     self.cameraMonitors[camSerial].fileWidget.setBaseFileName(newVideoBaseFileName)
                 if camSerial in self.videoWriteProcesses:
                     # Notify VideoWriter child process of new write base filename
-                    self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(videoBaseFileName=newVideoBaseFileName)))
+                    sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(videoBaseFileName=newVideoBaseFileName)))
     def setVideoDirectories(self, newVideoDirectories, *args, updateGUI=True):
         """Send messages to video writer processes to change video directories
 
@@ -2809,7 +2809,7 @@ him know. Otherwise, I had nothing to do with it.
                     self.cameraMonitors[camSerial].fileWidget.setDirectory(newVideoDirectory)
                 if camSerial in self.videoWriteProcesses and (len(newVideoDirectory) == 0 or os.path.isdir(newVideoDirectory)):
                     # Notify VideoWriter child process of new write directory
-                    self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(videoDirectory=newVideoDirectory)))
+                    sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(videoDirectory=newVideoDirectory)))
     def setAudioBaseFileName(self, newAudioBaseFileName, *args, updateGUI=True):
         """Send message to audio writer process to change base filenames
 
@@ -2831,7 +2831,7 @@ him know. Otherwise, I had nothing to do with it.
             # Update text field
             self.audioMonitor.fileWidget.setBaseFileName(newAudioBaseFileName)
         # Notify AudioWriter child process of new write base filename
-        self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(audioBaseFileName=newAudioBaseFileName)))
+        sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(audioBaseFileName=newAudioBaseFileName)))
     def setAudioDirectory(self, newAudioDirectory, *args, updateGUI=True):
         """Send message to audio writer process to change audio directory
 
@@ -2854,7 +2854,7 @@ him know. Otherwise, I had nothing to do with it.
             self.audioMonitor.fileWidget.setDirectory(newAudioDirectory)
         if len(newAudioDirectory) == 0 or os.path.isdir(newAudioDirectory):
             # Notify AudioWriter child process of new write directory
-            self.sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(audioDirectory=newAudioDirectory)))
+            sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(audioDirectory=newAudioDirectory)))
     def setMergeBaseFileName(self, newMergeBaseFileName, *args, updateGUI=True):
         """Send message to AVMerger process to change merge base filename
 
@@ -2876,7 +2876,7 @@ him know. Otherwise, I had nothing to do with it.
             # Update text field
             self.mergeFileWidget.setBaseFileName(newMergeBaseFileName)
         # Notify AVMerger child process of new write base filename
-        self.sendMessage(self.mergeProcess, (Messages.SETPARAMS, dict(mergeBaseFileName=newMergeBaseFileName)))
+        sendMessage(self.mergeProcess, (Messages.SETPARAMS, dict(mergeBaseFileName=newMergeBaseFileName)))
     def setMergeDirectory(self, newMergeDirectory, *args, updateGUI=True):
         """Send message to AVMerger process to change merge directory
 
@@ -2899,7 +2899,7 @@ him know. Otherwise, I had nothing to do with it.
             self.mergeFileWidget.setDirectory(newMergeDirectory)
         if len(newMergeDirectory) == 0 or os.path.isdir(newMergeDirectory):
             # Notify AVMerger child process of new write directory
-            self.sendMessage(self.mergeProcess, (Messages.SETPARAMS, dict(directory=newMergeDirectory)))
+            sendMessage(self.mergeProcess, (Messages.SETPARAMS, dict(directory=newMergeDirectory)))
 
     def setParams(self, ignoreErrors=True, **params):
         """Set one or more GUI parameters.
@@ -2977,35 +2977,6 @@ him know. Otherwise, I had nothing to do with it.
             for paramName in paramNames:
                 params[paramName] = self.paramInfo[paramName]["get"]()
             return params
-
-    def sendMessage(self, process, msg):
-        """Send a message to a child process.
-
-        This is a convenient way to safely send a message to a process.
-
-        Args:
-            process (StateMachineProces): A descendant of StateMachineProcess
-            msg (2-tuple): A tuple of the following form:
-                (Messages.[[message type]], [[argument]])
-                Where the first element is a message type, as defined by the
-                StateMachineProcesses.Messages class, and the second argument is
-                an argument that depends on the message type. For example,
-                    (Messages.SETPARAMS, {'verbose':2})
-                or
-                    (Messages.START, None)
-
-        Returns:
-            bool: A boolean indicating whether sending the message succeeded
-
-        """
-        if process is None:
-            return False
-        else:
-            if process.msgQueue is None:
-                return False
-            else:
-                process.msgQueue.put(msg)
-                return True
 
     def setBufferSizeSeconds(self, *args):
         """Placeholder param setter indicating this property is not settable"""
@@ -3381,7 +3352,7 @@ him know. Otherwise, I had nothing to do with it.
         if self.audioTriggerProcess is not None:
             self.audioTriggerProcess.start()
             if self.getParams('triggerMode') == "Audio":
-                self.sendMessage(self.audioTriggerProcess, (Messages.STARTANALYZE, None))
+                sendMessage(self.audioTriggerProcess, (Messages.STARTANALYZE, None))
 
         if len(p["audioDAQChannels"]) > 0:
             self.audioWriteProcess.start()
@@ -3411,29 +3382,29 @@ him know. Otherwise, I had nothing to do with it.
 
         if len(p["audioDAQChannels"]) > 0:
             # Start audio trigger process
-            self.sendMessage(self.audioTriggerProcess, (Messages.START, None))
+            sendMessage(self.audioTriggerProcess, (Messages.START, None))
             self.updateTriggerMode()
 
             # Start AudioWriter
-            self.sendMessage(self.audioWriteProcess, (Messages.START, None))
+            sendMessage(self.audioWriteProcess, (Messages.START, None))
 
             # Start AudioAcquirer
-            self.sendMessage(self.audioAcquireProcess, (Messages.START, None))
+            sendMessage(self.audioAcquireProcess, (Messages.START, None))
 
         # Start continuous trigger process
         if self.getParams('triggerMode') == 'Continuous':
-            self.sendMessage(self.continuousTriggerProcess, (Messages.START, None))
+            sendMessage(self.continuousTriggerProcess, (Messages.START, None))
 
         # For each camera
         for camSerial in p["camSerials"]:
             # Start VideoWriter
-            self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.START, None))
+            sendMessage(self.videoWriteProcesses[camSerial], (Messages.START, None))
             # Start VideoAcquirer
-            self.sendMessage(self.videoAcquireProcesses[camSerial], (Messages.START, None))
+            sendMessage(self.videoAcquireProcesses[camSerial], (Messages.START, None))
 
         if len(p["audioDAQChannels"]) + len(p["camSerials"]) >= 1:
             # Start sync process
-            self.sendMessage(self.syncProcess, (Messages.START, None))
+            sendMessage(self.syncProcess, (Messages.START, None))
 
         if len(p["audioDAQChannels"]) + len(p["camSerials"]) >= 2:
             # Start merge process
@@ -3459,16 +3430,16 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         # Tell all child processes to go to stopped state
-        self.sendMessage(self.audioTriggerProcess, (Messages.STOP, None))
-        self.sendMessage(self.continuousTriggerProcess, (Messages.STOP, None))
+        sendMessage(self.audioTriggerProcess, (Messages.STOP, None))
+        sendMessage(self.continuousTriggerProcess, (Messages.STOP, None))
         for camSerial in self.videoAcquireProcesses:
-            self.sendMessage(self.videoAcquireProcesses[camSerial], (Messages.STOP, None))
+            sendMessage(self.videoAcquireProcesses[camSerial], (Messages.STOP, None))
         for camSerial in self.videoAcquireProcesses:
-            self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.STOP, None))
-        self.sendMessage(self.audioAcquireProcess, (Messages.STOP, None))
-        self.sendMessage(self.audioWriteProcess, (Messages.STOP, None))
-        self.sendMessage(self.mergeProcess, (Messages.STOP, None))
-        self.sendMessage(self.syncProcess, (Messages.STOP, None))
+            sendMessage(self.videoWriteProcesses[camSerial], (Messages.STOP, None))
+        sendMessage(self.audioAcquireProcess, (Messages.STOP, None))
+        sendMessage(self.audioWriteProcess, (Messages.STOP, None))
+        sendMessage(self.mergeProcess, (Messages.STOP, None))
+        sendMessage(self.syncProcess, (Messages.STOP, None))
 
     def exitChildProcesses(self):
         """Tell all child processes to exit.
@@ -3477,16 +3448,16 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
-        self.sendMessage(self.audioTriggerProcess, (Messages.EXIT, None))
-        self.sendMessage(self.continuousTriggerProcess, (Messages.EXIT, None))
+        sendMessage(self.audioTriggerProcess, (Messages.EXIT, None))
+        sendMessage(self.continuousTriggerProcess, (Messages.EXIT, None))
         for camSerial in self.videoAcquireProcesses:
-            self.sendMessage(self.videoAcquireProcesses[camSerial], (Messages.EXIT, None))
+            sendMessage(self.videoAcquireProcesses[camSerial], (Messages.EXIT, None))
         for camSerial in self.videoWriteProcesses:
-            self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.EXIT, None))
-        self.sendMessage(self.audioAcquireProcess, (Messages.EXIT, None))
-        self.sendMessage(self.audioWriteProcess, (Messages.EXIT, None))
-        self.sendMessage(self.mergeProcess, (Messages.EXIT, None))
-        self.sendMessage(self.syncProcess, (Messages.EXIT, None))
+            sendMessage(self.videoWriteProcesses[camSerial], (Messages.EXIT, None))
+        sendMessage(self.audioAcquireProcess, (Messages.EXIT, None))
+        sendMessage(self.audioWriteProcess, (Messages.EXIT, None))
+        sendMessage(self.mergeProcess, (Messages.EXIT, None))
+        sendMessage(self.syncProcess, (Messages.EXIT, None))
         #self.StdoutManager.queue.put(Messages.EXIT)
 
     def destroyChildProcesses(self):
@@ -3543,10 +3514,10 @@ him know. Otherwise, I had nothing to do with it.
         trig = Trigger(t-p['preTriggerTime'], t, t + p['recordTime'] - p['preTriggerTime'], idspace='GUI')
         self.log("Sending manual trigger!")
         for camSerial in self.getParams('camSerials'):
-            success = self.sendMessage(self.videoWriteProcesses[camSerial], (Messages.TRIGGER, trig))
+            success = sendMessage(self.videoWriteProcesses[camSerial], (Messages.TRIGGER, trig))
             if success:
                 self.log("...sent to", camSerial, "video writer")
-        success = self.sendMessage(self.audioWriteProcess, (Messages.TRIGGER, trig))
+        success = sendMessage(self.audioWriteProcess, (Messages.TRIGGER, trig))
         if success:
             self.log("...sent to audio writer")
         self.endLog(inspect.currentframe().f_code.co_name)
@@ -3601,7 +3572,7 @@ him know. Otherwise, I had nothing to do with it.
             len(camSerials) > 0 and
             len(self.cameraMonitors) > 0):
             self.monitorMasterFrame.grid(row=0, column=1, sticky=tk.NSEW)
-            
+
             wV, hV = getOptimalMonitorGrid(len(camSerials))
             for k, camSerial in enumerate(camSerials):
                 self.cameraMonitors[camSerial].grid(row=1+2*(k // wV), column = k % wV)

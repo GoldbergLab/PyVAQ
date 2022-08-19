@@ -372,6 +372,35 @@ def generateButterBandpassCoeffs(lowcut, highcut, fs, order=5):
     b, a = butter(order, [low, high], btype='band')
     return b, a
 
+def sendMessage(process, msg):
+    """Send a message to a child process.
+
+    This is a convenient way to safely send a message to a process.
+
+    Args:
+        process (StateMachineProces): A descendant of StateMachineProcess
+        msg (2-tuple): A tuple of the following form:
+            (Messages.[[message type]], [[argument]])
+            Where the first element is a message type, as defined by the
+            StateMachineProcesses.Messages class, and the second argument is
+            an argument that depends on the message type. For example,
+                (Messages.SETPARAMS, {'verbose':2})
+            or
+                (Messages.START, None)
+
+    Returns:
+        bool: A boolean indicating whether sending the message succeeded
+
+    """
+    if process is None:
+        return False
+    else:
+        if process.msgQueue is None:
+            return False
+        else:
+            process.msgQueue.put(msg)
+            return True
+
 class StdoutManager(mp.Process):
     # A process for printing output to stdout from other processes.
     # Expects the following messageBundle format from queues:
@@ -574,7 +603,11 @@ class StateMachineProcess(mp.Process):
     def flushStdout(self):
         # Send current accumulated log buffer out, clear buffer.
         if len(self.stdoutBuffer) > 0:
-            self.stdoutQueue.put(self.stdoutBuffer)
+            if self.stdoutQueue is not None:
+                self.stdoutQueue.put(self.stdoutBuffer)
+            else:
+                for args, kwargs in self.stdoutBuffer:
+                    print(*args, **kwargs)
         self.stdoutBuffer = []
 
     def handleError(self, msg=None, arg=None):
