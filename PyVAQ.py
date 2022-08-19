@@ -2148,29 +2148,29 @@ him know. Otherwise, I had nothing to do with it.
         for camSerial in self.videoWriteProcesses:
             if self.videoWriteProcesses[camSerial] is not None:
                 states['videoWriteStates'][camSerial] = self.videoWriteProcesses[camSerial].publishedStateVar.value
-                stateNames['videoWriteStates'][camSerial] = VideoWriter.stateList[states['videoWriteStates'][camSerial]]
+                stateNames['videoWriteStates'][camSerial] = self.videoWriteProcesses[camSerial].stateList[states['videoWriteStates'][camSerial]]
         for camSerial in self.videoAcquireProcesses:
             if self.videoAcquireProcesses[camSerial] is not None:
                 states['videoAcquireStates'][camSerial] = self.videoAcquireProcesses[camSerial].publishedStateVar.value
-                stateNames['videoAcquireStates'][camSerial] = VideoAcquirer.stateList[states['videoAcquireStates'][camSerial]]
+                stateNames['videoAcquireStates'][camSerial] = self.videoAcquireProcesses[camSerial].stateList[states['videoAcquireStates'][camSerial]]
         if self.audioWriteProcess is not None:
             states['audioWriteState'] = self.audioWriteProcess.publishedStateVar.value
-            stateNames['audioWriteState'] = AudioWriter.stateList[states['audioWriteState']]
+            stateNames['audioWriteState'] = self.audioWriteProcess.stateList[states['audioWriteState']]
         if self.audioAcquireProcess is not None:
             states['audioAcquireState'] = self.audioAcquireProcess.publishedStateVar.value
-            stateNames['audioAcquireState'] = AudioAcquirer.stateList[states['audioAcquireState']]
+            stateNames['audioAcquireState'] = self.audioAcquireProcess.stateList[states['audioAcquireState']]
         if self.syncProcess is not None:
             states['syncState'] = self.syncProcess.publishedStateVar.value
-            stateNames['syncState'] = Synchronizer.stateList[states['syncState']]
+            stateNames['syncState'] = self.syncProcess.stateList[states['syncState']]
         if self.mergeProcess is not None:
             states['mergeState'] = self.mergeProcess.publishedStateVar.value
-            stateNames['mergeState'] = AVMerger.stateList[states['mergeState']]
+            stateNames['mergeState'] = self.mergeProcess.stateList[states['mergeState']]
         if self.audioTriggerProcess is not None:
             states['audioTriggerState'] = self.audioTriggerProcess.publishedStateVar.value
-            stateNames['audioTriggerState'] = AudioTriggerer.stateList[states['audioTriggerState']]
+            stateNames['audioTriggerState'] = self.audioTriggerProcess.stateList[states['audioTriggerState']]
         if self.continuousTriggerProcess is not None:
             states['continuousTriggerState'] = self.continuousTriggerProcess.publishedStateVar.value
-            stateNames['continuousTriggerState'] = ContinuousTriggerer.stateList[states['continuousTriggerState']]
+            stateNames['continuousTriggerState'] = self.continuousTriggerProcess.stateList[states['continuousTriggerState']]
 
         if verbose:
             self.log("Check states...")
