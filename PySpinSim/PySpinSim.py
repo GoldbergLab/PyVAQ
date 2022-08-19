@@ -1,13 +1,9 @@
 import random as r
-import math
 import PIL
 import multiprocessing as mp
 import time
-from ctypes import c_bool
 from pathlib import Path
 import numpy as np
-from SharedImageQueue import SharedImageSender, SharedImageReceiver
-from pathlib import Path
 
 DEFAULT_SYSTEM_RECORD_FILENAME = 'simCamSystem.tmp'
 DEFAULT_SIM_CAMERA_FEED = 'simCameraFeed.gif'
