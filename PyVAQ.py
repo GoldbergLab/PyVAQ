@@ -366,7 +366,7 @@ class PyVAQ:
         self.preTriggerTimeEntry =  ttk.Entry(self.preTriggerTimeFrame, width=16, textvariable=self.preTriggerTimeVar)
 
         self.acquisitionBufferSizeFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Acquisition buffer size (s)", style='SingleContainer.TLabelframe')
-        self.acquisitionBufferSizeVar =    tk.StringVar(); self.acquisitionBufferSizeVar.set("4.5")
+        self.acquisitionBufferSizeVar =    tk.StringVar(); self.acquisitionBufferSizeVar.set("20")
         self.acquisitionBufferSizeEntry =  ttk.Entry(self.acquisitionBufferSizeFrame, width=16, textvariable=self.acquisitionBufferSizeVar)
 
         self.recordTimeFrame =      ttk.LabelFrame(self.acquisitionParametersFrame, text="Record time (s)", style='SingleContainer.TLabelframe')
