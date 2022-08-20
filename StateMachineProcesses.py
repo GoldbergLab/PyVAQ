@@ -44,17 +44,48 @@ else:
     from nidaqmx.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
     from nidaqmx.constants import Edge, TriggerType
 
+DATE_FORMAT = '%Y-%m-%d'
+TIME_FORMAT = '%Y-%m-%d-%H-%M-%S-%f'
+
 def syncPrint(*args, sep=' ', end='\n', flush=True, buffer=None):
+    """Format log messages and append them to a buffer for later output
+
+    Args:
+        *args (type): One or more items to log. Will be turned into strings in
+            the same way the print function does.
+        sep (type): Item separator. See print function documentation for
+            details. Defaults to ' '.
+        end (type): Log entry separator. See print function documentatio for
+            details. Defaults to '\n'.
+        flush (type): Flush accumulated entries to the log now?. Defaults to
+            True.
+        buffer (type): Reference to an iterable object. Log entry will be
+            appended to this buffer. Defaults to None.
+
+    Returns:
+        None
+
+    """
     kwargs = dict(sep=sep, end=end, flush=flush)
     buffer.append((args, kwargs))
 
 def slugify(value, allow_unicode=False):
-    """
+    """Sanitize string for filenames.
+
     Convert to ASCII if 'allow_unicode' is False. Convert spaces to hyphens.
     Remove characters that aren't alphanumerics, underscores, or hyphens.
     Convert to lowercase. Also strip leading and trailing whitespace.
 
-    Adapter from Django utils
+    Adapted from Django utils function.
+
+    Args:
+        value (str): A string to sanitize.
+        allow_unicode (bool): Should unicode characters be allowed? Defaults to
+            False.
+
+    Returns:
+        str: Sanitized version of string.
+
     """
     value = str(value)
     if allow_unicode:
@@ -65,6 +96,17 @@ def slugify(value, allow_unicode=False):
     return re.sub(r'[-\s]+', '-', value)
 
 def clearQueue(q):
+    """Clear the given queue-like object.
+
+    Gets items from the queue until it's empty.
+
+    Args:
+        q (queue.Queue or similar): A queue-like object to clear.
+
+    Returns:
+        None.
+
+    """
     if q is not None:
         while True:
             try:
@@ -73,20 +115,58 @@ def clearQueue(q):
                 break
 
 class Stopwatch:
+    """A class holding timing information.
+
+    This class functions as a simple stopwatch. "click"ing the stopwatch records
+        a new timepoint, discarding an older timepoint in the process, and
+        provides a simple way to measure frequency or period of a repeating
+        process.
+
+    Args:
+        history (int): Number of timepoints to store. Defaults to 2.
+
+    Attributes:
+        t (list): A list of stored timepoints.
+
+    """
     def __init__(self, history=2):
         self.t = [None for k in range(history)]
 
     def click(self):
+        """Record another timepoint
+
+        Returns:
+            None
+
+        """
         self.t.append(time.time())
         self.t.pop(0)
 
     def frequency(self):
+        """Calculate the average frequency based on stored timepoints.
+
+        If there are not enough timepoints, or the timepoints are coincident,
+            return None.
+
+        Returns:
+            float or None: the calculated frequency
+
+        """
         period = self.period()
         if period is None:
             return None
         return 1.0 / period
 
     def period(self):
+        """Calculate the average period based on stored timepoints.
+
+        If there are not enough timepoints, or the timepoints are coincident,
+            return None.
+
+        Returns:
+            float or None: the calculated period
+
+        """
         t0 = self.t[0]
         t1 = self.t[-1]
         if t1 is None or t0 is None:
@@ -322,41 +402,103 @@ class AudioChunk():
 #  audioChunkBytes = b''.join(map(lambda x:struct.pack(bytePackingPattern, *x), audioChunk.transpose().tolist()))
 
 def inSchedule(startTime, stopTime, currentTime=None):
+    """Determine if a timestamp is within the scheduled "on" time period or not.
+
+    Args:
+        startTime (datetime.time): Start time for the daily schedule
+        stopTime (datetime.time): Stop time for the daily schedule
+        currentTime (datetime.time): Time to check.
+
+    Returns:
+        bool: Is the time within the daily scheduled "on" time or not?
+
+    """
     if currentTime is None:
         currentTime. dt.datetime.now().time()
     if stopTime >= startTime:
-        # Schedule on time does not overlap midnight
+        # Schedule-on time does not overlap midnight
         return startTime < currentTime and currentTime < stopTime
     else:
-        # Schedule on time overlaps midnight
+        # Schedule-on time overlaps midnight
         return startTime < currentTime or currentTime < stopTime
 
-DATE_FORMAT = '%Y-%m-%d'
-TIME_FORMAT = '%Y-%m-%d-%H-%M-%S-%f'
-
 def getDaySubfolder(root, trigger=None, timestamp=None):
-    # Construct a standardized path for a subfolder representing the day in
-    #   which the trigger falls. If a trigger is not provided, use the timestamp argument instead.
+    """Create a standardized path name for a day-based subfolder
+
+    Construct a standardized path for a subfolder representing the day in
+        which the trigger falls. If a trigger is not provided, use the timestamp
+        argument instead.
+
+    Args:
+        root (str or Path): Path to the root folder in which the day subfolder
+            should be put.
+        trigger (Trigger): A Trigger object. Defaults to None.
+        timestamp (datetime.datetime): A timestamp. Defaults to None.
+
+    Returns:
+        str: String representing the path for the day subfolder
+
+    """
     if trigger is not None:
         timestamp = trigger.triggerTime
     dateString = dt.datetime.fromtimestamp(timestamp).strftime(DATE_FORMAT)
     return os.path.join(root, dateString)
 
 def ensureDirectoryExists(directory):
-    # Creates directory (and subdirectories if necessary) to ensure that the directory exists in the filesystem
+    """Ensure that a directory exists; create it if it does not
+
+    Create a directory (and subdirectories if necessary) to ensure that the
+        directory exists in the filesystem
+
+    Args:
+        directory (str or Path): The directory in question
+
+    Returns:
+        None
+
+    """
     if len(directory) > 0:
         os.makedirs(directory, exist_ok=True)
 
 def generateTimeString(trigger=None, timestamp=None):
-    # Generate a time string from the trigger time.
-    # If no trigger is given, the timestamp argument is used instead.
+    """Generate a consistently formatted time string from the trigger/timestamp.
+
+    The global variable TIME_FORMAT is used as the format.
+
+    If no trigger is given, the timestamp argument is used instead.
+
+    Args:
+        trigger (Trigger): A Trigger object from which to extract a time to
+            format into a string. Defaults to None.
+        timestamp (datetime.datetime): A timestamp to format into a string
+
+    Returns:
+        str: A string representing the given timestamp formatted according to
+            the global variable TIME_FORMAT.
+
+    """
     if trigger is not None:
         timestamp = trigger.triggerTime
     return dt.datetime.fromtimestamp(timestamp).strftime(TIME_FORMAT)
 
 def generateFileName(directory='.', baseName='unnamed', tags=[], extension=''):
-    # Construct a standardized filename based on a root directory a base name,
-    #   zero or more tags, and an extension.
+    """Construct a standardized file path
+
+    Construct a standardized file path based on a root directory a base name,
+        zero or more tags, and an extension.
+
+    Args:
+        directory (str or Path): Path to the parent directory for the file.
+            Defaults to '.'.
+        baseName (str): The base name to use for the path. Defaults to 'unnamed'
+        tags (list of str): List of tags to append to the filename.
+            Defaults to [].
+        extension (str): File extension. Defaults to ''.
+
+    Returns:
+        str: A string representing the path with the generated filename.
+
+    """
     extension = '.' + slugify(extension)
     fileName = baseName
     fileName = '_'.join([fileName]+tags)
@@ -365,7 +507,20 @@ def generateFileName(directory='.', baseName='unnamed', tags=[], extension=''):
     return os.path.join(directory, fileName)
 
 def generateButterBandpassCoeffs(lowcut, highcut, fs, order=5):
-    # Set up audio bandpass filter coefficients
+    """Set up audio bandpass filter coefficients for audio analysis
+
+    Args:
+        lowcut (float): The low cutoff frequency for the filter
+        highcut (float): The high cutoff frequency for the filter
+        fs (int): The sampling frequency of the data
+        order (int): The order of the filter. Defaults to 5.
+
+    Returns:
+        (numpy.ndarray, numpy.ndarray): Numerator and denominator coefficients
+            for the filter polynomial. See documentation for
+            scipy.signals.butter for more information.
+
+    """
     nyq = 0.5 * fs
     low = lowcut / nyq
     high = highcut / nyq
