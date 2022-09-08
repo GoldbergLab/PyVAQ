@@ -4,6 +4,7 @@ import multiprocessing as mp
 import time
 from pathlib import Path
 import numpy as np
+import queue
 
 DEFAULT_SYSTEM_RECORD_FILENAME = 'simCamSystem.tmp'
 DEFAULT_SIM_CAMERA_FEED = 'simCameraFeed.gif'
@@ -91,14 +92,15 @@ class Camera:
         self.Height = None
         self.simCamProcess = None
         self.simCamReceiver = None
-        self.imageID = None
+        self.imageIDQueue = None
+        self.lastImageID = None
         self.startTime = None
         self.TLDeviceNodeMap = None
         self.NodeMap = None
     def IsInitialized(self):
         return self.images is not None
     def IsAcquisitionStarted(self):
-        return self.imageID is not None
+        return self.imageIDQueue is not None
     def IsStreaming(self):
         # Not sure exactly what the difference is,
         #   but this is probably good enough.
@@ -145,30 +147,49 @@ class Camera:
         nm.AddNode('PixelDynamicRangeMin', np.iinfo(self.images.dtype).min, type='int', readOnly=True)
         nm.AddNode('PixelFormat', 'RGB8', type='enum', readOnly=True)
 
-    def GetCurrentImageID(self):
-        return int((time.time()-self.startTime) * self.frameRate)
+    def UpdateImageIDBuffer(self):
+        if self.startTime is None:
+            self.startTime = time.time()
+        framesSinceStart = int((time.time()-self.startTime) * self.frameRate)
+        latentIDs = list(range(self.lastImageID+1, framesSinceStart))
+        print('latentIDs: ', latentIDs)
+        if len(latentIDs) > 0:
+            self.lastImageID = latentIDs[-1]
+            for id in latentIDs:
+                print('putting id in queue:', id)
+                while True:
+                    try:
+                        self.imageIDQueue.put(id, block=False)
+                        break
+                    except queue.Full:
+                        id_drop = self.imageIDQueue.get(block=False)
+                        print('image buffer full - dropping frame #', id_drop)
 
     def BeginAcquisition(self):
-        self.startTime = time.time()
-        self.imageID = self.GetCurrentImageID()
+        self.startTime = None
+        self.imageIDQueue = queue.Queue(maxsize=30*20)
+        self.lastImageID = -1
 
     def GetNextImage(self, timeout):
         if not self.IsInitialized() or not self.IsAcquisitionStarted():
             raise RuntimeError('You must call Init and BeginAcquistion on camera before getting images.')
-        currentImageID = self.imageID
-        while currentImageID == self.imageID:
-            # Wait until it's time to release a new image
-            time.sleep(1/(4*self.frameRate))
-            currentImageID = self.GetCurrentImageID()
-        self.imageID = currentImageID
 
-        frameNum = self.imageID % self.NumFrames
+        while True:
+            try:
+                imageID = self.imageIDQueue.get(block=False)
+                print('camera produced image #', imageID)
+                break
+            except queue.Empty:
+                print('no image ids in buffer - repopulate')
+                time.sleep(1/(4*self.frameRate))
+                self.UpdateImageIDBuffer()
+
+        frameNum = imageID % self.NumFrames
         image = self.images[:, :, :, frameNum]
-        imageID = self.imageID
         return Image(image, imageID)
 
     def EndAcquisition(self):
-        self.imageID = None
+        self.imageIDQueue = None
 
     def DeInit(self):
         self.images = None
