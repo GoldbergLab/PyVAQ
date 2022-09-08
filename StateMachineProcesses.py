@@ -3104,6 +3104,8 @@ class VideoAcquirer(StateMachineProcess):
 
         if self.verbose >= 3: self.log("Temporarily initializing camera to get image size...")
         videoWidth, videoHeight = psu.getFrameSize(camSerial=self.camSerial)
+        self.pixelFormat = psu.getPixelFormat(camSerial=self.camSerial)
+
         self.imageQueue = SharedImageSender(
             width=videoWidth,
             height=videoHeight,
@@ -3196,8 +3198,8 @@ class VideoAcquirer(StateMachineProcess):
                         if self.verbose > 2: self.log("...camera initialization complete")
 
                         # Get current camera pixel format
-                        self.pixelFormat = psu.getCameraAttribute('PixelFormat', PySpin.CEnumerationPtr, nodemap=nodemap)[1]
                         if self.verbose >= 2: print('Camera pixel format is:', self.pixelFormat)
+                        self.pixelFormat = psu.getPixelFormat(cam=cam);
 
                         monitorFramePeriod = 1.0/self.monitorMasterFrameRate
                         if self.verbose >= 1: self.log("Monitoring with period", monitorFramePeriod)
