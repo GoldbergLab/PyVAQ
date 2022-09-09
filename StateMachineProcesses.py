@@ -3104,12 +3104,15 @@ class VideoAcquirer(StateMachineProcess):
 
         if self.verbose >= 3: self.log("Temporarily initializing camera to get image size...")
         videoWidth, videoHeight = psu.getFrameSize(camSerial=self.camSerial)
+        # Get current camera pixel format
         self.pixelFormat = psu.getPixelFormat(camSerial=self.camSerial)
+        if self.verbose >= 2: print('Camera pixel format is:', self.pixelFormat)
 
         self.imageQueue = SharedImageSender(
             width=videoWidth,
             height=videoHeight,
             verbose=self.verbose,
+            pixelFormat=self.pixelFormat,
             outputType='bytes',
             outputCopy=False,
             lockForOutput=False,
@@ -3196,10 +3199,6 @@ class VideoAcquirer(StateMachineProcess):
                         nodemap = cam.GetNodeMap()
                         self.setCameraAttributes(nodemap, self.acquireSettings)
                         if self.verbose > 2: self.log("...camera initialization complete")
-
-                        # Get current camera pixel format
-                        if self.verbose >= 2: print('Camera pixel format is:', self.pixelFormat)
-                        self.pixelFormat = psu.getPixelFormat(cam=cam);
 
                         monitorFramePeriod = 1.0/self.monitorMasterFrameRate
                         if self.verbose >= 1: self.log("Monitoring with period", monitorFramePeriod)
@@ -3664,7 +3663,13 @@ class SimpleVideoWriter(StateMachineProcess):
                             if videoFileInterface is not None:
                                 if self.verbose >= 3: self.log('Closing previous file interface')
                                 videoFileInterface.close()
-                            videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", fps=self.frameRate, gpuVEnc=self.gpuVEnc)
+
+                            # Map PySpin pixel format into an ffmpeg pixel format
+                            ffmpegPixelFormats = psu.pixelFormats[self.imageQueue.pixelFormat]['ffmpeg']
+                            if ffmpegPixelFormats is None or len(ffmpegPixelFormats) == 0):
+                                raise TypeError('No ffmpeg format is known for PySpin format {f}'.format(f=self.imageQueue.pixelFromat))
+
+                            videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", input_pixel_format=ffmpegPixelFormats[0], fps=self.frameRate, gpuVEnc=self.gpuVEnc)
 
                         newFileInfo = 'Opened video file #{num:03d}: {f:.2f} fps, gpu encoding={gpu}'.format(num=videoCount, f=self.frameRate, gpu=self.gpuVEnc);
                         self.updatePublishedInfo(newFileInfo)
@@ -3699,11 +3704,9 @@ class SimpleVideoWriter(StateMachineProcess):
                     im, frameTime, imageID, frameShape = self.getNextimage()
 
                     if im is None:
-                        # No images available. To avoid hosing the processor, sleep a bit before continuing
+                        # No images available.
                         if self.verbose >= 3:
                             self.logTime("...no image yet. Waiting...")
-
-                        time.sleep(0.5/self.requestedFrameRate)
                     else:
                         if writeEnabled:
                             if videoFileInterface is None:
