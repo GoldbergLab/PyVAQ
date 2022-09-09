@@ -290,6 +290,12 @@ pixelSizes = {
     'Bpp48':48,
     'Bpp64':64,
     'Bpp96':96,
+    '8 Bits/Pixel':8,
+    '10 Bits/Pixel':10,
+    '12 Bits/Pixel':12,
+    '16 Bits/Pixel':16,
+    '24 Bits/Pixel':24,
+    '32 Bits/Pixel':32,
 }
 
 nodeAccessorFunctions = {
