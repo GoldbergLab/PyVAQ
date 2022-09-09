@@ -3697,11 +3697,9 @@ class SimpleVideoWriter(StateMachineProcess):
                     im, frameTime, imageID, frameShape = self.getNextimage()
 
                     if im is None:
-                        # No images available. To avoid hosing the processor, sleep a bit before continuing
+                        # No images available.
                         if self.verbose >= 3:
                             self.logTime("...no image yet. Waiting...")
-
-                        time.sleep(0.5/self.requestedFrameRate)
                     else:
                         if writeEnabled:
                             if videoFileInterface is None:
