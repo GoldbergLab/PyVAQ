@@ -61,7 +61,7 @@ class ffmpegWriter():
                 ffmpegCommand = [FFMPEG_EXE, '-y',
                     '-vsync', 'passthrough', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
                     '-v', ffmpegVerbosity, '-f', 'rawvideo', '-c:v', 'rawvideo',
-                    '-pix_fmt', self.input_pixel_format, '-s', shapeArg,
+                    '-pix_fmt', self.input_pixel_format, '-s', shapeArg, '-thread_queue_size', '1024',
                     '-r', str(self.fps), '-i', '-', '-c:v', 'h264_nvenc', '-preset', 'fast',
                     '-cq', '32',
                     '-pix_fmt', self.output_pixel_format, '-an', self.filename]
@@ -70,7 +70,8 @@ class ffmpegWriter():
                 ffmpegCommand = [FFMPEG_EXE, '-y',
                     '-vsync', 'passthrough', '-v', ffmpegVerbosity, '-f', 'rawvideo',
                     '-c:v', 'rawvideo', '-pix_fmt', self.input_pixel_format,
-                    '-s', shapeArg, '-r', str(self.fps), '-i', '-',
+                    '-s', shapeArg, '-r', str(self.fps), '-thread_queue_size', '1024',
+                     '-i', '-',
                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
                     '-pix_fmt', self.output_pixel_format, '-an', self.filename]
             # print('Command:')
