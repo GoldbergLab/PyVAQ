@@ -46,11 +46,21 @@ class ffmpegWriter():
                 w, h = shape
             shapeArg = '{w}x{h}'.format(w=w, h=h)
 #            self.ffmpegProc = subprocess.Popen([FFMPEG_EXE, '-hide_banner', '-y', '-v', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb8', '-s', shapeArg, '-r', str(self.fps), '-i', 'pipe:', '-c:v', 'libx264', '-tune', 'zerolatency', '-preset', 'ultrafast', '-an', self.filename], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
+
+            if self.verbose <= 0:
+                ffmpegVerbosity = 'quiet'
+            elif self.verbose == 1:
+                ffmpegVerbosity = 'error'
+            elif self.verbose == 2:
+                ffmpegVerbosity = 'warning'
+            elif self.verbose >= 3:
+                ffmpegVerbosity = 'verbose'
+
             if self.gpuVEnc:
                 # With GPU acceleration
                 ffmpegCommand = [FFMPEG_EXE, '-y',
                     '-vsync', 'passthrough', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
-                    '-v', 'error', '-f', 'rawvideo', '-c:v', 'rawvideo',
+                    '-v', ffmpegVerbosity, '-f', 'rawvideo', '-c:v', 'rawvideo',
                     '-pix_fmt', self.input_pixel_format, '-s', shapeArg,
                     '-r', str(self.fps), '-i', '-', '-c:v', 'h264_nvenc', '-preset', 'fast',
                     '-cq', '32',
@@ -58,7 +68,7 @@ class ffmpegWriter():
             else:
                 # Without GPU acceleration
                 ffmpegCommand = [FFMPEG_EXE, '-y',
-                    '-vsync', 'passthrough', '-v', 'error', '-f', 'rawvideo',
+                    '-vsync', 'passthrough', '-v', ffmpegVerbosity, '-f', 'rawvideo',
                     '-c:v', 'rawvideo', '-pix_fmt', self.input_pixel_format,
                     '-s', shapeArg, '-r', str(self.fps), '-i', '-',
                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
