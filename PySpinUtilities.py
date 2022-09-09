@@ -405,7 +405,7 @@ def getFrameSize(cam=None):
 
 @handleCam
 def getPixelFormat(cam=None):
-    return psu.getCameraAttribute('PixelFormat', PySpin.CEnumerationPtr, nodemap=nodemap, cam=cam)[1]
+    return getCameraAttribute('PixelFormat', PySpin.CEnumerationPtr, nodemap=nodemap, cam=cam)[1]
 
 @handleCam
 def isBayerFiltered(cam=None):
