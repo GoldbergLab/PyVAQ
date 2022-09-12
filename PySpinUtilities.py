@@ -427,6 +427,10 @@ def getColorChannelCount(cam=None, camSerial=None):
         # For some reason Blackfly USB (not Blackfly S USB3) cameras return zero for this property.
         # We'll try to use the pixel format to determine the # of channels.
         pixelFormat = getPixelFormat(cam=cam)
+        if pixelFormat not in pixelFormats:
+            # Ok this is a hack, but it seems like the older Blackly cameras have similar
+            #   pixel formats, but with spaces in them
+            pixelFormat = pixelFormat.replace(' ', '')
         return pixelFormats[pixelFormat]['channelCount']
     # Get pixel size (indicating total # of bits per pixel)
     pixelSizeName, pixelSize = getCameraAttribute('PixelSize', PySpin.CEnumerationPtr, nodemap=nm)
