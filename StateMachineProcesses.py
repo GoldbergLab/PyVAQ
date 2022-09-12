@@ -414,13 +414,13 @@ def inSchedule(startTime, stopTime, currentTime=None):
 
     """
     if currentTime is None:
-        currentTime. dt.datetime.now().time()
+        currentTime = dt.datetime.now().time()
     if stopTime >= startTime:
         # Schedule-on time does not overlap midnight
-        return startTime < currentTime and currentTime < stopTime
+        return startTime <= currentTime and currentTime < stopTime
     else:
         # Schedule-on time overlaps midnight
-        return startTime < currentTime or currentTime < stopTime
+        return startTime <= currentTime or currentTime < stopTime
 
 def getDaySubfolder(root, trigger=None, timestamp=None):
     """Create a standardized path name for a day-based subfolder
@@ -2414,12 +2414,11 @@ class SimpleAudioWriter(StateMachineProcess):
                 elif self.state == States.AUDIOINIT:
                     # Start a new audio file
                     # DO STUFF
-                    currentTimeOfDay = dt.datetime.now().time()
+
+                    scheduledOn = inSchedule(self.scheduleStartTime, self.scheduleStopTime)
+
                     writeEnabledPrevious = writeEnabled
-                    writeEnabled = (self.enableWrite and
-                                        (not self.scheduleEnabled or
-                                            (self.scheduleStartTime <= currentTimeOfDay and
-                                             self.scheduleStopTime <= currentTimeOfDay)))
+                    writeEnabled = (self.enableWrite and (not self.scheduleEnabled or scheduledOn))
 
                     if self.verbose >= 1:
                         if writeEnabled and not writeEnabledPrevious:
@@ -3600,14 +3599,13 @@ class SimpleVideoWriter(StateMachineProcess):
                     #   2. Video write is scheduled to be on or off
                     numFramesInCurrentVideo = 0
 
-                    currentTimeOfDay = dt.datetime.now().time()
-                    writeEnabledPrevious = writeEnabled
-                    writeEnabled = (self.enableWrite and
-                                        (not self.scheduleEnabled or
-                                            (self.scheduleStartTime <= currentTimeOfDay and
-                                             currentTimeOfDay <= self.scheduleStopTime)))
+                    scheduledOn = inSchedule(self.scheduleStartTime, self.scheduleStopTime)
 
-                    if self.verbose >= 3:
+                    writeEnabledPrevious = writeEnabled
+                    writeEnabled = (self.enableWrite and (not self.scheduleEnabled or scheduledOn))
+
+                    if self.verbose >= 2:
+                        currentTimeOfDay = dt.datetime.now().time()
                         self.logTime('Schedule enabled: {e}'.format(e=self.scheduleEnabled))
                         self.logTime('  Current time:   {t}'.format(t=currentTimeOfDay))
                         self.logTime('  Start time:     {t}'.format(t=self.scheduleStartTime))
