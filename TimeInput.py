@@ -119,11 +119,7 @@ class TimeEntry(ttk.LabelFrame):
         if len(hour) == 0:
             hour = 0
         else:
-            print('hour:', hour)
-            print('pm?', self.getPM())
-            print('military:', military)
             hour = int(hour) + 12*self.getPM()*military
-            print('actual hour=', hour)
         return hour
 
     def getMinute(self):

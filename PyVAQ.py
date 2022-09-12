@@ -3215,6 +3215,9 @@ him know. Otherwise, I had nothing to do with it.
                     mergeMessageQueue=mergeMsgQueue,
                     daySubfolders=p['daySubfolders'],
                     verbose=self.audioWriteVerbose,
+                    scheduleEnabled=p['scheduleEnabled'],
+                    scheduleStartTime=p['scheduleStartTime'],
+                    scheduleStopTime=p['scheduleStopTime'],
                     stdoutQueue=self.StdoutManager.queue)
             elif p["triggerMode"] != 'None':
                 self.audioWriteProcess = AudioWriter(
