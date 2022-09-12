@@ -3667,7 +3667,7 @@ class SimpleVideoWriter(StateMachineProcess):
                             # Map PySpin pixel format into an ffmpeg pixel format
                             ffmpegPixelFormats = psu.pixelFormats[self.imageQueue.pixelFormat]['ffmpeg']
                             if ffmpegPixelFormats is None or len(ffmpegPixelFormats) == 0:
-                                raise TypeError('No ffmpeg format is known for PySpin format {f}'.format(f=self.imageQueue.pixelFromat))
+                                raise TypeError('No ffmpeg format is known for PySpin format {f}'.format(f=self.imageQueue.pixelFormat))
 
                             videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", verbose=self.verbose, input_pixel_format=ffmpegPixelFormats[0], fps=self.frameRate, gpuVEnc=self.gpuVEnc)
 
