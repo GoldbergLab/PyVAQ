@@ -30,7 +30,7 @@ The audio streams are written to disk as a single multi-track .wav file, and eac
    - [spinnaker-python](https://www.flir.com/support-center/iis/machine-vision/downloads/spinnaker-sdk-and-firmware-download/) library v2.4.0.144 for python 3.8.10 (python wrapper for Spinnaker SDK)\*\*
  - [Spinnaker SDK](https://www.flir.com/support-center/iis/machine-vision/downloads/spinnaker-sdk-and-firmware-download/) v2.4.0.144 (FLIR camera drivers & SDK)
  - ffmpeg\*\*\*, installed and on system path
- - [NI DAQmx] v18.6 (https://www.ni.com/en-us/support/downloads/drivers/download.ni-daqmx.html#291872) - drivers for NI DAQs
+ - [NI DAQmx v18.6](https://www.ni.com/en-us/support/downloads/drivers/download.ni-daqmx.html#291872) - drivers for NI DAQs
  - NI DAQ, such as [USB-6002](https://www.ni.com/docs/en-US/bundle/usb-6002-specs/resource/374371a.pdf)
  - Microphone and amplifier, connected to analog input on DAQ
  - One or more [FLIR Blackfly S USB camera](https://www.flir.com/products/blackfly-s-usb3/?vertical=machine+vision&segment=iis) or other FLIR camera with a similar interface
