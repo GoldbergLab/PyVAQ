@@ -46,6 +46,7 @@ import inspect
 import CollapsableFrame as cf
 import PySpinUtilities as psu
 import ctypes
+from ffmpegWriter import DEFAULT_CPU_COMPRESSION_ARGS, DEFAULT_GPU_COMPRESSION_ARGS
 
 VERSION='0.3.0'
 
@@ -249,6 +250,10 @@ class PyVAQ:
         self.audioChannelConfiguration = GeneralVar(); self.audioChannelConfiguration.set(None)
         self.videoMonitorDisplaySize = GeneralVar(); self.videoMonitorDisplaySize.set((400, 300))
         self.videoMonitorDisplaySize.trace('w', self.updateVideoMonitorDisplaySize)
+        self.cpuVideoCompressionArgs = GeneralVar(); self.cpuVideoCompressionArgs.set({})   # camSerial dict containing an array of ffmpeg argument strings
+        self.cpuVideoCompressionArgs.trace('w', self.transmitVideoCompressionArgs)
+        self.gpuVideoCompressionArgs = GeneralVar(); self.gpuVideoCompressionArgs.set({})   # camSerial dict containing an array of ffmpeg argument strings
+        self.gpuVideoCompressionArgs.trace('w', self.transmitVideoCompressionArgs)
 
         ########### GUI WIDGETS #####################
 
@@ -389,6 +394,12 @@ class PyVAQ:
 
         self.chunkSizeVar =         tk.StringVar(); self.chunkSizeVar.set(1000)
 
+        self.cameraSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Camera settings", **collapsableFrameStyle); self.cameraSettingsFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+
+        self.refreshCameraSettingsButton = ttk.Button(self.cameraSettingsFrame, text="Refresh", command=self.refreshCameraSettingsControls)
+        self.cameraSettingsSubFrame = tk.Frame(self.cameraSettings)
+        self.cameraSettingsWidgets = {}
+
         self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", **collapsableFrameStyle); self.mergeFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
         # self.mergeFrame = ttk.LabelFrame(self.acquisitionFrame, text="AV File merging")
 
@@ -429,7 +440,7 @@ class PyVAQ:
 
         self.daySubfoldersVar = tk.BooleanVar(); self.daySubfoldersVar.set(True)
         self.daySubfoldersCheckbutton = ttk.Checkbutton(self.fileSettingsFrame, text="File in day subfolders", variable=self.daySubfoldersVar)
-        self.daySubfoldersVar.trace('w', lambda *args: self.updateDaySubfolderSetting())
+        self.daySubfoldersVar.trace('w', lambda *args: self.transmitDaySubfolderSetting())
 
         self.scheduleFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Recording Schedule", **collapsableFrameStyle); self.scheduleFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
 
@@ -634,6 +645,8 @@ class PyVAQ:
             "startOnHWSignal":                  dict(get=self.startOnHWSignalVar.get,                           set=self.startOnHWSignalVar.set),
             "writeEnableOnHWSignal":            dict(get=self.writeEnableOnHWSignalVar.get,                     set=self.writeEnableOnHWSignalVar.set),
             "videoMonitorDisplaySize":          dict(get=self.videoMonitorDisplaySize.get,                      set=self.videoMonitorDisplaySize.set),
+            "cpuVideoCompressionArgs":          dict(get=self.cpuVideoCompressionArgs.get,                      set=self.cpuVideoCompressionArgs.set),
+            "gpuVideoCompressionArgs":          dict(get=self.gpuVideoCompressionArgs.get,                      set=self.gpuVideoCompressionArgs.set),
         }
 
         self.createAudioAnalysisMonitor()
@@ -781,9 +794,9 @@ class PyVAQ:
             self.continuousTriggerVerbose = int(choices['ContinuousTriggerer verbosity'])
             self.videoAcquireVerbose = int(choices['VideoAcquirer verbosity'])
             self.videoWriteVerbose = int(choices['VideoWriter verbosity'])
-        self.updateChildProcessVerbosity()
+        self.transmitChildProcessVerbosity()
 
-    def updateChildProcessVerbosity(self):
+    def transmitChildProcessVerbosity(self):
         """Update child process logging verbosity based on current settings
 
         Returns:
@@ -800,7 +813,22 @@ class PyVAQ:
             sendMessage(self.videoAcquireProcesses[camSerial], (Messages.SETPARAMS, {'verbose':self.videoAcquireVerbose}))
             sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'verbose':self.videoWriteVerbose}))
 
-    def updateDaySubfolderSetting(self, *args):
+    def transmitVideoCompressionArgs(self):
+        """Update video writer video compression args based on current settings
+
+        Returns:
+            None
+
+        """
+        cca = self.getParams('cpuVideoCompressionArgs')
+        gca = self.getParams('gpuVideoCompressionArgs')
+        for camSerial in self.videoWriteProcesses:
+            if camSerial in cca:
+                sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'cpuVideoCompressionArgs':cca[camSerial]}))
+            if camSerial in gca:
+                sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'gpuVideoCompressionArgs':gca[camSerial]}))
+
+    def transmitDaySubfolderSetting(self, *args):
         """Change day subfolder setting in all child processes.
 
         Args:
@@ -902,7 +930,7 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         if self.audioMonitor is None:
-            showinfo('Please initialize acquisition before configuring audio monitor')
+            showinfo('Not ready', 'Please initialize acquisition before configuring audio monitor')
             return
 
         p = self.getParams()
@@ -942,7 +970,7 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         if len(self.cameraMonitors) == 0:
-            showinfo('Please initialize acquisition before configuring audio monitor')
+            showinfo('Not ready', 'Please initialize acquisition before configuring audio monitor')
             return
 
         # Get current video monitor display size, to use as default
@@ -1411,6 +1439,14 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         sendMessage(self.mergeProcess, (Messages.SETPARAMS, params))
+
+    def refreshCameraSettingsControls(self):
+        for camSerial in self.cameraSettingsWidgets:
+            self.cameraSettingsWidgets[camSerial].destroy()
+        camSerials = psu.discoverCameras()
+        for camSerial in camSerials:
+
+
 
     def audioWriteEnableChangeHandler(self, *args):
         """Handle changes in audioWriteEnable
@@ -3285,7 +3321,9 @@ him know. Otherwise, I had nothing to do with it.
                     scheduleEnabled=p['scheduleEnabled'],
                     scheduleStartTime=p['scheduleStartTime'],
                     scheduleStopTime=p['scheduleStopTime'],
-                    enableWrite=videoWriteEnable
+                    enableWrite=videoWriteEnable,
+                    gpuCompressionArgs=p['gpuVideoCompressionArgs'],
+                    cpuCompressionArgs=p['cpuVideoCompressionArgs'],
                     )
                 gpuCount += 1
             elif p["triggerMode"] == 'None':
@@ -3601,10 +3639,11 @@ him know. Otherwise, I had nothing to do with it.
         self.acquisitionControlFrame.grid(   row=0, column=0, sticky=tk.NSEW)
         self.statusFrame.grid(               row=1, column=0, sticky=tk.NSEW)
         self.acquisitionParametersFrame.grid(row=2, column=0, sticky=tk.NSEW)
-        self.mergeFrame.grid(                row=3, column=0, sticky=tk.NSEW)
-        self.fileSettingsFrame.grid(         row=4, column=0, sticky=tk.NSEW)
-        self.scheduleFrame.grid(             row=5, column=0, sticky=tk.NSEW)
-        self.triggerFrame.grid(              row=6, column=0, sticky=tk.NSEW)
+        self.cameraSettingsFrame.grid(       row=3, column=0, sticky=tk.NSEW)
+        self.mergeFrame.grid(                row=4, column=0, sticky=tk.NSEW)
+        self.fileSettingsFrame.grid(         row=5, column=0, sticky=tk.NSEW)
+        self.scheduleFrame.grid(             row=6, column=0, sticky=tk.NSEW)
+        self.triggerFrame.grid(              row=7, column=0, sticky=tk.NSEW)
 
         #### Children of self.statusFrame
         self.childStatusText.grid()
@@ -3642,6 +3681,12 @@ him know. Otherwise, I had nothing to do with it.
         self.writeEnableOnHWSignalCheckbutton.grid(row=0, column=1)
         self.selectAcquisitionHardwareButton.grid(  row=4, column=0, columnspan=4, sticky=tk.NSEW)
         self.acquisitionHardwareText.grid(          row=5, column=0, columnspan=4)
+
+        #### Children of self.acquisitionParametersFrame
+        self.refreshCameraSettingsButton.grid(row=0, column=0)
+        self.cameraSettingsSubFrame.grid(row=1, column=0)
+        for row, camSerial in enumerate(self.cameraSettingsWidgets):
+            self.cameraSettingsWidgets[camSerial].grid(row=row, column=0)
 
         #### Children of self.mergeFrame
         self.mergeFilesCheckbutton.grid(            row=1, column=0, sticky=tk.NW)
