@@ -69,6 +69,18 @@ except:
 
 ICON_PATH = r'Resources\PyVAQ.ico'
 
+
+BG_COLOR = '#eeeeff'
+
+COLLAPSABLE_FRAME_STYLE = {
+    'relief':tk.GROOVE,
+    'borderwidth':3,
+    'bg':BG_COLOR
+    }
+COLLAPSABLE_FRAME_BUTTON_STYLE = {
+    'bg':BG_COLOR
+}
+
 #plt.style.use("dark_background")
 
 np.set_printoptions(linewidth=200)
@@ -257,17 +269,6 @@ class PyVAQ:
 
         ########### GUI WIDGETS #####################
 
-        BG_COLOR = '#eeeeff'
-
-        collapsableFrameStyle = {
-            'relief':tk.GROOVE,
-            'borderwidth':3,
-            'bg':BG_COLOR
-            }
-        collapsableFrameButtonStyle = {
-            'bg':BG_COLOR
-        }
-
         self.mainFrame = ttk.Frame(self.master)
 
         self.menuBar = tk.Menu(self.master, tearoff=False)
@@ -332,10 +333,10 @@ class PyVAQ:
 
         self.controlFrame = ttk.Frame(self.mainFrame)
 
-        self.statusFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Status", **collapsableFrameStyle); self.statusFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        self.statusFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Status", **COLLAPSABLE_FRAME_STYLE); self.statusFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         self.childStatusText = tk.Text(self.statusFrame, tabs=('7c',))
 
-        self.acquisitionControlFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Control", **collapsableFrameStyle); self.acquisitionControlFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        self.acquisitionControlFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Control", **COLLAPSABLE_FRAME_STYLE); self.acquisitionControlFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         self.acquisitionControlFrame.expand()
         # self.acquisitionFrame = ttk.LabelFrame(self.controlFrame, text="Acquisition")
 
@@ -344,7 +345,7 @@ class PyVAQ:
         self.restartAcquisitionButton =         ttk.Button(self.acquisitionControlFrame, text='Restart acquisition', command=self.restartAcquisition)
         self.shutDownAcquisitionButton =        ttk.Button(self.acquisitionControlFrame, text='Shut down acquisition', command=self.shutDownAcquisition)
 
-        self.acquisitionParametersFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Parameters", **collapsableFrameStyle); self.acquisitionParametersFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        self.acquisitionParametersFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Parameters", **COLLAPSABLE_FRAME_STYLE); self.acquisitionParametersFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
 
         self.audioFrequencyFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Audio freq. (Hz)", style='SingleContainer.TLabelframe')
         self.audioFrequencyVar =    tk.StringVar(); self.audioFrequencyVar.set("44100")
@@ -394,13 +395,13 @@ class PyVAQ:
 
         self.chunkSizeVar =         tk.StringVar(); self.chunkSizeVar.set(1000)
 
-        self.cameraSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Camera settings", **collapsableFrameStyle); self.cameraSettingsFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        self.cameraSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Camera settings", **COLLAPSABLE_FRAME_STYLE); self.cameraSettingsFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
 
         self.refreshCameraSettingsButton = ttk.Button(self.cameraSettingsFrame, text="Refresh", command=self.refreshCameraSettingsControls)
-        self.cameraSettingsSubFrame = tk.Frame(self.cameraSettings)
+        self.cameraSettingsSubFrame = tk.Frame(self.cameraSettingsFrame)
         self.cameraSettingsWidgets = {}
 
-        self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", **collapsableFrameStyle); self.mergeFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", **COLLAPSABLE_FRAME_STYLE); self.mergeFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         # self.mergeFrame = ttk.LabelFrame(self.acquisitionFrame, text="AV File merging")
 
         self.mergeFileWidget = FileWritingEntry(
@@ -436,13 +437,13 @@ class PyVAQ:
         self.mergeCompression = ttk.Combobox(self.mergeCompressionFrame, textvariable=self.mergeCompressionVar, values=AVMerger.COMPRESSION_OPTIONS, width=12)
         self.mergeCompressionVar.trace('w', lambda *args: self.changeAVMergerParams(compression=self.mergeCompressionVar.get()))
 
-        self.fileSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="File writing settings", **collapsableFrameStyle); self.fileSettingsFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        self.fileSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="File writing settings", **COLLAPSABLE_FRAME_STYLE); self.fileSettingsFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
 
         self.daySubfoldersVar = tk.BooleanVar(); self.daySubfoldersVar.set(True)
         self.daySubfoldersCheckbutton = ttk.Checkbutton(self.fileSettingsFrame, text="File in day subfolders", variable=self.daySubfoldersVar)
         self.daySubfoldersVar.trace('w', lambda *args: self.transmitDaySubfolderSetting())
 
-        self.scheduleFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Recording Schedule", **collapsableFrameStyle); self.scheduleFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        self.scheduleFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Recording Schedule", **COLLAPSABLE_FRAME_STYLE); self.scheduleFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
 
         self.scheduleEnabledVar = tk.BooleanVar(); self.scheduleEnabledVar.set(False)
         self.scheduleEnabledVar.trace('w', self.updateChildSchedulingState)
@@ -452,7 +453,7 @@ class PyVAQ:
         self.scheduleStopTimeVar = TimeVar(); self.scheduleStopTimeVar.trace('w', self.updateChildSchedulingState)
         self.scheduleStopTimeEntry = TimeEntry(self.scheduleFrame, text="Stop time", timevar=self.scheduleStopTimeVar, style=self.style)
 
-        self.triggerFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Triggering", **collapsableFrameStyle); self.triggerFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        self.triggerFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Triggering", **COLLAPSABLE_FRAME_STYLE); self.triggerFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         # self.triggerFrame = ttk.LabelFrame(self.controlFrame, text='Triggering')
 
         self.triggerModes = ['Manual', 'Audio', 'Continuous', 'SimpleContinuous', 'None']
@@ -1444,9 +1445,13 @@ him know. Otherwise, I had nothing to do with it.
         for camSerial in self.cameraSettingsWidgets:
             self.cameraSettingsWidgets[camSerial].destroy()
         camSerials = psu.discoverCameras()
+        self.updateAllCamerasAttributes()
         for camSerial in camSerials:
+            self.cameraSettingsWidgets[camSerial] = cf.CollapsableFrame(self.cameraSettingsSubFrame, collapseText=camSerial, **COLLAPSABLE_FRAME_STYLE)
+            self.cameraSettingsWidgets[camSerial].stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
+            psu.createCameraAttributeBrowser(self.cameraSettingsWidgets[camSerial], camSerial)
 
-
+        self.update()
 
     def audioWriteEnableChangeHandler(self, *args):
         """Handle changes in audioWriteEnable
@@ -1865,107 +1870,6 @@ him know. Otherwise, I had nothing to do with it.
             # Schedule another automatic call to autoUpdateAudioMonitors
             period = int(round(1000.0/(2*self.monitorMasterFrameRate)))
             self.videoMonitorUpdateJob = self.master.after(period, self.autoUpdateVideoMonitors)
-
-    def createCameraAttributeBrowser(self, camSerial):
-        """Create a window allowing user to browse camera settings.
-
-        Args:
-            camSerial (str): String representing the serial number of a camera
-                currently attached to the computer
-
-        Returns:
-            None
-
-        """
-        main = tk.Toplevel()
-        nb = ttk.Notebook(main)
-        nb.grid(row=0)
-        tooltipLabel = ttk.Label(main, text="temp")
-        tooltipLabel.grid(row=1)
-
-        #self.cameraAttributesWidget[camSerial]
-        widgets = self.createAttributeBrowserNode(self.cameraAttributes[camSerial], nb, tooltipLabel, 1)
-
-    def createAttributeBrowserNode(self, attributeNode, parent, tooltipLabel, gridRow):
-        """Create widgets for one camera attribute node in the browser.
-
-        See createCameraAttributeBrowser
-
-        Args:
-            attributeNode (type): Description of parameter `attributeNode`.
-            parent (type): Description of parameter `parent`.
-            tooltipLabel (type): Description of parameter `tooltipLabel`.
-            gridRow (type): Description of parameter `gridRow`.
-
-        Returns:
-            dict: Dictionary containing widgets created, organized by type
-
-        """
-        frame = ttk.Frame(parent)
-        frame.bind("<Enter>", lambda event: tooltipLabel.config(text=attributeNode["tooltip"]))  # Set tooltip rollover callback
-        frame.grid(row=gridRow)
-
-        # syncPrint()
-        # pp = pprint.PrettyPrinter(indent=1, depth=1)
-        # pp.pprint(attributeNode)
-        # syncPrint.log()
-
-        widgets = [frame]
-        childWidgets = []
-        childCategoryHolder = None
-        childCategoryWidgets = []
-
-        if attributeNode['type'] == "category":
-            children = []
-            parent.add(frame, text=attributeNode['displayName'])
-            if len(attributeNode['subcategories']) > 0:
-                # If this category has subcategories, create a notebook to hold them
-                childCategoryHolder = ttk.Notebook(frame)
-                childCategoryHolder.grid(row=0)
-                widgets.append(childCategoryHolder)
-                for subcategoryAttributeNode in attributeNode['subcategories']:
-                    childCategoryWidgets.append(self.createAttributeBrowserNode(subcategoryAttributeNode, childCategoryHolder, tooltipLabel, 0))
-            for k, childAttributeNode in enumerate(attributeNode['children']):
-                childWidgets.append(self.createAttributeBrowserNode(childAttributeNode, frame, tooltipLabel, k+1))
-        else:
-            if attributeNode['accessMode'] == "RW":
-                # Read/write attribute
-                accessState = 'normal'
-            else:
-                # Read only attribute
-                accessState = 'readonly'
-            if attributeNode['type'] == "command":
-                commandButton = ttk.Button(frame, text=attributeNode['displayName'])
-                commandButton.grid()
-                widgets.append(commandButton)
-            elif attributeNode['type'] == "enum":
-                enumLabel = ttk.Label(frame, text=attributeNode['displayName'])
-                enumLabel.grid(column=0, row=0)
-                options = list(attributeNode['options'].values())
-                enumSelector = ttk.Combobox(frame, state=accessState, values=options)
-                enumSelector.set(attributeNode['value'][1])
-                enumSelector.grid(column=1, row=0)
-                widgets.append(enumLabel)
-                widgets.append(enumSelector)
-            else:
-                entryLabel = ttk.Label(frame, text=attributeNode['displayName'])
-                entryLabel.grid(column=0, row=0)
-                entry = ttk.Entry(frame, state=accessState)
-                entry.insert(0, attributeNode['value'])
-                entry.grid(column=1, row=0)
-                widgets.append(entryLabel)
-                widgets.append(entry)
-
-        return {'widgets':widgets, 'childWidgets':childWidgets, 'childCategoryWidgets':childCategoryWidgets, 'childCategoryHolder':childCategoryHolder}
-
-    def updateAllCamerasAttributes(self):
-        """Update the current camera attributes from some camera??.
-
-        Returns:
-            None
-
-        """
-        self.cameraAttributes = psu.getAllCamerasAttributes()
 
     def getQueueSizes(self, verbose=True):
         """Determine the sizes of the various queues used by child processes
@@ -3686,7 +3590,7 @@ him know. Otherwise, I had nothing to do with it.
         self.refreshCameraSettingsButton.grid(row=0, column=0)
         self.cameraSettingsSubFrame.grid(row=1, column=0)
         for row, camSerial in enumerate(self.cameraSettingsWidgets):
-            self.cameraSettingsWidgets[camSerial].grid(row=row, column=0)
+            self.cameraSettingsWidgets[camSerial].grid(row=row, column=0, sticky=tk.NW)
 
         #### Children of self.mergeFrame
         self.mergeFilesCheckbutton.grid(            row=1, column=0, sticky=tk.NW)

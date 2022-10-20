@@ -3371,8 +3371,7 @@ class VideoAcquirer(StateMachineProcess):
                         cam = camList.GetBySerial(self.camSerial)
                         cam.Init()
 
-                        nodemap = cam.GetNodeMap()
-                        self.setCameraAttributes(nodemap, self.acquireSettings)
+                        psu.setCameraAttributes(self.acquireSettings, cam=cam)
                         if self.verbose > 2: self.log("...camera initialization complete")
 
                         monitorFramePeriod = 1.0/self.monitorMasterFrameRate
@@ -3601,34 +3600,6 @@ class VideoAcquirer(StateMachineProcess):
 
         self.flushStdout()
         self.updatePublishedState(States.DEAD)
-
-    def setCameraAttribute(self, nodemap, attributeName, attributeValue, type='enum'):
-        # Set camera attribute. Return True if successful, False otherwise.
-        if self.verbose >= 1: self.log('Setting', attributeName, 'to', attributeValue, 'as', type)
-        nodeAttribute = psu.nodeAccessorTypes[type](nodemap.GetNode(attributeName))
-        if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsWritable(nodeAttribute):
-            if self.verbose >= 0: self.log('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (enum retrieval). Aborting...')
-            return False
-
-        if type == 'enum':
-            # Retrieve entry node from enumeration node
-            nodeAttributeValue = nodeAttribute.GetEntryByName(attributeValue)
-            if not PySpin.IsAvailable(nodeAttributeValue) or not PySpin.IsReadable(nodeAttributeValue):
-                if self.verbose >= 0: self.log('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (entry retrieval). Aborting...')
-                return False
-
-            # Set value
-            attributeValue = nodeAttributeValue.GetValue()
-            nodeAttribute.SetIntValue(attributeValue)
-        else:
-            nodeAttribute.SetValue(attributeValue)
-        return True
-
-    def setCameraAttributes(self, nodemap, attributeValueTriplets):
-        for attribute, value, type in attributeValueTriplets:
-            result = self.setCameraAttribute(nodemap, attribute, value, type=type)
-            if not result:
-                self.log("Failed to set", str(attribute), " to ", str(value))
 
 class SimpleVideoWriter(StateMachineProcess):
     # Human-readable states
