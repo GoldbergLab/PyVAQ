@@ -2694,11 +2694,10 @@ class SimpleAudioWriter(StateMachineProcess):
                         numSamplesInCurrentFile += audioChunk.getSampleCount()
                         numSamplesInCurrentSeries += audioChunk.getSampleCount()
 
-                        # Calculate how many more samples needed to complete the file
-                        samplesUntilEOF = floor(numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile))
-
                         if self.verbose >= 3:
                             self.log('audio file num: {num}'.format(num=audioFileCount))
+                            self.log('  pre-chunk samplesUntilEOF   = {ns}'.format(ns=samplesUntilEOF))
+                            self.log('  chunk size                  = {ns}'.format(ns=audioChunk.getSampleCount()))
                             self.log('  numSamplesInCurrentFile     = {ns}'.format(ns=numSamplesInCurrentFile))
                             self.log('  numSamplesInCurrentSeries   = {ns}'.format(ns=numSamplesInCurrentSeries))
                             self.log("Wrote audio chunk {id}".format(id=audioChunk.id))
@@ -2717,7 +2716,7 @@ class SimpleAudioWriter(StateMachineProcess):
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     elif msg in ['', Messages.START]:
-                        if samplesUntilEOF == 0:
+                        if (numSamplesPerFile - numSamplesInCurrentFile) < 1:
                             # We've reached the desired sample count. Start a new audio file.
                             self.nextState = States.AUDIOINIT
                             # If requested, merge with video
@@ -2739,7 +2738,7 @@ class SimpleAudioWriter(StateMachineProcess):
                             else:
                                 if self.verbose >= 3:
                                     self.log('No merge message queue available, cannot send to AVMerger')
-                        elif samplesUntilEOF > 0:
+                        elif (numSamplesPerFile - numSamplesInCurrentFile) >= 1:
                             # Not enough audio samples written to this file yet. Keep writing.
                             self.nextState = States.WRITING
                         else:
