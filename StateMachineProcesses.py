@@ -2657,13 +2657,7 @@ class SimpleAudioWriter(StateMachineProcess):
                         self.log("Audio queue size: ", self.audioQueue.qsize())
 
                     # Calculate how many more samples needed to complete the file
-                    samplesUntilEOF = numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile)
-                    if samplesUntilEOF < 1:
-                        # Can't write a fractional frame - this video is actually done
-                        samplesUntilEOF = floor(samplesUntilEOF + numSamplesPerFile)
-                    else:
-                        # Can't write a fractional frame
-                        samplesUntilEOF = floor(samplesUntilEOF)
+                    samplesUntilEOF = floor(numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile))
 
                     audioChunk = self.getNextChunk()
 
