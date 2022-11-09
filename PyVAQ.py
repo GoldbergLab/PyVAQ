@@ -2635,6 +2635,8 @@ him know. Otherwise, I had nothing to do with it.
         if path is not None and len(path) > 0:
             with open(path, 'r') as f:
                 params = json.loads(f.read())
+            self.log('Loading settings from:')
+            self.log('    ', path)
             if 'scheduleStartTime' in params:
                 params['scheduleStartTime'] = serializableToTime(params['scheduleStartTime'])
             if 'scheduleStopTime' in params:
