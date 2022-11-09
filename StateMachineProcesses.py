@@ -2367,10 +2367,15 @@ class AudioAcquirer(StateMachineProcess):
                             self.log('    Analysis:', self.analysisQueue.qsize())
                     except nidaqmx.errors.DaqError as error:
                         if self.verbose >= 0:
-                            if error.error_type == nidaqmx.error_codes.DAQmxErrors['OPERATION_TIMED_OUT']:
-                                self.log("Audio Chunk acquisition timed out.")
+                            if error.error_type == nidaqmx.error_codes.DAQmxErrors.OPERATION_TIMED_OUT:
+                                self.log("Audio chunk acquisition timed out.")
+                                self.log(str(error))
+                            if error.error_type == nidaqmx.error_codes.DAQmxErrors.SAMPLES_NOT_YET_AVAILABLE:
+                                self.log("DAQ not ready with audio samples.")
+                                self.log(str(error))
                             else:
-                                self.log("Unrecognized DAQ error encountered during audio acquisition")
+                                self.log("Unrecognized DAQ error encountered during audio acquisition:")
+                                self.log(str(error))
                                 raise(error)
 
                     # CHECK FOR MESSAGES
