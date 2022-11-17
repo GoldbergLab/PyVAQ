@@ -247,8 +247,6 @@ class CameraMonitor(ttk.LabelFrame):
         # Initialize widget with idle image
         self.idle()
 
-#       self.cameraAttributeBrowserButton = ttk.Button(vFrame, text="Attribute browser", command=lambda:self.createCameraAttributeBrowser(camSerial))
-
     def getDisplaySize(self):
         return self.displaySize
     def setDisplaySize(self, newSize):
@@ -278,16 +276,6 @@ class CameraMonitor(ttk.LabelFrame):
             self.enableViewerCheckButton["fg"] = 'green'
         else:
             self.enableViewerCheckButton["fg"] = 'red'
-
-    def createCameraAttributeBrowser(self, camSerial):
-        main = tk.Toplevel()
-        nb = ttk.Notebook(main)
-        nb.grid(row=0)
-        tooltipLabel = ttk.Label(main, text="temp")
-        tooltipLabel.grid(row=1)
-
-        #self.cameraAttributesWidget[camSerial]
-        widgets = self.createAttributeBrowserNode(self.cameraAttributes[camSerial], nb, tooltipLabel, 1)
 
     def createAttributeBrowserNode(self, attributeNode, parent, tooltipLabel, gridRow):
         frame = ttk.Frame(parent)
