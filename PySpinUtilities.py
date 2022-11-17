@@ -711,6 +711,26 @@ def getAllCamerasAttributes(camSerials=None):
         cameraAttributes[camSerial] = getAllCameraAttributes(camSerial=camSerial)
     return cameraAttributes
 
+def flattenCameraAttributes(attribute, path):
+    flatAttributes = []
+
+    if attribute['type'] == 'category':
+        for subAttribute in attribute['children'] + attribute['subcategories']:
+            flatAttributes.extend(
+                    flattenCameraAttributes(subAttribute, path + [attribute['displayName']])
+                )
+    else:
+        flatAttributes.append(dict(
+            name=attribute['name'],
+            displayName=attribute['displayName'],
+            value=attribute['value'],
+            options=attribute['options'],
+            accessMode=attribute['accessMode'],
+            type=attribute['type'],
+            path=path
+        ))
+    return flatAttributes
+
 def createCameraAttributeBrowser(container, camSerial):
     """Create a window allowing user to browse camera settings.
 
