@@ -311,7 +311,6 @@ class CameraConfigPanel(tk.Frame):
         attributeName = attribute['name']
         attributeValue = self.valueVar.get()
         attributeType = attribute['type']
-        breakpoint()
         psu.setCameraAttribute(attributeName, attributeValue, camSerial=self.cameraVar.get(), attributeType=attributeType, nodemap='NodeMap')
 
         self.updateCameraAttributes()
@@ -337,5 +336,5 @@ class CameraConfigPanel(tk.Frame):
         if attribute is None:
             self.categoryVar.set('')
         else:
-            path = ' > '.join(attribute['path'])
+            path = ' > '.join(attribute['path'][1:])
             self.categoryVar.set(path)
