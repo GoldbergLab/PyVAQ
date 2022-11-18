@@ -525,14 +525,14 @@ def setCameraAttribute(attributeName, attributeValue, cam=None, attributeType='e
 
     nodeAttribute = nodeAccessorTypes[attributeType](nodemap.GetNode(attributeName))
     if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsWritable(nodeAttribute):
-        # if self.verbose >= 0: self.log('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (enum retrieval). Aborting...')
+        # print('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (enum retrieval). Aborting...')
         return False
 
     if attributeType == 'enum':
         # Retrieve entry node from enumeration node
         nodeAttributeValue = nodeAttribute.GetEntryByName(attributeValue)
         if not PySpin.IsAvailable(nodeAttributeValue) or not PySpin.IsReadable(nodeAttributeValue):
-            # if self.verbose >= 0: self.log('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (entry retrieval). Aborting...')
+            # print('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (entry retrieval). Aborting...')
             return False
 
         # Set value
@@ -553,9 +553,9 @@ def setCameraAttributes(attributeValueTriplets, cam=None, nodemap='NodeMap'):
 
     results = {}
     for attribute, value, attributeType in attributeValueTriplets:
-        results[attribute] = self.setCameraAttribute(attribute, value, attributeType=attributeType, cam=cam, nodemap=nodemap)
+        results[attribute] = setCameraAttribute(attribute, value, attributeType=attributeType, cam=cam, nodemap=nodemap)
         # if not result:
-            # self.log("Failed to set", str(attribute), " to ", str(value))
+            # print("Failed to set", str(attribute), " to ", str(value))
     return results
 
 @handleCam
@@ -747,8 +747,8 @@ def createCameraAttributeBrowser(container, camSerial):
     tooltipLabel = ttk.Label(container, text="temp")
     tooltipLabel.grid(row=1)
 
-    #self.cameraAttributesWidget[camSerial]
-    widgets = self.createAttributeBrowserNode(self.cameraAttributes[camSerial], nb, tooltipLabel, 1)
+    attributes = getAllCamerasAttribute(camSerial=camSerial);
+    widgets = createAttributeBrowserNode(attributes, nb, tooltipLabel, 1)
 
 def createAttributeBrowserNode(attributeNode, parent, tooltipLabel, gridRow):
     """Create widgets for one camera attribute node in the browser.
@@ -788,9 +788,9 @@ def createAttributeBrowserNode(attributeNode, parent, tooltipLabel, gridRow):
             childCategoryHolder.grid(row=0)
             widgets.append(childCategoryHolder)
             for subcategoryAttributeNode in attributeNode['subcategories']:
-                childCategoryWidgets.append(self.createAttributeBrowserNode(subcategoryAttributeNode, childCategoryHolder, tooltipLabel, 0))
+                childCategoryWidgets.append(createAttributeBrowserNode(subcategoryAttributeNode, childCategoryHolder, tooltipLabel, 0))
         for k, childAttributeNode in enumerate(attributeNode['children']):
-            childWidgets.append(self.createAttributeBrowserNode(childAttributeNode, frame, tooltipLabel, k+1))
+            childWidgets.append(createAttributeBrowserNode(childAttributeNode, frame, tooltipLabel, k+1))
     else:
         if attributeNode['accessMode'] == "RW":
             # Read/write attribute
@@ -821,16 +821,6 @@ def createAttributeBrowserNode(attributeNode, parent, tooltipLabel, gridRow):
             widgets.append(entry)
 
     return {'widgets':widgets, 'childWidgets':childWidgets, 'childCategoryWidgets':childCategoryWidgets, 'childCategoryHolder':childCategoryHolder}
-
-def updateAllCamerasAttributes(self):
-    """Update the current camera attributes from some camera??.
-
-    Returns:
-        None
-
-    """
-    self.cameraAttributes = psu.getAllCamerasAttributes()
-
 
 # For debugging purposes
 if __name__ == "__main__":
