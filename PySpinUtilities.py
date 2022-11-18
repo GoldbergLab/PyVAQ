@@ -513,7 +513,7 @@ def getCameraAttribute(attributeName, attributeTypePtrFunction, cam=None, camSer
     return value
 
 @handleCam
-def setCameraAttribute(attributeName, attributeValue, cam=None, type='enum', nodemap='NodeMap'):
+def setCameraAttribute(attributeName, attributeValue, cam=None, attributeType='enum', nodemap='NodeMap'):
     # Set camera attribute. Return True if successful, False otherwise.
 
     if type(nodemap) == str:
@@ -523,12 +523,12 @@ def setCameraAttribute(attributeName, attributeValue, cam=None, type='enum', nod
         # nodemap is hopefully a PySpin.INodeMap instance
         pass
 
-    nodeAttribute = nodeAccessorTypes[type](nodemap.GetNode(attributeName))
+    nodeAttribute = nodeAccessorTypes[attributeType](nodemap.GetNode(attributeName))
     if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsWritable(nodeAttribute):
         # if self.verbose >= 0: self.log('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (enum retrieval). Aborting...')
         return False
 
-    if type == 'enum':
+    if attributeType == 'enum':
         # Retrieve entry node from enumeration node
         nodeAttributeValue = nodeAttribute.GetEntryByName(attributeValue)
         if not PySpin.IsAvailable(nodeAttributeValue) or not PySpin.IsReadable(nodeAttributeValue):
@@ -552,8 +552,8 @@ def setCameraAttributes(attributeValueTriplets, cam=None, nodemap='NodeMap'):
         pass
 
     results = {}
-    for attribute, value, type in attributeValueTriplets:
-        results[attribute] = self.setCameraAttribute(attribute, value, type=type, cam=cam, nodemap=nodemap)
+    for attribute, value, attributeType in attributeValueTriplets:
+        results[attribute] = self.setCameraAttribute(attribute, value, attributeType=attributeType, cam=cam, nodemap=nodemap)
         # if not result:
             # self.log("Failed to set", str(attribute), " to ", str(value))
     return results
@@ -836,7 +836,7 @@ def updateAllCamerasAttributes(self):
 if __name__ == "__main__":
     s = discoverCameras()[0]
     attributes = ['PixelFormat', 'PixelFormatInfoID', 'PixelFormatInfoSelector']
-    types = [PySpin.CEnumerationPtr, PySpin.CStringPtr, PySpin.CStringPtr]
-    for attribute, type in zip(attributes, types):
-        val = getCameraAttribute(attribute, type, camSerial=s, nodemap='NodeMap')
+    attributeTypes = [PySpin.CEnumerationPtr, PySpin.CStringPtr, PySpin.CStringPtr]
+    for attribute, attributeType in zip(attributes, attributeTypes):
+        val = getCameraAttribute(attribute, attributeType, camSerial=s, nodemap='NodeMap')
         print('{a}: {v}'.format(a=attribute, v=val))
