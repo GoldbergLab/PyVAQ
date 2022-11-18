@@ -3,6 +3,42 @@ import tkinter.ttk as ttk
 import PySpinUtilities as psu
 
 class CameraConfigPanel(tk.Frame):
+    """A tkinter widget allowing for FLIR camera configuration.
+
+    Args:
+        parent (widget): A container widget to be the CameraConfigPanel parent
+
+    Attributes:
+        camSerials (list of str): List of serial #s of available cameras
+        storedAttributes (dict of lists): A dict with camera serials as keys
+            containing a list of camera attributes
+        filterLabel (tk.Label): Label for the filter entry
+        filterVar (tk.StringVar): Variable containing filter text.
+        filterEntry (tk.Entry): Entry widget for filtering attributes.
+        reloadButton (tk.Button): Button for reloading attributes from camera
+        cameraLabel (tk.Label): Label for camera combobox.
+        cameraVar (tk.StringVar): Variable containing the currently selected
+            camera serial.
+        cameraList (ttk.Combobox): Dropdown list of currently available camera
+            serials.
+        attributeLabel (tk.Label): Label for the attribute entry.
+        attributeVar (tk.StringVar): Variable containing the currently selected
+            attribute
+        attributeList (ttk.Combobox): Dropdown list of filtered attributes
+        valueLabel (tk.Label): Label for value entry
+        valueVar (tk.StringVar): Variable containing the current attribute
+            value
+        valueEntry (tk.Entry): Entry for displaying/changing the current
+            attribute value
+        valueList (ttk.Combobox): Dropdown list for displaying/selecting enum
+            type attribute values
+        restoreButton (tk.Button): Button for restoring the stored attribute
+            value to the value entry
+        applyButton (tk.Button): Apply the attribute value to the camera
+        categoryLabel (tk.Label): Label for displaying category path of
+            currently selected attribute
+
+    """
     def __init__(self, parent):
         super().__init__(parent)
 
@@ -59,6 +95,18 @@ class CameraConfigPanel(tk.Frame):
         self.grid()
 
     def handleFilterChange(self, *args, **kwargs):
+        """React to a change in the filter text.
+
+        Update the attribute list by filtering
+
+        Args:
+            *args (type): Description of parameter `*args`.
+            **kwargs (type): Description of parameter `**kwargs`.
+
+        Returns:
+            type: Description of returned object.
+
+        """
         # self.attributeList.focus_set()
         # self.attributeList.event_generate('<Down>')
         # self.filterEntry.focus_set()
@@ -79,6 +127,13 @@ class CameraConfigPanel(tk.Frame):
         self.cameraList.current(0)
 
     def getCurrentCamSerial(self):
+        """Get the currently selected camera serial.
+
+        Returns:
+            str: The serial number of the selected camera
+
+        """
+
         idx = self.cameraList.current()
         if idx == -1:
             return None
@@ -107,6 +162,15 @@ class CameraConfigPanel(tk.Frame):
         self.updateCategoryList()
 
     def checkFilter(self, attribute):
+        """Check if an attribute matches the current filter text.
+
+        Args:
+            attribute (dict): A dict representing a camera attribute
+
+        Returns:
+            bool: A boolean representing whether or not the attribute matched
+
+        """
         filterText = self.filterVar.get().lower()
 
         if len(filterText) == 0:
@@ -141,6 +205,18 @@ class CameraConfigPanel(tk.Frame):
                 self.attributeVar.set(attributeNames[0])
 
     def handleAttributeChange(self, *args, **kwargs):
+        """React to a change in the attribute selection.
+
+        Update value and GUI state.
+
+        Args:
+            *args: Unused event arguments.
+            **kwargs: Unused event arguments.
+
+        Returns:
+            None
+
+        """
         self.updateValue()
         self.updateApplyButtonState()
 
@@ -172,6 +248,18 @@ class CameraConfigPanel(tk.Frame):
             self.valueVar.set(attribute['value'])
 
     def getAttribute(self, displayName=None):
+        """Get an attribute from the list of stored attributes by displayName.
+
+        If no displayName is given, the currently selected one is returned
+
+        Args:
+            displayName (str): displayName for selecting an attribute. Defaults to None.
+
+        Returns:
+            dict: a dict representing a camera attribute
+
+        """
+
         camSerial = self.getCurrentCamSerial()
         if camSerial is None:
             return None
