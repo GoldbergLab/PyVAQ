@@ -26,7 +26,9 @@ with Image.open(r'Resources\NoImages_000.png') as NO_IMAGES_IMAGE:
     NO_IMAGES_IMAGE.load()
 
 class AudioMonitor(ttk.LabelFrame):
-    def __init__(self, *args, historyLength=44100*2, displayAmplitude=5, autoscale=False, initialDirectory='', initialBaseFileName='', **kwargs):
+    def __init__(self, *args, historyLength=44100*2, displayAmplitude=5,
+        autoscale=False, initialDirectory='', initialBaseFileName='',
+        showFileWidgets=True, **kwargs):
         ttk.LabelFrame.__init__(self, *args, **kwargs)
 
         self.channels = []
@@ -35,6 +37,7 @@ class AudioMonitor(ttk.LabelFrame):
         self.displayAmplitude = displayAmplitude    # Max amplitude to display (if autoscale=False)
         self.autoscale = autoscale                  # Autoscale axes
         self.audioTraces = []                        # matplotlib line
+        self.showFileWidgets = showFileWidgets
 
         self.fileWidget = FileWritingEntry(
             self,
@@ -171,9 +174,14 @@ class AudioMonitor(ttk.LabelFrame):
         if len(self.channels) > 0:
             # No channels, it would look weird to display directory entry
             self.masterDisplayFrame.grid(row=0, column=0, columnspan=2)
-            self.fileWidget.grid(row=1, column=0, rowspan=2, sticky=tk.NSEW)
-            self.enableViewerCheckButton.grid(row=1, column=1)
-            self.enableWriteCheckButton.grid(row=2, column=1)
+            if self.showFileWidgets:
+                self.fileWidget.grid(row=1, column=0, rowspan=2, sticky=tk.NSEW)
+                self.enableViewerCheckButton.grid(row=1, column=1)
+                self.enableWriteCheckButton.grid(row=2, column=1)
+            else:
+                self.fileWidget.grid_remove()
+                self.enableViewerCheckButton.grid_remove()
+                self.enableWriteCheckButton.grid_remove()
         else:
             self.masterDisplayFrame.grid_forget()
             self.fileWidget.grid_forget()
@@ -211,7 +219,8 @@ class AudioMonitor(ttk.LabelFrame):
 class CameraMonitor(ttk.LabelFrame):
     def __init__(self, *args, displaySize=(400, 300),
                     camSerial='Unknown camera', speedText='Unknown speed',
-                    initialDirectory='', initialBaseFileName='', **kwargs):
+                    initialDirectory='', initialBaseFileName='',
+                    showFileWidgets=True, **kwargs):
         ttk.LabelFrame.__init__(self, *args, **kwargs)
         self.camSerial = camSerial
         self.config(text="{serial} ({speed})".format(serial=self.camSerial, speed=speedText))
@@ -219,6 +228,7 @@ class CameraMonitor(ttk.LabelFrame):
         self.canvas = tk.Canvas(self, width=self.displaySize[0], height=self.displaySize[1], borderwidth=2, relief=tk.SUNKEN)
         self.imageID = None
         self.currentImage = None
+        self.showFileWidgets = showFileWidgets
 
         self.isIdle = False  # Boolean flag indicating whether the monitor is actively sending images or not
 
@@ -240,9 +250,14 @@ class CameraMonitor(ttk.LabelFrame):
         self.updateEnableWriteCheckButton()
 
         self.canvas.grid(row=0, column=0, columnspan=2)
-        self.fileWidget.grid(row=1, column=0, rowspan=2, sticky=tk.NSEW)
-        self.enableViewerCheckButton.grid(row=1, column=1)
-        self.enableWriteCheckButton.grid(row=2, column=1)
+        if self.showFileWidgets:
+            self.fileWidget.grid(row=1, column=0, rowspan=2, sticky=tk.NSEW)
+            self.enableViewerCheckButton.grid(row=1, column=1)
+            self.enableWriteCheckButton.grid(row=2, column=1)
+        else:
+            self.fileWidget.grid_remove()
+            self.enableViewerCheckButton.grid_remove()
+            self.enableWriteCheckButton.grid_remove()
 
         # Initialize widget with idle image
         self.idle()
