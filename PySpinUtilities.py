@@ -711,13 +711,13 @@ def getAllCamerasAttributes(camSerials=None):
         cameraAttributes[camSerial] = getAllCameraAttributes(camSerial=camSerial)
     return cameraAttributes
 
-def flattenCameraAttributes(attribute, path):
+def flattenCameraAttributes(attribute, path=[]):
     flatAttributes = []
 
     if attribute['type'] == 'category':
         for subAttribute in attribute['children'] + attribute['subcategories']:
             flatAttributes.extend(
-                    flattenCameraAttributes(subAttribute, path + [attribute['displayName']])
+                    flattenCameraAttributes(subAttribute, path=path + [attribute['displayName']])
                 )
     else:
         flatAttributes.append(dict(

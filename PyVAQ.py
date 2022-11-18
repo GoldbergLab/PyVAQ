@@ -47,6 +47,7 @@ import CollapsableFrame as cf
 import PySpinUtilities as psu
 import ctypes
 from ffmpegWriter import DEFAULT_CPU_COMPRESSION_ARGS, DEFAULT_GPU_COMPRESSION_ARGS
+from CameraConfig import CameraConfigPanel
 
 VERSION='0.3.0'
 
@@ -397,9 +398,7 @@ class PyVAQ:
 
         self.cameraSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Camera settings", **COLLAPSABLE_FRAME_STYLE); self.cameraSettingsFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
 
-        self.refreshCameraSettingsButton = ttk.Button(self.cameraSettingsFrame, text="Refresh", command=self.refreshCameraSettingsControls)
-        self.cameraSettingsSubFrame = tk.Frame(self.cameraSettingsFrame)
-        self.cameraSettingsWidgets = {}
+        self.cameraConfigPanel = CameraConfigPanel(self.cameraSettingsFrame)
 
         self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", **COLLAPSABLE_FRAME_STYLE); self.mergeFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         # self.mergeFrame = ttk.LabelFrame(self.acquisitionFrame, text="AV File merging")
@@ -1440,18 +1439,6 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         sendMessage(self.mergeProcess, (Messages.SETPARAMS, params))
-
-    def refreshCameraSettingsControls(self):
-        for camSerial in self.cameraSettingsWidgets:
-            self.cameraSettingsWidgets[camSerial].destroy()
-        camSerials = psu.discoverCameras()
-        self.updateAllCamerasAttributes()
-        for camSerial in camSerials:
-            self.cameraSettingsWidgets[camSerial] = cf.CollapsableFrame(self.cameraSettingsSubFrame, collapseText=camSerial, **COLLAPSABLE_FRAME_STYLE)
-            self.cameraSettingsWidgets[camSerial].stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
-            psu.createCameraAttributeBrowser(self.cameraSettingsWidgets[camSerial], camSerial)
-
-        self.update()
 
     def audioWriteEnableChangeHandler(self, *args):
         """Handle changes in audioWriteEnable
@@ -3589,10 +3576,7 @@ him know. Otherwise, I had nothing to do with it.
         self.acquisitionHardwareText.grid(          row=5, column=0, columnspan=4)
 
         #### Children of self.acquisitionParametersFrame
-        self.refreshCameraSettingsButton.grid(row=0, column=0)
-        self.cameraSettingsSubFrame.grid(row=1, column=0)
-        for row, camSerial in enumerate(self.cameraSettingsWidgets):
-            self.cameraSettingsWidgets[camSerial].grid(row=row, column=0, sticky=tk.NW)
+        self.cameraConfigPanel.grid(row=1, column=0)
 
         #### Children of self.mergeFrame
         self.mergeFilesCheckbutton.grid(            row=1, column=0, sticky=tk.NW)
