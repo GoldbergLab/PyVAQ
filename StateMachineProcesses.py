@@ -3345,9 +3345,6 @@ class VideoAcquirer(StateMachineProcess):
         while True:
             # Publish updated state
             self.updatePublishedState()
-            cam = None
-            camList = None
-            system = None
 
             try:
 # VideoAcquirer: ******************** STOPPED *********************************
@@ -3374,6 +3371,9 @@ class VideoAcquirer(StateMachineProcess):
 # VideoAcquirer: ****************** INITIALIZING *********************************
                 elif self.state == States.INITIALIZING:
                     # DO STUFF
+                    cam = None
+                    camList = None
+                    system = None
                     self.frameRate = None
 
                     # Read actual frame rate from the Synchronizer process
@@ -3382,14 +3382,14 @@ class VideoAcquirer(StateMachineProcess):
                         time.sleep(0.1)
                     else:
                         self.frameRate = self.frameRateVar.value
-                        if self.verbose > 2: self.log("Initializing camera...")
+                        if self.verbose >= 2: self.log("Initializing camera...")
                         system = PySpin.System.GetInstance()
                         camList = system.GetCameras()
                         cam = camList.GetBySerial(self.camSerial)
                         cam.Init()
 
                         psu.setCameraAttributes(self.acquireSettings, cam=cam)
-                        if self.verbose > 2: self.log("...camera initialization complete")
+                        if self.verbose >= 2: self.log("...camera initialization complete")
 
                         monitorFramePeriod = 1.0/self.monitorMasterFrameRate
                         if self.verbose >= 1: self.log("Monitoring with period", monitorFramePeriod)
@@ -3436,7 +3436,7 @@ class VideoAcquirer(StateMachineProcess):
                         if self.verbose >= 2: self.log("No simultaneous start - retrying")
                         time.sleep(0.1)
 
-                    if self.verbose >= 3: self.log('Passed barrier')
+                    if self.verbose >= 2: self.log('Passed barrier')
 
                     # CHECK FOR MESSAGES
                     msg, arg = self.checkMessages(block=False)

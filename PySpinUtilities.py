@@ -539,13 +539,16 @@ def setCameraAttribute(attributeName, attributeValue, cam=None, attributeType='e
         attributeValue = nodeAttributeValue.GetValue()
         nodeAttribute.SetIntValue(attributeValue)
     else:
-        nodeAttribute.SetValue(attributeValue)
+        try:
+            nodeAttribute.SetValue(attributeValue, True)
+        except Exception:
+            breakpoint()
     return True
 
 @handleCam
 def setCameraAttributes(attributeValueTriplets, cam=None, nodemap='NodeMap'):
     if type(nodemap) == str:
-        # nodemap is a string indicating whichy type of nodemap to get from cam
+        # nodemap is a string indicating which type of nodemap to get from cam
         nodemap = nodeMapAccessorFunctions[nodemap](cam)
     else:
         # nodemap is hopefully a PySpin.INodeMap instance
@@ -595,6 +598,13 @@ def queryAttributeNode(nodePtr, nodeType):
                 value = None
         except:
             value = None
+        if value is not None:
+            if nodeTypeName == 'integer':
+                value = int(value)
+            elif nodeTypeName == 'float':
+                value = float(value)
+            elif nodeTypeName == 'boolean':
+                value = bool(int(value))
 
         try:
             symbolic  = node.GetSymbolic()

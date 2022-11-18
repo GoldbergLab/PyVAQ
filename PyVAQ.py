@@ -633,7 +633,7 @@ class PyVAQ:
             "numStreams":                       dict(get=self.getNumStreams,                                    set=self.setNumStreams),
             "numProcesses":                     dict(get=self.getNumProcesses,                                  set=self.setNumProcesses),
             "numSyncedProcesses":               dict(get=self.getNumSyncedProcesses,                            set=self.setNumSyncedProcesses),
-            "acquireSettings":                  dict(get=self.getCameraSettings,                               set=self.setAcquireSettings),
+            "acquireSettings":                  dict(get=self.getCameraSettings,                               set=self.setCameraSettings),
             "continuousTriggerPeriod":          dict(get=lambda:float(self.continuousTriggerPeriodVar.get()),   set=self.continuousTriggerPeriodVar.set),
             "audioTagContinuousTrigs":          dict(get=self.audioTagContinuousTrigsVar.get,                   set=self.audioTagContinuousTrigsVar.set),
             "daySubfolders":                    dict(get=self.daySubfoldersVar.get,                             set=self.daySubfoldersVar.set),
@@ -3024,7 +3024,11 @@ him know. Otherwise, I had nothing to do with it.
         """Get # of processes subject to synchronization in current config"""
         audioDAQChannels = self.getParams('audioDAQChannels')
         camSerials = self.getParams('camSerials')
-        return (len(audioDAQChannels)>0) + len(camSerials) + 1  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
+        if self.previewMode:
+            synchronizer = 0
+        else:
+            synchronizer = 1
+        return (len(audioDAQChannels)>0) + len(camSerials) + synchronizer  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
     def getCameraSettings(self):
         """Get the current set of camera settings.
 
@@ -3039,27 +3043,30 @@ him know. Otherwise, I had nothing to do with it.
                     ([[setting name]], [[setting value]], [[setting type]])
 
         """
-        gain = self.getParams('gain')
-        return [
-            ('AcquisitionMode', 'Continuous', 'enum'),
-            ('TriggerMode', 'Off', 'enum'),
-            ('TriggerSelector', 'FrameStart', 'enum'),
-            ('TriggerSource', 'Line0', 'enum'),
-            ('TriggerActivation', 'RisingEdge', 'enum'),
-            ('PixelFormat', 'BayerRG8', 'enum'),
-            # ('ExposureMode', 'TriggerWidth'),
-            # ('Width', 800, 'integer'),
-            # ('Height', 800, 'integer'),
-            ('TriggerMode', 'On', 'enum'),
-            ('GainAuto', 'Off', 'enum'),
-            ('Gain', gain, 'float'),
-            ('ExposureAuto', 'Off', 'enum'),
-            ('ExposureMode', 'TriggerWidth', 'enum')]
-#            ('ExposureTime', exposureTime, 'float')]
 
-    def setAcquireSettings(self, *args):
-        """Placeholder param setter indicating this property is not settable"""
-        raise NotImplementedError()
+        configuration = self.cameraConfigPanel.getCurrentConfiguration()
+        return configuration
+
+#         gain = self.getParams('gain')
+#         return [
+#             ('AcquisitionMode', 'Continuous', 'enum'),
+#             ('TriggerMode', 'Off', 'enum'),
+#             ('TriggerSelector', 'FrameStart', 'enum'),
+#             ('TriggerSource', 'Line0', 'enum'),
+#             ('TriggerActivation', 'RisingEdge', 'enum'),
+#             ('PixelFormat', 'BayerRG8', 'enum'),
+#             # ('ExposureMode', 'TriggerWidth'),
+#             # ('Width', 800, 'integer'),
+#             # ('Height', 800, 'integer'),
+#             ('TriggerMode', 'On', 'enum'),
+#             ('GainAuto', 'Off', 'enum'),
+#             ('Gain', gain, 'float'),
+#             ('ExposureAuto', 'Off', 'enum'),
+#             ('ExposureMode', 'TriggerWidth', 'enum')]
+# #            ('ExposureTime', exposureTime, 'float')]
+
+    def setCameraSettings(self, configuration):
+        self.cameraConfigPanel.setCurrentConfiguration(configuration)
 
     def waitForChildProcessesToStop(self, attempts=10, timeout=5):
         """Wait for all state machine child processes to stop.
