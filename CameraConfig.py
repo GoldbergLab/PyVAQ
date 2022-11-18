@@ -10,40 +10,45 @@ class CameraConfigPanel(tk.Frame):
         self.camSerials = []
         self.storedAttributes = {}
 
-        self.filterLabel = tk.Label(self, text='Filter')
+        self.filterLabel = tk.Label(self, text='Filter', justify=tk.RIGHT)
         self.filterVar = tk.StringVar()
+        self.filterVar.trace('w', self.handleFilterChange)
         self.filterEntry = tk.Entry(self, textvariable=self.filterVar)
 
-        self.reloadButton = tk.Button(self, text="Reload settings", command=self.updateCameraAttributes)
+        self.reloadButton = tk.Button(self, text="Reload settings from camera", command=self.updateCameraAttributes)
 
-        self.cameraLabel = tk.Label(self, text="Camera")
+        self.cameraLabel = tk.Label(self, text="Camera", justify=tk.LEFT)
         self.cameraVar = tk.StringVar()
-        self.cameraList = ttk.Combobox(self, textvariable=self.cameraVar)
+        self.cameraList = ttk.Combobox(self, textvariable=self.cameraVar, exportselection=0, width=12)
+        self.cameraList['state'] = 'readonly'
 
-        self.attributeLabel = tk.Label(self, text="Setting")
+        self.attributeLabel = tk.Label(self, text="Attribute", justify=tk.LEFT)
         self.attributeVar = tk.StringVar()
-        self.attributeList = ttk.Combobox(self, textvariable=self.attributeVar)
+        self.attributeVar.trace('w', self.handleAttributeChange)
+        self.attributeList = ttk.Combobox(self, textvariable=self.attributeVar, exportselection=0)
+        self.attributeList['state'] = 'readonly'
 
-        self.valueLabel = tk.Label(self, text="Value")
+        self.valueLabel = tk.Label(self, text="Value", justify=tk.LEFT)
         self.valueVar = tk.StringVar()
         # Either the value entry or the value list will be used depending on which type of attribute is selected
         self.valueEntry = tk.Entry(self, textvariable=self.valueVar)
-        self.valueList = ttk.Combobox(self, textvariable=self.valueVar)
+        self.valueList = ttk.Combobox(self, textvariable=self.valueVar, exportselection=0)
+        self.valueList['state'] = 'readonly'
 
         self.restoreButton = tk.Button(self, text="Restore current value", command=self.restoreCurrentValue)
         self.applyButton = tk.Button(self, text="Apply setting", command=self.applySetting)
 
         self.categoryLabel = tk.Label(self)
 
-        self.filterLabel.grid(row=1, column=0)
-        self.filterEntry.grid(row=1, column=1)
-        self.reloadButton.grid(row=1, column=2)
-        self.cameraLabel.grid(row=2, column=0)
+        self.filterLabel.grid(row=1, column=0, sticky=tk.W)
+        self.filterEntry.grid(row=1, column=1, sticky=tk.EW)
+        self.reloadButton.grid(row=1, column=2, columnspan=2, sticky=tk.E)
+        self.cameraLabel.grid(row=2, column=0, sticky=tk.W)
         self.cameraList.grid(row=3, column=0)
-        self.attributeLabel.grid(row=2, column=1)
+        self.attributeLabel.grid(row=2, column=1, sticky=tk.W)
         self.attributeList.grid(row=3, column=1)
-        self.valueLabel.grid(row=2, column=2, columnspan=2)
-        self.valueEntry.grid(row=3, column=2, columnspan=2)
+        self.valueLabel.grid(row=2, column=2, columnspan=2, sticky=tk.W)
+        self.valueEntry.grid(row=3, column=2, columnspan=2, sticky=tk.EW)
         self.valueList.grid(row=3, column=2, columnspan=2)
         self.restoreButton.grid(row=4, column=2)
         self.applyButton.grid(row=4, column=3)
@@ -52,6 +57,14 @@ class CameraConfigPanel(tk.Frame):
         self.updateCameraAttributes()
 
         self.grid()
+
+    def handleFilterChange(self, *args, **kwargs):
+        # self.attributeList.focus_set()
+        # self.attributeList.event_generate('<Down>')
+        # self.filterEntry.focus_set()
+        # self.filterEntry.event_generate('<KeyPress-X>')
+        # print('hi')
+        self.updateAttributes()
 
     def updateCameraList(self):
         """Rediscover what cameras are available, update camera dropdown.
@@ -93,6 +106,22 @@ class CameraConfigPanel(tk.Frame):
         self.updateApplyButtonState()
         self.updateCategoryList()
 
+    def checkFilter(self, attribute):
+        filterText = self.filterVar.get().lower()
+
+        if len(filterText) == 0:
+            return True
+
+        if filterText in attribute['name'].lower():
+            return True
+        if filterText in attribute['displayName'].lower():
+            return True
+        for category in attribute['path']:
+            if filterText in category.lower():
+                return True
+
+        return False
+
     def updateAttributes(self):
         """Use stored attributes to update widgets for current camera.
 
@@ -106,10 +135,14 @@ class CameraConfigPanel(tk.Frame):
 
         camSerial = self.getCurrentCamSerial()
         if camSerial is not None:
-            attributeNames = [attribute['displayName'] for attribute in self.storedAttributes[camSerial]]
+            attributeNames = [attribute['displayName'] for attribute in self.storedAttributes[camSerial] if self.checkFilter(attribute)]
             self.attributeList['values'] = attributeNames
             if len(attributeNames) > 0:
                 self.attributeVar.set(attributeNames[0])
+
+    def handleAttributeChange(self, *args, **kwargs):
+        self.updateValue()
+        self.updateApplyButtonState()
 
     def updateValue(self):
         """Update value display to reflect the current stored value
@@ -127,13 +160,16 @@ class CameraConfigPanel(tk.Frame):
             self.valueVar.set('')
             return
         if attribute['type'] == 'enum':
-            self.valueList['values'] = attribute['options']
+            self.valueList['values'] = list(attribute['options'].values())
             self.valueEntry.grid_remove()
             self.valueList.grid()
         else:
             self.valueList.grid_remove()
             self.valueEntry.grid()
-        self.valueVar.set(attribute['value'])
+        if attribute['type'] == 'enum':
+            self.valueVar.set(attribute['value'][1])
+        else:
+            self.valueVar.set(attribute['value'])
 
     def getAttribute(self, displayName=None):
         camSerial = self.getCurrentCamSerial()
@@ -158,9 +194,11 @@ class CameraConfigPanel(tk.Frame):
         if attribute is None or attribute['accessMode'] == 'RO':
             # Attribute is read only - disable apply button
             self.applyButton['state'] = tk.DISABLED
+            self.valueEntry['state'] = tk.DISABLED
         elif attribute['accessMode'] == 'RW':
             # Attribute is read/write - enable apply button
             self.applyButton['state'] = tk.NORMAL
+            self.valueEntry['state'] = tk.NORMAL
 
     def applySetting(self):
         """Attempt to apply the setting to the camera.
@@ -176,7 +214,8 @@ class CameraConfigPanel(tk.Frame):
         attributeName = attribute['name']
         attributeValue = self.valueVar.get()
         attributeType = attribute['type']
-        psu.setCameraAttribute(attributeName, attributeValue, camSerial=self.cameraVar.get(), type=attributeType, nodemap='NodeMap')
+        breakpoint()
+        psu.setCameraAttribute(attributeName, attributeValue, camSerial=self.cameraVar.get(), attributeType=attributeType, nodemap='NodeMap')
 
         self.updateCameraAttributes()
 
