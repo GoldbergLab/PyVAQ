@@ -2725,7 +2725,7 @@ class SimpleAudioWriter(StateMachineProcess):
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     elif msg in ['', Messages.START]:
-                        if (numSamplesPerFile - numSamplesInCurrentFile) > 0 and (numSamplesPerFile - numSamplesInCurrentFile) < 1:
+                        if (numSamplesPerFile - numSamplesInCurrentFile) > -1 and (numSamplesPerFile - numSamplesInCurrentFile) < 1:
                             # We've reached the desired sample count. Start a new audio file.
                             self.nextState = States.AUDIOINIT
                             # If requested, merge with video
