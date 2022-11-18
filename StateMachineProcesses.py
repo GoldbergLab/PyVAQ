@@ -3261,6 +3261,8 @@ class VideoAcquirer(StateMachineProcess):
                 requestedFrameRate=None,
                 # acquisitionBufferSize=100,
                 bufferSizeSeconds=2.2,
+                sendToWriter=True,
+                sendToMonitor=True,
                 monitorFrameRate=15,
                 ready=None,                        # Synchronization barrier to ensure everyone's ready before beginning
                 **kwargs):
@@ -3285,36 +3287,44 @@ class VideoAcquirer(StateMachineProcess):
         self.pixelFormat = psu.getPixelFormat(camSerial=self.camSerial)
         if self.verbose >= 2: print('Camera pixel format is:', self.pixelFormat)
 
-        self.imageQueue = SharedImageSender(
-            width=videoWidth,
-            height=videoHeight,
-            verbose=self.verbose,
-            pixelFormat=self.pixelFormat,
-            outputType='bytes',
-            outputCopy=False,
-            lockForOutput=False,
-            maxBufferSize=self.bufferSize,
-            channels=self.nChannels,
-            name=self.camSerial+'____main',
-            allowOverflow=False
-        )
-        if self.verbose >= 2: self.log("Creating shared image sender with max buffer size:", self.bufferSize)
-        self.imageQueueReceiver = self.imageQueue.getReceiver()
+        if sendToWriter:
+            self.imageQueue = SharedImageSender(
+                width=videoWidth,
+                height=videoHeight,
+                verbose=self.verbose,
+                pixelFormat=self.pixelFormat,
+                outputType='bytes',
+                outputCopy=False,
+                lockForOutput=False,
+                maxBufferSize=self.bufferSize,
+                channels=self.nChannels,
+                name=self.camSerial+'____main',
+                allowOverflow=False
+            )
+            if self.verbose >= 2: self.log("Creating shared image sender with max buffer size:", self.bufferSize)
+            self.imageQueueReceiver = self.imageQueue.getReceiver()
+        else:
+            self.imageQueue = None
+            self.imageQueueReceiver = None
 
-        self.monitorImageSender = SharedImageSender(
-            width=videoWidth,
-            height=videoHeight,
-            verbose=self.verbose,
-            outputType='PIL',
-            outputCopy=False,
-            lockForOutput=False,
-            maxBufferSize=1,
-            channels=self.nChannels,
-            name=self.camSerial+'_monitor',
-            allowOverflow=True
-        )
-        self.monitorImageReceiver = self.monitorImageSender.getReceiver()
-#        self.monitorImageQueue.cancel_join_thread()
+        if sendToMonitor:
+            self.monitorImageSender = SharedImageSender(
+                width=videoWidth,
+                height=videoHeight,
+                verbose=self.verbose,
+                outputType='PIL',
+                outputCopy=False,
+                lockForOutput=False,
+                maxBufferSize=1,
+                channels=self.nChannels,
+                name=self.camSerial+'_monitor',
+                allowOverflow=True
+            )
+            self.monitorImageReceiver = self.monitorImageSender.getReceiver()
+    #        self.monitorImageQueue.cancel_join_thread()
+        else:
+            self.monitorImageSender = None
+            self.monitorImageReceiver = None
         self.monitorMasterFrameRate = monitorFrameRate
         self.ready = ready
         self.frameStopwatch = Stopwatch()
@@ -3325,14 +3335,19 @@ class VideoAcquirer(StateMachineProcess):
     def run(self):
         super().run()
 
-        self.imageQueue.setupBuffers()
-        self.monitorImageSender.setupBuffers()
+        if self.imageQueue is not None:
+            self.imageQueue.setupBuffers()
+        if self.monitorImageSender is not None:
+            self.monitorImageSender.setupBuffers()
 
         msg = ''; arg = None
 
         while True:
             # Publish updated state
             self.updatePublishedState()
+            cam = None
+            camList = None
+            system = None
 
             try:
 # VideoAcquirer: ******************** STOPPED *********************************
@@ -3495,7 +3510,8 @@ class VideoAcquirer(StateMachineProcess):
 
                             # Put image into image queue
                             if self.verbose >= 3: self.log("bytes = "+str(imageResult.GetNDArray()[0:10, 0]))
-                            self.imageQueue.put(imarray=imageResult.GetNDArray(), metadata={'frameTime':frameTime, 'imageID':imageID})
+                            if self.imageQueue is not None:
+                                self.imageQueue.put(imarray=imageResult.GetNDArray(), metadata={'frameTime':frameTime, 'imageID':imageID})
                             if self.verbose >= 3:
                                 self.log("Pushed image into buffer")
                                 self.log('Queue size={qsize}, maxsize={maxsize}'.format(qsize=self.imageQueue.qsize(), maxsize=self.imageQueue.maxBufferSize))
