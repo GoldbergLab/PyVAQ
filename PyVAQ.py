@@ -400,9 +400,8 @@ class PyVAQ:
 
         self.chunkSizeVar =         tk.StringVar(); self.chunkSizeVar.set(1000)
 
-        self.cameraSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Camera settings", **COLLAPSABLE_FRAME_STYLE); self.cameraSettingsFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
-
-        self.cameraConfigPanel = CameraConfigPanel(self.cameraSettingsFrame)
+        self.cameraConfigurationFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Camera Configuration", **COLLAPSABLE_FRAME_STYLE); self.cameraConfigurationFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
+        self.cameraConfigurationPanel = CameraConfigPanel(self.cameraConfigurationFrame)
 
         self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", **COLLAPSABLE_FRAME_STYLE); self.mergeFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         # self.mergeFrame = ttk.LabelFrame(self.acquisitionFrame, text="AV File merging")
@@ -610,13 +609,13 @@ class PyVAQ:
             'triggerHighBandpass':              dict(get=lambda:float(self.triggerHighBandpassVar.get()),       set=self.triggerHighBandpassVar.set),
             'triggerLowBandpass':               dict(get=lambda:float(self.triggerLowBandpassVar.get()),        set=self.triggerLowBandpassVar.set),
             'maxAudioTriggerTime':              dict(get=lambda:float(self.maxAudioTriggerTimeVar.get()),       set=self.maxAudioTriggerTimeVar.set),
-            "videoExposureTime":                dict(get=lambda:float(self.videoExposureTimeVar.get()),            set=self.videoExposureTimeVar.set),
-            'videoBaseFileNames':               dict(get=self.videoBaseFileNames.get,                            set=self.setVideoBaseFileNames),
-            'videoDirectories':                 dict(get=self.videoDirectories.get,                              set=self.setVideoDirectories),
-            'audioBaseFileName':                dict(get=self.audioBaseFileName.get,                             set=self.setAudioBaseFileName),
-            'audioDirectory':                   dict(get=self.audioDirectory.get,                                set=self.setAudioDirectory),
-            'mergeBaseFileName':                dict(get=self.mergeBaseFileName.get,                             set=self.setMergeBaseFileName),
-            'mergeDirectory':                   dict(get=self.mergeDirectory.get,                                set=self.setMergeDirectory),
+            "videoExposureTime":                dict(get=lambda:float(self.videoExposureTimeVar.get()),         set=self.videoExposureTimeVar.set),
+            'videoBaseFileNames':               dict(get=self.videoBaseFileNames.get,                           set=self.setVideoBaseFileNames),
+            'videoDirectories':                 dict(get=self.videoDirectories.get,                             set=self.setVideoDirectories),
+            'audioBaseFileName':                dict(get=self.audioBaseFileName.get,                            set=self.setAudioBaseFileName),
+            'audioDirectory':                   dict(get=self.audioDirectory.get,                               set=self.setAudioDirectory),
+            'mergeBaseFileName':                dict(get=self.mergeBaseFileName.get,                            set=self.setMergeBaseFileName),
+            'mergeDirectory':                   dict(get=self.mergeDirectory.get,                               set=self.setMergeDirectory),
             'mergeFiles':                       dict(get=self.mergeFilesVar.get,                                set=self.mergeFilesVar.set),
             'deleteMergedAudioFiles':           dict(get=self.deleteMergedAudioFilesVar.get,                    set=self.deleteMergedAudioFilesVar.set),
             'deleteMergedVideoFiles':           dict(get=self.deleteMergedVideoFilesVar.get,                    set=self.deleteMergedVideoFilesVar.set),
@@ -633,7 +632,7 @@ class PyVAQ:
             "numStreams":                       dict(get=self.getNumStreams,                                    set=self.setNumStreams),
             "numProcesses":                     dict(get=self.getNumProcesses,                                  set=self.setNumProcesses),
             "numSyncedProcesses":               dict(get=self.getNumSyncedProcesses,                            set=self.setNumSyncedProcesses),
-            "acquireSettings":                  dict(get=self.getCameraSettings,                               set=self.setCameraSettings),
+            "acquireSettings":                  dict(get=self.getCameraSettings,                                set=self.setCameraSettings),
             "continuousTriggerPeriod":          dict(get=lambda:float(self.continuousTriggerPeriodVar.get()),   set=self.continuousTriggerPeriodVar.set),
             "audioTagContinuousTrigs":          dict(get=self.audioTagContinuousTrigsVar.get,                   set=self.audioTagContinuousTrigsVar.set),
             "daySubfolders":                    dict(get=self.daySubfoldersVar.get,                             set=self.daySubfoldersVar.set),
@@ -3044,7 +3043,7 @@ him know. Otherwise, I had nothing to do with it.
 
         """
 
-        configuration = self.cameraConfigPanel.getCurrentConfiguration()
+        configuration = self.cameraConfigurationPanel.getCurrentConfiguration()
         return configuration
 
 #         gain = self.getParams('gain')
@@ -3066,7 +3065,7 @@ him know. Otherwise, I had nothing to do with it.
 # #            ('ExposureTime', exposureTime, 'float')]
 
     def setCameraSettings(self, configuration):
-        self.cameraConfigPanel.setCurrentConfiguration(configuration)
+        self.cameraConfigurationPanel.setCurrentConfiguration(configuration)
 
     def waitForChildProcessesToStop(self, attempts=10, timeout=5):
         """Wait for all state machine child processes to stop.
@@ -3627,7 +3626,7 @@ him know. Otherwise, I had nothing to do with it.
         self.acquisitionControlFrame.grid(   row=0, column=0, sticky=tk.NSEW)
         self.statusFrame.grid(               row=1, column=0, sticky=tk.NSEW)
         self.acquisitionParametersFrame.grid(row=2, column=0, sticky=tk.NSEW)
-        self.cameraSettingsFrame.grid(       row=3, column=0, sticky=tk.NSEW)
+        self.cameraConfigurationFrame.grid(       row=3, column=0, sticky=tk.NSEW)
         self.mergeFrame.grid(                row=4, column=0, sticky=tk.NSEW)
         self.fileSettingsFrame.grid(         row=5, column=0, sticky=tk.NSEW)
         self.scheduleFrame.grid(             row=6, column=0, sticky=tk.NSEW)
@@ -3672,7 +3671,7 @@ him know. Otherwise, I had nothing to do with it.
         self.acquisitionHardwareText.grid(          row=5, column=0, columnspan=4)
 
         #### Children of self.acquisitionParametersFrame
-        self.cameraConfigPanel.grid(row=1, column=0)
+        self.cameraConfigurationPanel.grid(row=1, column=0)
 
         #### Children of self.mergeFrame
         self.mergeFilesCheckbutton.grid(            row=1, column=0, sticky=tk.NW)
