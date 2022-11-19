@@ -1,6 +1,8 @@
 import tkinter as tk
+from tkinter import messagebox as mb
 import tkinter.ttk as ttk
 import PySpinUtilities as psu
+import pprint
 
 class CameraConfigPanel(tk.Frame):
     """A tkinter widget allowing for FLIR camera configuration.
@@ -37,7 +39,7 @@ class CameraConfigPanel(tk.Frame):
             currently selected attribute
 
     """
-    def __init__(self, parent, configurationChangeHandler=lambda:None):
+    def __init__(self, parent, configurationChangeHandler=lambda *args:None):
         super().__init__(parent)
 
         self.parent = parent
@@ -115,8 +117,26 @@ class CameraConfigPanel(tk.Frame):
 
         self.grid()
 
-    def applyConfigurationOnInit(self):
-        return self.applyConfigurationOnInitVar.get()
+    def applyConfigurationOnInit(self, value=None):
+        """Get or set the value of the "apply configuration on init" checkbox.
+
+        True means the camera configuration will be applied to the cameras when
+            the acquirer subprocesses are initialized. False means they will
+            not.
+
+        Args:
+            value (bool or None): Optional boolean value. If supplied, the new
+                value is set. If not, the current value is returned instead.
+
+        Returns:
+            bool or None: Either the current checkbox value, or None if this is
+                being called as a getter function.
+
+        """
+        if value is None:
+            return self.applyConfigurationOnInitVar.get()
+        else:
+            self.applyConfigurationOnInitVar.set(value)
 
     def handleFilterChange(self, *args, **kwargs):
         """React to a change in the filter text.
@@ -131,7 +151,9 @@ class CameraConfigPanel(tk.Frame):
             type: Description of returned object.
 
         """
-        self.updateAttributes()
+        self.updateAttributeList()
+        self.updateValue()
+        self.updateCategoryList()
 
     def updateCameraList(self):
         """Rediscover what cameras are available, update camera dropdown.
@@ -175,7 +197,7 @@ class CameraConfigPanel(tk.Frame):
         nestedAttributes = psu.getAllCameraAttributes(camSerial=camSerial)
         flattenedAttributes = psu.flattenCameraAttributes(nestedAttributes)
         self.storedAttributes[camSerial] = flattenedAttributes
-        self.updateAttributes()
+        self.updateAttributeList()
         self.updateValue()
         self.updateApplyButtonState()
         self.updateCategoryList()
@@ -205,7 +227,7 @@ class CameraConfigPanel(tk.Frame):
 
         return False
 
-    def updateAttributes(self):
+    def updateAttributeList(self):
         """Use stored attributes to update widgets for current camera.
 
         If no stored attributes exist for the currently selected camera, then
@@ -242,11 +264,6 @@ class CameraConfigPanel(tk.Frame):
         self.updateValue()
         self.updateApplyButtonState()
 
-    def getValue(self):
-        attribute = self.getCurrentAttribute()
-        value = self.getValue()
-        return value
-
     def updateValue(self):
         """Update value display to reflect the current stored value
 
@@ -262,18 +279,22 @@ class CameraConfigPanel(tk.Frame):
         if attribute is None:
             self.valueVar.set('')
             return
-        print('type=', attribute['type'])
+
+        value = self.convertAttributeValue(attribute['value'], attribute['type'])
         if attribute['type'] == 'enum':
             self.valueList['values'] = list(attribute['options'].values())
             self.valueEntry.grid_remove()
             self.valueList.grid()
+            self.valueVar.set(value)
         elif attribute['type'] == 'boolean':
             self.valueList['values'] = [str(True), str(False)]
             self.valueEntry.grid_remove()
             self.valueList.grid()
+            self.valueVar.set(value)
         else:
             self.valueList.grid_remove()
             self.valueEntry.grid()
+            self.valueVar.set(value)
 
         value = self.convertAttributeValue(attribute['value'], attribute['type'])
 
@@ -301,17 +322,21 @@ class CameraConfigPanel(tk.Frame):
 
         camSerial = self.getCurrentCamSerial()
         if camSerial is None:
+            print('no cam serial')
             return None
         if displayName is None:
             displayName = self.attributeVar.get()
         for attribute in self.storedAttributes[camSerial]:
+            print('check if', attribute['displayName'], '==', displayName)
             if attribute['displayName'] == displayName:
+                print('yep!')
                 if modified:
                     if attribute['type'] == 'enum':
                         attribute['value'] = (attribute['value'][0], self.valueVar.get())
                     else:
                         attribute['value'] = self.valueVar.get()
                 return attribute
+        print('nope')
         return None
 
     def updateApplyButtonState(self):
@@ -398,7 +423,7 @@ class CameraConfigPanel(tk.Frame):
         return configuration
 
     def applyCurrentAttribute(self):
-        attribute = self.getCurrentAttribute()
+        attribute = self.getCurrentAttribute(modified=True)
         camSerial = self.getCurrentCamSerial()
 
         if attribute is not None and camSerial is not None:
@@ -406,8 +431,15 @@ class CameraConfigPanel(tk.Frame):
             type = attribute['type']
             value = attribute['value']
             value = self.convertAttributeValue(value, type)
-            result = psu.setCameraAttribute(name, value, camSerial=camSerial, attributeType=type, nodemap='NodeMap')
-            print('Applied attribute:', camSerial, name, value, type)
+            result = psu.setCameraAttribute(name, value, type, camSerial=camSerial, nodemap='NodeMap')
+            if result:
+                message = 'Applied attribute to camera {cs}: {n}={v} ({t})'.format(cs=camSerial, n=name, v=value, t=type)
+                mb.showinfo(title='Attribute successfully applied to camera', message=message)
+            else:
+                message = 'Failed to apply attribute to camera {cs}: {n}={v} ({t})'.format(cs=camSerial, n=name, v=value, t=type)
+                mb.showerror(title='Failed to apply attribute to camera', message=message)
+
+            self.updateCameraAttributes()
 
     def convertAttributeValue(self, value, type):
         if type == 'enum':
@@ -439,15 +471,24 @@ class CameraConfigPanel(tk.Frame):
             for name in configuration[camSerial]:
                 value = configuration[camSerial][name]['value']
                 type =  configuration[camSerial][name]['type']
-                value = self.convertAttributeValue(value)
+                value = self.convertAttributeValue(value, type)
                 formattedConfiguration[camSerial].append(
                     (name, value, type)
                 )
 
+        results = {}
         for camSerial in formattedConfiguration:
-            results = psu.setCameraAttributes(formattedConfiguration[camSerial], camSerial=camSerial)
-            print('set attribute results for cam {cs}:'.format(cs=camSerial))
-            print(results)
+            results[camSerial] = psu.setCameraAttributes(formattedConfiguration[camSerial], camSerial=camSerial)
+        successCount = sum([sum([results[camSerial][attributeName] for attributeName in results[camSerial]]) for camSerial in results])
+        failCount = sum([sum([not results[camSerial][attributeName] for attributeName in results[camSerial]]) for camSerial in results])
+        totalCount = failCount + successCount
+        pprint.pprint(results)
+        if failCount > 0:
+            message = 'Failed to apply {k} of {n} attributes across {c} cameras'.format(k=failCount, n=totalCount, c=len(results))
+            mb.showerror(title='Failed to apply attributes to cameras', message=message)
+        else:
+            message = 'Successfully applied {n} attributes across {c} cameras'.format(n=totalCount, c=len(results))
+            mb.showinfo(title='Attributes successfully applied to cameras', message=message)
 
         self.updateCameraAttributes()
 

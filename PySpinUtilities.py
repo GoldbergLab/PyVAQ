@@ -324,17 +324,27 @@ pixelSizes = {
     '32 Bits/Pixel':32,
 }
 
-nodeAccessorFunctions = {
-    PySpin.intfIString:('string', PySpin.CStringPtr),
-    PySpin.intfIInteger:('integer', PySpin.CIntegerPtr),
-    PySpin.intfIFloat:('float', PySpin.CFloatPtr),
-    PySpin.intfIBoolean:('boolean', PySpin.CBooleanPtr),
-    PySpin.intfICommand:('command', PySpin.CEnumerationPtr),
-    PySpin.intfIEnumeration:('enum', PySpin.CEnumerationPtr),
-    PySpin.intfICategory:('category', PySpin.CCategoryPtr)
+nodeAccessorFunctionsToTypeName = {
+    PySpin.intfIString:'string',
+    PySpin.intfIInteger:'integer',
+    PySpin.intfIFloat:'float',
+    PySpin.intfIBoolean:'boolean',
+    PySpin.intfICommand:'command',
+    PySpin.intfIEnumeration:'enum',
+    PySpin.intfICategory:'category'
 }
 
-nodeAccessorTypes = {
+typeNameToNodeAccessorFunctions = {
+    'string':PySpin.intfIString,
+    'integer':PySpin.intfIInteger,
+    'float':PySpin.intfIFloat,
+    'boolean':PySpin.intfIBoolean,
+    'command':PySpin.intfICommand,
+    'enum':PySpin.intfIEnumeration,
+    'category':PySpin.intfICategory,
+}
+
+typeNameToNodeType = {
     'string':PySpin.CStringPtr,
     'integer':PySpin.CIntegerPtr,
     'float':PySpin.CFloatPtr,
@@ -395,7 +405,7 @@ def discoverCameras(camList=None, numFakeCameras=0):
     camSerials = []
     for cam in camList:
         cam.Init()
-        camSerials.append(getCameraAttribute('DeviceSerialNumber', PySpin.CStringPtr, nodemap=cam.GetTLDeviceNodeMap()))
+        camSerials.append(getCameraAttribute('DeviceSerialNumber', 'string', nodemap=cam.GetTLDeviceNodeMap()))
         cam.DeInit()
         del cam
     for k in range(numFakeCameras):
@@ -435,25 +445,25 @@ def getFrameSize(cam=None):
 
 @handleCam
 def getPixelFormat(cam=None):
-    return getCameraAttribute('PixelFormat', PySpin.CEnumerationPtr, cam=cam)[1]
+    return getCameraAttribute('PixelFormat', 'enum', cam=cam)[1]
 
 @handleCam
 def isBayerFiltered(cam=None):
-    name, displayName = getCameraAttribute('PixelFormat', PySpin.CEnumerationPtr, nodemap=cam.GetNodeMap())
+    name, displayName = getCameraAttribute('PixelFormat', 'enum', nodemap=cam.GetNodeMap())
     return pixelFormats[displayName]['bayer']
 
 @handleCam
 def getColorChannelCount(cam=None):
     nm = cam.GetNodeMap()
     # Get max dynamic range, which indicates the maximum value a single color channel can take
-    maxPixelValue = getCameraAttribute('PixelDynamicRangeMax', PySpin.CIntegerPtr, nodemap=nm);
+    maxPixelValue = getCameraAttribute('PixelDynamicRangeMax', 'integer', nodemap=nm);
     if maxPixelValue == 0:
         # For some reason Blackfly USB (not Blackfly S USB3) cameras return zero for this property.
         # We'll try to use the pixel format to determine the # of channels.
         pixelFormat = getPixelFormat(cam=cam)
         return pixelFormats[pixelFormat]['channelCount']
     # Get pixel size (indicating total # of bits per pixel)
-    pixelSizeName, pixelSize = getCameraAttribute('PixelSize', PySpin.CEnumerationPtr, nodemap=nm)
+    pixelSizeName, pixelSize = getCameraAttribute('PixelSize', 'enum', nodemap=nm)
     # Convert enum value to an integer
     pixelSize = pixelSizes[pixelSize]
     # Convert max value to # of bits
@@ -465,31 +475,34 @@ def getColorChannelCount(cam=None):
     return round(numChannels)
 
 @handleCam
-def getCameraAttribute(attributeName, attributeTypePtrFunction, cam=None, camSerial=None, nodemap='NodeMap'):
+def getCameraAttribute(attributeName, attributeType, cam=None, camSerial=None, nodemap='NodeMap'):
     # Get an attribute from a camera
     #
     # Acceptable argument combinations:
     #   1.
+    #   attributeName = name of attribute
+    #   attributeType = type of attribute
     #   cam = PySpin.Camera instance,
     #   camSerial = None
     #   nodemap = string indicating type of nodemap to use
-    #   attributeName = name of attribute
-    #   attributeTypePtrFunction = whatever the hell this is
     #
     #   2.
+    #   attributeName = name of attribute
+    #   attributeType = type of attribute
     #   cam = None,
     #   camSerial = None
     #   nodemap = PySpin.INodeMap instance
     #   attributeName = name of attribute
-    #   attributeTypePtrFunction = whatever the hell this is
     #
     #   3.
+    #   attributeName = name of attribute
+    #   attributeType = type of attribute
     #   cam = None
     #   camSerial = Valid serial # of a connected camera
     #   nodemap = string indicating type of nodemap to use
     #   attributeName = name of attribute
-    #   attributeTypePtrFunction = whatever the hell this is
 
+    nodeType = typeNameToNodeType[attributeType]
 
     if type(nodemap) == str:
         # nodemap is a string indicating whichy type of nodemap to get from cam
@@ -498,7 +511,7 @@ def getCameraAttribute(attributeName, attributeTypePtrFunction, cam=None, camSer
         # nodemap is hopefully a PySpin.INodeMap instance
         pass
 
-    nodeAttribute = attributeTypePtrFunction(nodemap.GetNode(attributeName))
+    nodeAttribute = nodeType(nodemap.GetNode(attributeName))
 
     if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsReadable(nodeAttribute):
         raise AttributeError('Unable to retrieve '+attributeName+'. Aborting...')
@@ -513,7 +526,7 @@ def getCameraAttribute(attributeName, attributeTypePtrFunction, cam=None, camSer
     return value
 
 @handleCam
-def setCameraAttribute(attributeName, attributeValue, cam=None, attributeType='enum', nodemap='NodeMap'):
+def setCameraAttribute(attributeName, attributeValue, attributeType, cam=None, nodemap='NodeMap'):
     # Set camera attribute. Return True if successful, False otherwise.
 
     if type(nodemap) == str:
@@ -523,7 +536,7 @@ def setCameraAttribute(attributeName, attributeValue, cam=None, attributeType='e
         # nodemap is hopefully a PySpin.INodeMap instance
         pass
 
-    nodeAttribute = nodeAccessorTypes[attributeType](nodemap.GetNode(attributeName))
+    nodeAttribute = typeNameToNodeType[attributeType](nodemap.GetNode(attributeName))
     if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsWritable(nodeAttribute):
         # print('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (enum retrieval). Aborting...')
         return False
@@ -539,10 +552,7 @@ def setCameraAttribute(attributeName, attributeValue, cam=None, attributeType='e
         attributeValue = nodeAttributeValue.GetValue()
         nodeAttribute.SetIntValue(attributeValue)
     else:
-        try:
-            nodeAttribute.SetValue(attributeValue, True)
-        except Exception:
-            breakpoint()
+        nodeAttribute.SetValue(attributeValue)
     return True
 
 @handleCam
@@ -556,7 +566,7 @@ def setCameraAttributes(attributeValueTriplets, cam=None, nodemap='NodeMap'):
 
     results = {}
     for attribute, value, attributeType in attributeValueTriplets:
-        results[attribute] = setCameraAttribute(attribute, value, attributeType=attributeType, cam=cam, nodemap=nodemap)
+        results[attribute] = setCameraAttribute(attribute, value, attributeType, cam=cam, nodemap=nodemap)
         # if not result:
             # print("Failed to set", str(attribute), " to ", str(value))
     return results
@@ -564,7 +574,7 @@ def setCameraAttributes(attributeValueTriplets, cam=None, nodemap='NodeMap'):
 @handleCam
 def checkCameraSpeed(cam=None):
     try:
-        cameraSpeedValue, cameraSpeed = getCameraAttribute('DeviceCurrentSpeed', PySpin.CEnumerationPtr, nodemap=cam.GetTLDeviceNodeMap())
+        cameraSpeedValue, cameraSpeed = getCameraAttribute('DeviceCurrentSpeed', 'enum', nodemap=cam.GetTLDeviceNodeMap())
         # This causes weird crashes for one of our flea3 cameras...
         #cameraBaudValue, cameraBaud =   getCameraAttribute(cam.GetNodeMap(), 'SerialPortBaudRate', PySpin.CEnumerationPtr)
 #        cameraSpeed = cameraSpeed + ' ' + cameraBaud
@@ -578,7 +588,8 @@ def queryAttributeNode(nodePtr, nodeType):
     """
     try:
         # Create string node
-        (nodeTypeName, nodeAccessorFunction) = nodeAccessorFunctions[nodeType]
+        nodeTypeName = nodeAccessorFunctionsToTypeName[nodeType]
+        nodeAccessorFunction = typeNameToNodeType[nodeTypeName]
         node = nodeAccessorFunction(nodePtr)
 
         # Retrieve string node value
@@ -598,6 +609,7 @@ def queryAttributeNode(nodePtr, nodeType):
                 value = None
         except:
             value = None
+
         if value is not None:
             if nodeTypeName == 'integer':
                 value = int(value)
@@ -646,10 +658,11 @@ def queryAttributeNode(nodePtr, nodeType):
                 if not PySpin.IsAvailable(childNode) or not PySpin.IsReadable(childNode):
                     continue
                 nodeType = childNode.GetPrincipalInterfaceType()
-                if nodeType not in nodeAccessorFunctions:
+                if nodeType not in nodeAccessorFunctionsToTypeName:
                     print("Unknown node type:", nodeType)
                     continue
-                (childNodeTypeName, nodeAccessorFunction) = nodeAccessorFunctions[nodeType]
+                childNodeTypeName = nodeAccessorFunctionsToTypeName[nodeType]
+                nodeAccessorFunction = typeNameToNodeAccessorFunctions[childNodeTypeName]
                 if childNodeTypeName == "category":
                     subcategories.append(queryAttributeNode(childNode, nodeType))
                 else:
@@ -835,8 +848,17 @@ def createAttributeBrowserNode(attributeNode, parent, tooltipLabel, gridRow):
 # For debugging purposes
 if __name__ == "__main__":
     s = discoverCameras()[0]
-    attributes = ['PixelFormat', 'PixelFormatInfoID', 'PixelFormatInfoSelector']
-    attributeTypes = [PySpin.CEnumerationPtr, PySpin.CStringPtr, PySpin.CStringPtr]
-    for attribute, attributeType in zip(attributes, attributeTypes):
-        val = getCameraAttribute(attribute, attributeType, camSerial=s, nodemap='NodeMap')
-        print('{a}: {v}'.format(a=attribute, v=val))
+    aa = getAllCameraAttributes(camSerial=s)
+    print(aa)
+    # attributes = ['PixelFormat', 'ExposureTime', 'ExposureAuto']
+    # attributeTypes = ['enum', 'float', 'enum']
+    # for attribute, attributeType in zip(attributes, attributeTypes):
+    #     val = getCameraAttribute(attribute, attributeType, camSerial=s, nodemap='NodeMap')
+    #     print('{a}: {v}'.format(a=attribute, v=val))
+    #
+    # print('setting ExposureAuto to Continuous')
+    # setCameraAttribute('ExposureAuto', 'Continuous', 'enum', camSerial=s)
+    #
+    # for attribute, attributeType in zip(attributes, attributeTypes):
+    #     val = getCameraAttribute(attribute, attributeType, camSerial=s, nodemap='NodeMap')
+    #     print('{a}: {v}'.format(a=attribute, v=val))
