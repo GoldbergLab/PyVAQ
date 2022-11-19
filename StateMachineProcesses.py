@@ -2249,6 +2249,17 @@ class AudioAcquirer(StateMachineProcess):
                 elif self.state == States.INITIALIZING:
                     # DO STUFF
                     self.audioFrequency = None
+                    if self.startTimeSharedValue is None:
+                        # no need to get start time
+                        gotStartTime = True
+                    else:
+                        gotStartTime = False
+                        startTime = -1
+                    if self.ready is None:
+                        # No barrier to pass
+                        passedBarrier = True
+                    else:
+                        passedBarrier = False
 
                     # Read actual audio frequency from the Synchronizer process
                     if self.audioFrequencyVar.value == -1:
@@ -2274,7 +2285,6 @@ class AudioAcquirer(StateMachineProcess):
                             active_edge=nidaqmx.constants.Edge.RISING,
                             sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
                             samps_per_chan=self.chunkSize)
-                        startTime = None
                         sampleCount = 0
 
                     # CHECK FOR MESSAGES
@@ -2298,23 +2308,36 @@ class AudioAcquirer(StateMachineProcess):
 # AudioAcquirer: ****************** READY *********************************
                 elif self.state == States.READY:
                     # DO STUFF
-                    try:
-                        if self.ready is not None:
-                            self.ready.wait()
-                        passedBarrier = True
-                    except BrokenBarrierError:
-                        passedBarrier = False
-                        if self.verbose >= 2: self.log("No simultaneous start - retrying")
-                        time.sleep(0.1)
 
-                    if self.verbose >= 3: self.log('Passed barrier.')
+                    # Check if other processes are synced by waiting for barrier
+                    if not passedBarrier:
+                        try:
+                            if self.ready is not None:
+                                self.ready.wait()
+                            passedBarrier = True
+                            if self.verbose >= 2: self.log('Passed barrier.')
+                        except BrokenBarrierError:
+                            passedBarrier = False
+                            if self.verbose >= 2: self.log("No simultaneous start - retrying")
+                            time.sleep(0.1)
+
+                    # Get timestamp of first audio chunk acquisition
+                    if not gotStartTime:
+                        if self.verbose >= 1: self.log("Getting start time from sync process...")
+                        startTime = self.startTimeSharedValue.value
+                        if startTime == -1:
+                            gotStartTime = False
+                            if self.verbose >= 2: self.log('No start time from sync process yet.')
+                        else:
+                            gotStartTime = True
+                            if self.verbose >= 2: self.log("Got start time from sync process: "+str(startTime))
 
                     # CHECK FOR MESSAGES
-                    msg, arg = self.checkMessages(block=False)
+                    msg, arg = self.checkMessages(block=True, timeout=0.1)
 
                     # CHOOSE NEXT STATE
                     if msg in ['', Messages.START]:
-                        if not passedBarrier:
+                        if not passedBarrier or not gotStartTime:
                             self.nextState = States.READY
                         else:
                             self.nextState = States.ACQUIRING
@@ -2333,14 +2356,6 @@ class AudioAcquirer(StateMachineProcess):
                             data,
                             number_of_samples_per_channel=self.chunkSize,
                             timeout=self.acquireTimeout)
-
-                        # Get timestamp of first audio chunk acquisition
-                        if startTime is None:
-                            if self.verbose >= 1: self.log("Getting start time from sync process...")
-                            while startTime == -1 or startTime is None:
-                                startTime = self.startTimeSharedValue.value
-                            if self.verbose >= 1: self.log("Got start time from sync process: "+str(startTime))
-#                            startTime = time.time_ns() / 1000000000 - self.chunkSize / self.audioFrequency
 
                         chunkStartTime = startTime + sampleCount / self.audioFrequency
                         sampleCount += self.chunkSize
@@ -3374,7 +3389,25 @@ class VideoAcquirer(StateMachineProcess):
                     cam = None
                     camList = None
                     system = None
+                    if self.startTimeSharedValue is None:
+                        # no need to get start time
+                        gotStartTime = True
+                    else:
+                        gotStartTime = False
+                    if self.ready is None:
+                        # No barrier to pass
+                        passedBarrier = True
+                    else:
+                        passedBarrier = False
+
                     self.frameRate = None
+                    imageCount = 0
+                    im = imp = imageResult = None
+                    startTime = -1
+                    frameTime = None
+                    imageID = None
+                    lastImageID = None
+                    droppedFrameCount = 0
 
                     # Read actual frame rate from the Synchronizer process
                     if self.frameRateVar.value == -1:
@@ -3395,13 +3428,6 @@ class VideoAcquirer(StateMachineProcess):
                         if self.verbose >= 1: self.log("Monitoring with period", monitorFramePeriod)
                         thisTime = 0
                         lastTime = time.time()
-                        imageCount = 0
-                        im = imp = imageResult = None
-                        startTime = None
-                        frameTime = None
-                        imageID = None
-                        lastImageID = None
-                        droppedFrameCount = 0
 
                     # CHECK FOR MESSAGES
                     msg, arg = self.checkMessages(block=False)
@@ -3427,23 +3453,35 @@ class VideoAcquirer(StateMachineProcess):
                     if not cam.IsStreaming():
                         cam.BeginAcquisition()
 
-                    try:
-                        if self.ready is not None:
-                            self.ready.wait()
-                        passedBarrier = True
-                    except BrokenBarrierError:
-                        passedBarrier = False
-                        if self.verbose >= 2: self.log("No simultaneous start - retrying")
-                        time.sleep(0.1)
+                    # Check if other processes are synced by waiting for barrier
+                    if not passedBarrier:
+                        try:
+                            if self.ready is not None:
+                                self.ready.wait()
+                            passedBarrier = True
+                            if self.verbose >= 2: self.log('Passed barrier')
+                        except BrokenBarrierError:
+                            passedBarrier = False
+                            if self.verbose >= 2: self.log("No simultaneous start - retrying")
+                            time.sleep(0.1)
 
-                    if self.verbose >= 2: self.log('Passed barrier')
+                    # Get timestamp of first image acquisition
+                    if not gotStartTime:
+                        if self.verbose >= 1: self.log("Getting start time from sync process...")
+                        startTime = self.startTimeSharedValue.value
+                        if startTime == -1:
+                            gotStartTime = False
+                            if self.verbose >= 2: self.log('No start time from sync process yet.')
+                        else:
+                            gotStartTime = True
+                            if self.verbose >= 2: self.log("Got start time from sync process: "+str(startTime))
 
                     # CHECK FOR MESSAGES
-                    msg, arg = self.checkMessages(block=False)
+                    msg, arg = self.checkMessages(block=True, timeout=0.1)
 
                     # CHOOSE NEXT STATE
                     if msg in ['', Messages.START]:
-                        if not passedBarrier:
+                        if not passedBarrier or not gotStartTime:
                             self.nextState = States.READY
                         else:
                             self.nextState = States.ACQUIRING
@@ -3468,14 +3506,6 @@ class VideoAcquirer(StateMachineProcess):
                             if self.verbose >= 3:
                                 self.acquireStopwatch.click()
                                 self.log("Get image from camera time: {t}".format(t=self.acquireStopwatch.period()))
-
-                            # Get timestamp of first image acquisition
-                            if startTime is None:
-                                if self.verbose >= 1: self.log("Getting start time from sync process...")
-                                while startTime == -1 or startTime is None:
-                                    startTime = self.startTimeSharedValue.value
-                                if self.verbose >= 1: self.log("Got start time from sync process: "+str(startTime))
-    #                            startTime = time.time_ns() / 1000000000
 
                             if self.verbose >= 3:
                                 # Time frames, as an extra check
@@ -3510,11 +3540,12 @@ class VideoAcquirer(StateMachineProcess):
 
                             # Put image into image queue
                             if self.verbose >= 3: self.log("bytes = "+str(imageResult.GetNDArray()[0:10, 0]))
+
                             if self.imageQueue is not None:
                                 self.imageQueue.put(imarray=imageResult.GetNDArray(), metadata={'frameTime':frameTime, 'imageID':imageID})
-                            if self.verbose >= 3:
-                                self.log("Pushed image into buffer")
-                                self.log('Queue size={qsize}, maxsize={maxsize}'.format(qsize=self.imageQueue.qsize(), maxsize=self.imageQueue.maxBufferSize))
+                                if self.verbose >= 3:
+                                    self.log("Pushed image into buffer")
+                                    self.log('Queue size={qsize}, maxsize={maxsize}'.format(qsize=self.imageQueue.qsize(), maxsize=self.imageQueue.maxBufferSize))
 
                             if self.monitorImageSender is not None:
                                 # Put the occasional image in the monitor queue for the UI
