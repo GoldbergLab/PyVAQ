@@ -960,7 +960,7 @@ him know. Otherwise, I had nothing to do with it.
             if 'Video display height' in choices:
                 h = int(choices['Video display height'])
         # Set new video monitor display size
-        self.videoMonitorDisplaySize.set((w, h))
+        self.setParams(videoMonitorDisplaySize=(w, h))
 
     def updateVideoMonitorDisplaySize(self):
         """Update all video monitors with the current size setting.
@@ -970,7 +970,7 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         #
-        newSize = self.videoMonitorDisplaySize.get()
+        newSize = self.getParams("videoMonitorDisplaySize")
         for camSerial in self.cameraMonitors:
             self.cameraMonitors[camSerial].setDisplaySize(newSize)
 
@@ -1172,7 +1172,8 @@ him know. Otherwise, I had nothing to do with it.
             'audioBaseFileName',
             'audioDirectory',
             'videoBaseFileNames',
-            'videoDirectories'
+            'videoDirectories',
+            'videoMonitorDisplaySize'
             )
         camSerials = p["camSerials"]
         audioDAQChannels = p["audioDAQChannels"]
@@ -1202,7 +1203,7 @@ him know. Otherwise, I had nothing to do with it.
                 videoBaseFileName = ''
             self.cameraMonitors[camSerial] = CameraMonitor(
                 self.videoMonitorMasterFrame,
-                displaySize=self.videoMonitorDisplaySize.get(),
+                displaySize=p["videoMonitorDisplaySize"],
                 camSerial=camSerial,
                 speedText=self.cameraSpeeds[camSerial],
                 initialDirectory=videoDirectory,
@@ -1524,7 +1525,7 @@ him know. Otherwise, I had nothing to do with it.
             type: Description of returned object.
 
         """
-        newMode = self.triggerModeVar.get()
+        newMode = self.getParams("triggerMode")
 
         if newMode in ["Continuous", "SimpleContinuous"]:
             # PreTrigger value is not relevant
@@ -2694,6 +2695,8 @@ him know. Otherwise, I had nothing to do with it.
         if path is not None and len(path) > 0:
             with open(path, 'r') as f:
                 params = json.loads(f.read())
+            self.log('Loading settings from:')
+            self.log('    ', path)
             if 'scheduleStartTime' in params:
                 params['scheduleStartTime'] = serializableToTime(params['scheduleStartTime'])
             if 'scheduleStopTime' in params:
@@ -3214,6 +3217,9 @@ him know. Otherwise, I had nothing to do with it.
                     mergeMessageQueue=mergeMsgQueue,
                     daySubfolders=p['daySubfolders'],
                     verbose=self.audioWriteVerbose,
+                    scheduleEnabled=p['scheduleEnabled'],
+                    scheduleStartTime=p['scheduleStartTime'],
+                    scheduleStopTime=p['scheduleStopTime'],
                     stdoutQueue=self.StdoutManager.queue)
             elif p["triggerMode"] != 'None':
                 self.audioWriteProcess = AudioWriter(

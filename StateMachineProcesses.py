@@ -174,12 +174,36 @@ class Stopwatch:
         return (t1 - t0)/(len(self.t)-1)
 
 class Trigger():
-    # A class to represent a record trigger.
-    # It maintains a unique ID, to allow processes to ensure they don't reuse
-    #   triggers
-    # It contains information about the start, end, and arbitrary "trigger" time
-    # It also contains tags to allow processes to pass information about the
-    #   trigger, typically to be added onto the filename of the recorded audio/video
+    """An object representing a "trigger". It can store the trigger time
+        (typically the time when the trigger is created), a start time which
+        is before or at the trigger time, and an end time, which is at or after
+        the trigger time. It can also store a list of string tags that describe
+        the purpose or nature of the trigger, and a unique ID.
+
+    Args:
+        startTime (float): A float representing the start time of the trigger
+            in seconds since epoch.
+        triggerTime (float): A float representing the trigger time in seconds
+            since epoch
+        endTime (float): A float representing the end time of the triger in
+            seconds since epoch
+        tags (iterable containing str): An iterable containing zero or more
+            descriptive strings. Defaults to set().
+        id (int): The ID of the trigger. If not provided, a unique ID will be
+            created. Defaults to None. This can be used to ensure a trigger is
+            not reused.
+        idspace (str): An optional "id space", which can be used to specify a
+            distinct group of triggers. Defaults to None.
+
+    Attributes:
+        newid (type): An iterator which creates unique IDs.
+        id
+        startTime
+        triggerTime
+        endTime
+        tags
+
+    """
 
     # Generator for new unique IDs
     newid = itertools.count().__next__   # Source of this clever little idea: https://stackoverflow.com/a/1045724/1460057
@@ -200,11 +224,25 @@ class Trigger():
         self.tags = tags
 
     def __str__(self):
-        # Create string representation of trigger for logging/debug purposes
+        """Create a string representation of the trigger for logging/debugging.
+
+        Returns:
+            str: String representation of this trigger object.
+
+        """
         return 'Trigger id {id}: {s}-->{t}-->{e} tags: {tags}'.format(id=self.id, s=self.startTime, t=self.triggerTime, e=self.endTime, tags=self.tags)
 
     def tagFilename(self, filename, separator='_'):
-        # Add trigger tags onto filename in a standardized way
+        """Append this trigger's tags to the provided filename.
+
+        Args:
+            filename (str): The filename to modify.
+            separator (str): A string to use as a separator between tags.
+
+        Returns:
+            str: The modified filename
+
+        """
         if len(self.tags) == 0:
             return filename
         root, ext = os.path.splitext(filename)
@@ -214,17 +252,36 @@ class Trigger():
         return taggedPath
 
     def isValid(self):
-        # Sanity check the trigger values
+        """Determine if this trigger's times are valid.
+
+        startTime <= triggerTime <= endTime
+
+        Returns:
+            bool: A boolean indicating whether or not this trigger's times are
+                valid.
+
+        """
         return self.startTime <= self.triggerTime and self.triggerTime <= self.endTime
 
     def state(self, time):
+        """Determine when the given time falls relative to the trigger.
+
+        If time is before trigger start:
+            return how far before in seconds
+        If time is after trigger end:
+            return how far after in seconds
+        If time is between trigger start and stop
+            return 0
+
+        Args:
+            time (seconds): A time to check, in seconds since epoch
+
+        Returns:
+            float: An indication of where the given time falls with respect to
+                this trigger's start and end times.
+
+        """
         # Given a frame/sample count and frame/sample rate:
-        # If time is before trigger range
-        #       return how far before in seconds
-        # If time is after trigger range
-        #       return how far after in seconds
-        # If time is during trigger range
-        #       return 0
         if time < self.startTime:
             return time - self.startTime
         if time > self.endTime:
@@ -232,36 +289,83 @@ class Trigger():
         return 0
 
     def overlap(self, otherTrigger):
-        # Given another trigger, return the overlap information for the other
-        #   trigger and this trigger.
-        #   [-, -] = other trigger is entirely before this trigger
-        #   [-, 0] = other trigger overlaps the beginning of this trigger
-        #   [-, +] = other trigger fully envelops this trigger
-        #   [0, -] = this or the other trigger are invalid (or both)
-        #   [0, 0] = these triggers have identical start and end times
-        #   [0, +] = other trigger overlaps the end of this trigger
-        #   [+, -] = this or the other trigger are invalid (or both)
-        #   [+, 0] = this or the other trigger are invalid (or both)
-        #   [+, +] = other trigger is entirely after this trigger
+        """Determine how another trigger overlaps this trigger.
+
+        Given another trigger, return the overlap information for the other
+          trigger and this trigger.
+          [-, -] = other trigger is entirely before this trigger
+          [-, 0] = other trigger overlaps the beginning of this trigger
+          [-, +] = other trigger fully envelops this trigger
+          [0, -] = this or the other trigger are invalid (or both)
+          [0, 0] = these triggers have identical start and end times
+          [0, +] = other trigger overlaps the end of this trigger
+          [+, -] = this or the other trigger are invalid (or both)
+          [+, 0] = this or the other trigger are invalid (or both)
+          [+, +] = other trigger is entirely after this trigger
+
+        See the 'state' method for the meaning of the two float values returned.
+
+        Args:
+            otherTrigger (Trigger): Another Trigger object
+
+        Returns:
+            list of floats: A two-list of floats indicating how this trigger and
+                the given trigger overlap.
+
+        """
         return [self.state(otherTrigger.startTime), self.state(otherTrigger.endTime)]
 
     def overlaps(self, otherTrigger):
-        # Returns a boolean indicating whether or not this trigger overlaps
-        #   otherTrigger. Returns False if either trigger is invalid
+        """Determine whether or not this trigger overlaps the given trigger.
+
+        See also: "overlap", "valid"
+
+        Args:
+            otherTrigger (Trigger): Another trigger to check for overlap
+
+        Returns:
+            bool: A boolean value indicating whether or not this trigger
+                overlaps the given trigger. Returns True if they overlap and are
+                both valid, or False if they do not overlap or either are not
+                valid.
+
+        """
         overlap = self.overlap(otherTrigger)
         return (overlap[0] * overlap[1]) <= 0 and self.isValid() and otherTrigger.isValid()
 
 class AudioChunk():
-    # A class to wrap a chunk of audio data.
-    # It conveniently bundles the audio data with timing statistics about the data,
-    # and functions for manipulating and querying time info about the data
-    newid = itertools.count().__next__   # Source of this clever little idea: https://stackoverflow.com/a/1045724/1460057
+    """A class that can contain and manipulate a chunk of audio data
+
+    AudioChunk conveniently bundles audio data with timing statistics about the
+        data, and functions for manipulating and querying time info about the
+        data
+
+    Args:
+        chunkStartTime (float): Start time of the audio chunk in seconds since
+            epoch. Defaults to None.
+        audioFrequency (float): Audio sampling frequency in Hz. Defaults to
+            None.
+        data (numpy.ndarray): Audio data as a CxN numpy array, C=# of channels,
+            N=# of samples
+        idspace (str): A parameter designed to make IDs unique across processes.
+            Pass a different idspace for calls from different processes.
+            Defaults to None.
+
+    Attributes:
+        data (numpy.ndarray): Audio chunk data
+        id (int): A unique identifier
+        channelNumber (int): Number of audio channels in data
+        chunkSize (int): Number of audio samples in data
+        chunkStartTime (float): Start time of audio chunk, in seconds since
+            epoch
+        chunkEndTime (float): End time of audio chunk, in seconds since epoch
+        audioFrequency (float): Audio sampling rate in Hz
+
+    """
+    newid = itertools.count().__next__
+    # Source of this clever little idea: https://stackoverflow.com/a/1045724/1460057
     def __init__(self,
-                chunkStartTime=None,    # Time of first sample, in seconds since something
-                audioFrequency=None,      # Audio sampling rate, in Hz
-                data=None,               # Audio data as a CxN numpy array, C=# of channels, N=# of samples
-                idspace=None,           # A parameter designed to make IDs unique across processes. Pass a different idspace for calls from different processes.
-                ):
+                chunkStartTime=None, audioFrequency=None, data=None, idspace=None):
         self.id = (AudioChunk.newid(), idspace)
         self.data = data
         self.chunkStartTime = chunkStartTime
@@ -270,41 +374,97 @@ class AudioChunk():
         self.chunkEndTime = self.calculateChunkEndTime()
 
     def __str__(self):
+        """Create a string reprentation of the AudioChunk object for debugging.
+
+        Returns:
+            str: A string representation of the AudioChunk object
+
+        """
         return 'Audio chunk {id}: {start} ---- {samples} samp x {n} ch ----> {end} @ {freq} Hz'.format(start=self.chunkStartTime, end=self.chunkEndTime, samples=self.chunkSize, n=self.channelNumber, freq=self.audioFrequency, id=self.id)
 
     def calculateChunkEndTime(self):
+        """Calculate the ending time of the AudioChunk.
+
+        Returns:
+            float: The end time of the AudioChunk in seconds since epoch.
+
+        """
         return self.chunkStartTime + (self.chunkSize / self.audioFrequency)
 
     def addChunkToEnd(self, nextChunk):
-        # Add on another chunk to the end of this one.
+        """Append the given chunk to the end of this chunk.
+
+        Args:
+            nextChunk (AudioChunk): Another AudioChunk object to append to the
+                end of this one.
+
+        """
         self.data = np.concatenate((self.data, nextChunk.data), axis=1)
         self.chunkEndTime = self.calculateChunkEndTime()
 
     def addChunkToStart(self, nextChunk):
-        # Add on another chunk to the end of this one.
+        """Prepend the given chunk to the beginning of this chunk.
+
+        Args:
+            nextChunk (AudioChunk): Another AudioChunk object to prepend to the
+                beginning of this one.
+
+        """
         self.data = np.concatenate((nextChunk.data, self.data), axis=1)
         self.chunkStartTime = nextChunk.chunkStartTime
         self.chunkEndTime = self.calculateChunkEndTime()
 
     def getChannelCount(self):
+        """Return the number of audio channels in the audio data.
+
+        Returns:
+            int: The number of channels in the audio data
+
+        """
         return self.data.shape[0]
 
     def getSampleCount(self):
+        """Return the number of samples in the audio data.
+
+        Returns:
+            int: The number of samples in the audio data
+
+        """
         return self.data.shape[1]
 
     def getTriggerState(self, trigger):
-        # Check the manner in which this audio chunk overlaps, or does not
-        #   overlap, with the given trigger
+        """Check whether and how the given trigger overlaps w/ the audio chunk.
+
+        Args:
+            trigger (Trigger): A Trigger object
+
+        Returns:
+            list of floats: A 2-list of floats indicating the "state" of the
+                beginning and end of the audio chunk with respect to the given
+                trigger. See "Trigger.state" for more info.
+
+        """
         chunkStartTriggerState = trigger.state(self.chunkStartTime)
         chunkEndTriggerState =   trigger.state(self.chunkEndTime)
         return chunkStartTriggerState, chunkEndTriggerState
 
     def splitAtSample(self, sampleSplitNum):
-        # Split audio chunk into two so the first chunk has sampleSplitNum
-        #   samples in it, and the second chunk has the rest.
-        #   Returns the two resultant chunks in a tuple
-        # Note that in addition to returning the 2nd part of the chunk, the
-        #   original object is also modified.
+        """Split the Audio chunk into two AudioChunks.
+
+        Split audio chunk into two so the first chunk has sampleSplitNum
+          samples in it, and the second chunk has the rest.
+          Returns the two resultant chunks in a tuple
+        Note that in addition to returning the 2nd part of the chunk, the
+          original object is also modified.
+
+        Args:
+            sampleSplitNum (int): The sample number at which to split the
+                AudioChunk.
+
+        Returns:
+            list of AudioChunks: A 2-list of AudioChunks
+
+        """
 
         if sampleSplitNum < 0:
             sampleSplitNum = 0
@@ -326,9 +486,25 @@ class AudioChunk():
         return preChunk, self
 
     def trimToTrigger(self, trigger, returnOtherPieces=False): # padStart=False):
-        # Trim audio chunk so it lies entirely within the trigger period, and update stats accordingly
-        # If padStart == True, pad the audio chunk with enough data so it begins at the beginning of the trigger period
-        # If returnOtherPieces == True, returns the pre-chunk before the trim and the post-chunk after the trim, or None for one or both if there is no trim before and/or after
+        """Trim this AudioChunk so it lies entirely within the given trigger.
+
+        Trim audio chunk so it lies entirely within the trigger period, and
+            update AudioChunk timing accordingly
+        If returnOtherPieces is  True, returns the pre-chunk before the trim
+            and the post-chunk after the trim, or None for one or both if there
+            is no trim before and/or after
+
+        Args:
+            trigger (Trigger): A Trigger object to trim to
+            returnOtherPieces (bool): A boolean indicating whether or not to
+                return the leftover bits of the AudioChunk after trimming
+
+        Returns:
+            list of AudioChunks or None: If returnOtherPieces is False, this
+                AudioChunk is trimmed in place, and None is returned. Otherwise,
+                The leftover trimmed pieces of the AudioChunk are returned.
+
+        """
         chunkStartTriggerState, chunkEndTriggerState = self.getTriggerState(trigger)
 
         # Trim chunk start:
@@ -414,13 +590,13 @@ def inSchedule(startTime, stopTime, currentTime=None):
 
     """
     if currentTime is None:
-        currentTime. dt.datetime.now().time()
+        currentTime = dt.datetime.now().time()
     if stopTime >= startTime:
         # Schedule-on time does not overlap midnight
-        return startTime < currentTime and currentTime < stopTime
+        return startTime <= currentTime and currentTime < stopTime
     else:
         # Schedule-on time overlaps midnight
-        return startTime < currentTime or currentTime < stopTime
+        return startTime <= currentTime or currentTime < stopTime
 
 def getDaySubfolder(root, trigger=None, timestamp=None):
     """Create a standardized path name for a day-based subfolder
@@ -2189,9 +2365,18 @@ class AudioAcquirer(StateMachineProcess):
                             self.log('        Main:', self.audioQueue.qsize())
                             self.log('  Monitoring:', self.monitorQueue.qsize())
                             self.log('    Analysis:', self.analysisQueue.qsize())
-                    except nidaqmx.errors.DaqError:
-#                        traceback.print_exc()
-                        if self.verbose >= 0: self.log("Audio Chunk acquisition timed out.")
+                    except nidaqmx.errors.DaqError as error:
+                        if self.verbose >= 0:
+                            if error.error_type == nidaqmx.error_codes.DAQmxErrors.OPERATION_TIMED_OUT:
+                                self.log("Audio chunk acquisition timed out.")
+                                self.log(str(error))
+                            if error.error_type == nidaqmx.error_codes.DAQmxErrors.SAMPLES_NOT_YET_AVAILABLE:
+                                self.log("DAQ not ready with audio samples.")
+                                self.log(str(error))
+                            else:
+                                self.log("Unrecognized DAQ error encountered during audio acquisition:")
+                                self.log(str(error))
+                                raise(error)
 
                     # CHECK FOR MESSAGES
                     msg, arg = self.checkMessages(block=False)
@@ -2414,12 +2599,11 @@ class SimpleAudioWriter(StateMachineProcess):
                 elif self.state == States.AUDIOINIT:
                     # Start a new audio file
                     # DO STUFF
-                    currentTimeOfDay = dt.datetime.now().time()
+
+                    scheduledOn = inSchedule(self.scheduleStartTime, self.scheduleStopTime)
+
                     writeEnabledPrevious = writeEnabled
-                    writeEnabled = (self.enableWrite and
-                                        (not self.scheduleEnabled or
-                                            (self.scheduleStartTime <= currentTimeOfDay and
-                                             self.scheduleStopTime <= currentTimeOfDay)))
+                    writeEnabled = (self.enableWrite and (not self.scheduleEnabled or scheduledOn))
 
                     if self.verbose >= 1:
                         if writeEnabled and not writeEnabledPrevious:
@@ -2482,13 +2666,7 @@ class SimpleAudioWriter(StateMachineProcess):
                         self.log("Audio queue size: ", self.audioQueue.qsize())
 
                     # Calculate how many more samples needed to complete the file
-                    samplesUntilEOF = numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile)
-                    if samplesUntilEOF < 1:
-                        # Can't write a fractional frame - this video is actually done
-                        samplesUntilEOF = floor(samplesUntilEOF + numSamplesPerFile)
-                    else:
-                        # Can't write a fractional frame
-                        samplesUntilEOF = floor(samplesUntilEOF)
+                    samplesUntilEOF = floor(numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile))
 
                     audioChunk = self.getNextChunk()
 
@@ -2525,11 +2703,10 @@ class SimpleAudioWriter(StateMachineProcess):
                         numSamplesInCurrentFile += audioChunk.getSampleCount()
                         numSamplesInCurrentSeries += audioChunk.getSampleCount()
 
-                        # Calculate how many more samples needed to complete the file
-                        samplesUntilEOF = floor(numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile))
-
                         if self.verbose >= 3:
                             self.log('audio file num: {num}'.format(num=audioFileCount))
+                            self.log('  pre-chunk samplesUntilEOF   = {ns}'.format(ns=samplesUntilEOF))
+                            self.log('  chunk size                  = {ns}'.format(ns=audioChunk.getSampleCount()))
                             self.log('  numSamplesInCurrentFile     = {ns}'.format(ns=numSamplesInCurrentFile))
                             self.log('  numSamplesInCurrentSeries   = {ns}'.format(ns=numSamplesInCurrentSeries))
                             self.log("Wrote audio chunk {id}".format(id=audioChunk.id))
@@ -2548,7 +2725,7 @@ class SimpleAudioWriter(StateMachineProcess):
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     elif msg in ['', Messages.START]:
-                        if samplesUntilEOF == 0:
+                        if (numSamplesPerFile - numSamplesInCurrentFile) > -1 and (numSamplesPerFile - numSamplesInCurrentFile) < 1:
                             # We've reached the desired sample count. Start a new audio file.
                             self.nextState = States.AUDIOINIT
                             # If requested, merge with video
@@ -2570,7 +2747,7 @@ class SimpleAudioWriter(StateMachineProcess):
                             else:
                                 if self.verbose >= 3:
                                     self.log('No merge message queue available, cannot send to AVMerger')
-                        elif samplesUntilEOF > 0:
+                        elif (numSamplesPerFile - numSamplesInCurrentFile) >= 1:
                             # Not enough audio samples written to this file yet. Keep writing.
                             self.nextState = States.WRITING
                         else:
@@ -3104,10 +3281,15 @@ class VideoAcquirer(StateMachineProcess):
 
         if self.verbose >= 3: self.log("Temporarily initializing camera to get image size...")
         videoWidth, videoHeight = psu.getFrameSize(camSerial=self.camSerial)
+        # Get current camera pixel format
+        self.pixelFormat = psu.getPixelFormat(camSerial=self.camSerial)
+        if self.verbose >= 2: print('Camera pixel format is:', self.pixelFormat)
+
         self.imageQueue = SharedImageSender(
             width=videoWidth,
             height=videoHeight,
             verbose=self.verbose,
+            pixelFormat=self.pixelFormat,
             outputType='bytes',
             outputCopy=False,
             lockForOutput=False,
@@ -3194,10 +3376,6 @@ class VideoAcquirer(StateMachineProcess):
                         nodemap = cam.GetNodeMap()
                         self.setCameraAttributes(nodemap, self.acquireSettings)
                         if self.verbose > 2: self.log("...camera initialization complete")
-
-                        # Get current camera pixel format
-                        self.pixelFormat = psu.getCameraAttribute('PixelFormat', PySpin.CEnumerationPtr, nodemap=nodemap)[1]
-                        if self.verbose >= 2: print('Camera pixel format is:', self.pixelFormat)
 
                         monitorFramePeriod = 1.0/self.monitorMasterFrameRate
                         if self.verbose >= 1: self.log("Monitoring with period", monitorFramePeriod)
@@ -3599,14 +3777,13 @@ class SimpleVideoWriter(StateMachineProcess):
                     #   2. Video write is scheduled to be on or off
                     numFramesInCurrentVideo = 0
 
-                    currentTimeOfDay = dt.datetime.now().time()
-                    writeEnabledPrevious = writeEnabled
-                    writeEnabled = (self.enableWrite and
-                                        (not self.scheduleEnabled or
-                                            (self.scheduleStartTime <= currentTimeOfDay and
-                                             currentTimeOfDay <= self.scheduleStopTime)))
+                    scheduledOn = inSchedule(self.scheduleStartTime, self.scheduleStopTime)
 
-                    if self.verbose >= 3:
+                    writeEnabledPrevious = writeEnabled
+                    writeEnabled = (self.enableWrite and (not self.scheduleEnabled or scheduledOn))
+
+                    if self.verbose >= 2:
+                        currentTimeOfDay = dt.datetime.now().time()
                         self.logTime('Schedule enabled: {e}'.format(e=self.scheduleEnabled))
                         self.logTime('  Current time:   {t}'.format(t=currentTimeOfDay))
                         self.logTime('  Start time:     {t}'.format(t=self.scheduleStartTime))
@@ -3662,7 +3839,13 @@ class SimpleVideoWriter(StateMachineProcess):
                             if videoFileInterface is not None:
                                 if self.verbose >= 3: self.log('Closing previous file interface')
                                 videoFileInterface.close()
-                            videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", fps=self.frameRate, gpuVEnc=self.gpuVEnc)
+
+                            # Map PySpin pixel format into an ffmpeg pixel format
+                            ffmpegPixelFormats = psu.pixelFormats[self.imageQueue.pixelFormat]['ffmpeg']
+                            if ffmpegPixelFormats is None or len(ffmpegPixelFormats) == 0:
+                                raise TypeError('No ffmpeg format is known for PySpin format {f}'.format(f=self.imageQueue.pixelFormat))
+
+                            videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", verbose=self.verbose, input_pixel_format=ffmpegPixelFormats[0], fps=self.frameRate, gpuVEnc=self.gpuVEnc)
 
                         newFileInfo = 'Opened video file #{num:03d}: {f:.2f} fps, gpu encoding={gpu}'.format(num=videoCount, f=self.frameRate, gpu=self.gpuVEnc);
                         self.updatePublishedInfo(newFileInfo)
@@ -4086,7 +4269,7 @@ class VideoWriter(StateMachineProcess):
                                 stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
                                 videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
                             elif self.videoWriteMethod == "ffmpeg":
-                                videoFileInterface = fw.ffmpegWriter(videoFileName+'.avi', fps=self.frameRate)
+                                videoFileInterface = fw.ffmpegWriter(videoFileName+'.avi', verbose=self.verbose, fps=self.frameRate)
 
                         # Write video frame to file that was previously retrieved from the buffer
                         if self.verbose >= 3:

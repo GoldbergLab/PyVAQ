@@ -119,7 +119,7 @@ class TimeEntry(ttk.LabelFrame):
         if len(hour) == 0:
             hour = 0
         else:
-            hour = int(hour) + 12*self.PM()*military
+            hour = int(hour) + 12*self.getPM()*military
         return hour
 
     def getMinute(self):
@@ -133,7 +133,10 @@ class TimeEntry(ttk.LabelFrame):
     def getAMPM(self):
         return self.AMPMVar.get()
 
-    def PM(self):
+    def getAM(self):
+        return self.AMPMVar.get() == TimeEntry.AM
+
+    def getPM(self):
         return self.AMPMVar.get() == TimeEntry.PM
 
     def set(self, time):
