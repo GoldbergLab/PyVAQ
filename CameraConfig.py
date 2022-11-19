@@ -3,6 +3,7 @@ from tkinter import messagebox as mb
 import tkinter.ttk as ttk
 import PySpinUtilities as psu
 import pprint
+from collections import OrderedDict as odict
 
 class CameraConfigPanel(tk.Frame):
     """A tkinter widget allowing for FLIR camera configuration.
@@ -322,21 +323,17 @@ class CameraConfigPanel(tk.Frame):
 
         camSerial = self.getCurrentCamSerial()
         if camSerial is None:
-            print('no cam serial')
             return None
         if displayName is None:
             displayName = self.attributeVar.get()
         for attribute in self.storedAttributes[camSerial]:
-            print('check if', attribute['displayName'], '==', displayName)
             if attribute['displayName'] == displayName:
-                print('yep!')
                 if modified:
                     if attribute['type'] == 'enum':
                         attribute['value'] = (attribute['value'][0], self.valueVar.get())
                     else:
                         attribute['value'] = self.valueVar.get()
                 return attribute
-        print('nope')
         return None
 
     def updateApplyButtonState(self):
@@ -350,14 +347,10 @@ class CameraConfigPanel(tk.Frame):
         attribute = self.getCurrentAttribute()
         if attribute is None or attribute['accessMode'] == 'RO':
             # Attribute is read only - disable apply button
-            self.applyConfigurationButton['state'] = tk.DISABLED
             self.valueEntry['state'] = tk.DISABLED
-            self.addButton['state'] = tk.DISABLED
         elif attribute['accessMode'] == 'RW':
             # Attribute is read/write - enable apply button
-            self.applyConfigurationButton['state'] = tk.NORMAL
             self.valueEntry['state'] = tk.NORMAL
-            self.addButton['state'] = tk.NORMAL
 
     def addCurrentAttributeToConfiguration(self):
         attribute = self.getCurrentAttribute(modified=True)
@@ -394,7 +387,7 @@ class CameraConfigPanel(tk.Frame):
     def updateConfiguration(self, oldConfiguration, newConfiguration):
         for camSerial in newConfiguration:
             if camSerial not in oldConfiguration:
-                oldConfiguration[camSerial] = {}
+                oldConfiguration[camSerial] = odict()
             for name in newConfiguration[camSerial]:
                 oldConfiguration[camSerial][name] = newConfiguration[camSerial][name]
         return oldConfiguration
@@ -416,10 +409,10 @@ class CameraConfigPanel(tk.Frame):
             if len(attribute.strip()) == 0:
                 continue
             elements = [element.strip() for element in attribute.split(',')]
-            camSerial, name, value, type = elements
+            camSerial, attributeName, attributeValue, attributeType = elements
             if camSerial not in configuration:
-                configuration[camSerial] = {}
-            configuration[camSerial][name] = dict(name=name, value=value, type=type)
+                configuration[camSerial] = odict()
+            configuration[camSerial][attributeName] = dict(name=attributeName, value=attributeValue, type=attributeType)
         return configuration
 
     def applyCurrentAttribute(self):
@@ -427,29 +420,30 @@ class CameraConfigPanel(tk.Frame):
         camSerial = self.getCurrentCamSerial()
 
         if attribute is not None and camSerial is not None:
-            name = attribute['name']
-            type = attribute['type']
-            value = attribute['value']
-            value = self.convertAttributeValue(value, type)
-            result = psu.setCameraAttribute(name, value, type, camSerial=camSerial, nodemap='NodeMap')
+            attributeName = attribute['name']
+            attributeType = attribute['type']
+            attributeValue = attribute['value']
+            attributeValue = self.convertAttributeValue(attributeValue, attributeType)
+            result = psu.setCameraAttribute(attributeName, attributeValue, attributeType, camSerial=camSerial, nodemap='NodeMap')
             if result:
-                message = 'Applied attribute to camera {cs}: {n}={v} ({t})'.format(cs=camSerial, n=name, v=value, t=type)
+                message = 'Applied attribute to camera {cs}: {n}={v} ({t})'.format(cs=camSerial, n=attributeName, v=attributeValue, t=attributeType)
                 mb.showinfo(title='Attribute successfully applied to camera', message=message)
             else:
-                message = 'Failed to apply attribute to camera {cs}: {n}={v} ({t})'.format(cs=camSerial, n=name, v=value, t=type)
+                message = 'Failed to apply attribute to camera {cs}: {n}={v} ({t})'.format(cs=camSerial, n=attributeName, v=attributeValue, t=attributeType)
                 mb.showerror(title='Failed to apply attribute to camera', message=message)
 
             self.updateCameraAttributes()
 
-    def convertAttributeValue(self, value, type):
-        if type == 'enum':
-            value = value[1]
-        elif type == 'integer':
+    def convertAttributeValue(self, value, attributeType):
+        if attributeType == 'enum':
+            if type(value) == tuple:
+                value = value[1]
+        elif attributeType == 'integer':
             value = int(value)
-        elif type == 'float':
+        elif attributeType == 'float':
             value = float(value)
-        elif type == 'boolean':
-            value = (value == 'True') or value == '1'
+        elif attributeType == 'boolean':
+            value = (value == True) or (value == 'True') or value == '1' or value == 1
         return value
 
     def applyConfiguration(self):
@@ -468,12 +462,12 @@ class CameraConfigPanel(tk.Frame):
         formattedConfiguration = {}
         for camSerial in configuration:
             formattedConfiguration[camSerial] = []
-            for name in configuration[camSerial]:
-                value = configuration[camSerial][name]['value']
-                type =  configuration[camSerial][name]['type']
-                value = self.convertAttributeValue(value, type)
+            for attributeName in configuration[camSerial]:
+                attributeValue = configuration[camSerial][attributeName]['value']
+                attributeType =  configuration[camSerial][attributeName]['type']
+                attributeValue = self.convertAttributeValue(attributeValue, attributeType)
                 formattedConfiguration[camSerial].append(
-                    (name, value, type)
+                    (attributeName, attributeValue, attributeType)
                 )
 
         results = {}
