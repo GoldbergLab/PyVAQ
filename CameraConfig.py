@@ -166,7 +166,8 @@ class CameraConfigPanel(tk.Frame):
 
         self.camSerials = psu.discoverCameras()
         self.cameraList['values'] = self.camSerials
-        self.cameraList.current(0)
+        if len(self.camSerials) > 0:
+            self.cameraList.current(0)
 
     def getCurrentCamSerial(self):
         """Get the currently selected camera serial.
@@ -189,6 +190,8 @@ class CameraConfigPanel(tk.Frame):
             type: Description of returned object.
 
         """
+
+        self.updateCameraList()
 
         camSerial = self.getCurrentCamSerial()
         if camSerial is None:
@@ -455,6 +458,9 @@ class CameraConfigPanel(tk.Frame):
             None
 
         """
+
+        if len(self.camSerials) == 0:
+            return
 
         configuration = self.getCurrentConfiguration()
 
