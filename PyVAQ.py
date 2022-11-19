@@ -651,6 +651,7 @@ class PyVAQ:
             "videoMonitorDisplaySize":          dict(get=self.videoMonitorDisplaySize.get,                      set=self.videoMonitorDisplaySize.set),
             "cpuVideoCompressionArgs":          dict(get=self.cpuVideoCompressionArgs.get,                      set=self.cpuVideoCompressionArgs.set),
             "gpuVideoCompressionArgs":          dict(get=self.gpuVideoCompressionArgs.get,                      set=self.gpuVideoCompressionArgs.set),
+            "applyConfigurationOnInit":         dict(get=self.cameraConfigurationPanel.applyConfigurationOnInit,set=self.cameraConfigurationPanel.applyConfigurationOnInit),
         }
 
         self.createAudioAnalysisMonitor()
@@ -3034,7 +3035,7 @@ him know. Otherwise, I had nothing to do with it.
         These are settings for FLIR USB3 Vision cameras, such as the Flea3
         and Blackfly S series of cameras.
 
-        See also: StateMachineProcesses.VideoAcquirer.setCameraAttributes
+        See also: PySpinUtilities.setCameraAttributes
 
         Returns:
             list of tuples: A list of camera settings, formatted as a list of
