@@ -1045,6 +1045,7 @@ him know. Otherwise, I had nothing to do with it.
         availableAudioChannels = flattenList(discoverDAQAudioChannels().values())
         availableClockChannels = flattenList(discoverDAQClockChannels().values()) + ['None']
         availableDigitalChannels = ['None'] + flattenList(discoverDAQTerminals().values())
+
         availableCamSerials = psu.discoverCameras()
         audioChannelConfigurations = [
             "DEFAULT",
@@ -1680,6 +1681,7 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
+        self.stopMonitors()
         self.autoUpdateAudioMonitors()
         self.autoUpdateVideoMonitors()
         self.autoUpdateAudioAnalysisMonitors()
@@ -2322,6 +2324,8 @@ him know. Otherwise, I had nothing to do with it.
                                 initializing or similar state
             'acquiring'     All processes running (inc at least one acquire),
                                 and all in an acquire-ey state
+            'previewing'    At least one acquirer and optionally synchronizer
+                                processes running
             'halted'        All processes running but in stopped state
             'dead'          No processes running
             'error'         At least one process in error state
@@ -2408,8 +2412,8 @@ him know. Otherwise, I had nothing to do with it.
             self.metaState = 'error'
         elif numInitializing == (numAcquirersRunning + numAuxiliariesRunning) and not self.previewMode:
             self.metaState = 'initialized'
-        elif numAcquirersRunning > 0 and numAcquiresAcquiring == numAcquirersRunning and numWritersRunning == 0 and self.previewMode:
-            self.metstate = 'previewing'
+        elif numAcquirersRunning > 0 and numAcquiresAcquiring > 0 and numWritersRunning == 0 and self.previewMode:
+            self.metaState = 'previewing'
         elif numAcquirersRunning > 0 and numAcquiresAcquiring == numAcquirersRunning and not self.previewMode:
             self.metaState = 'acquiring'
         elif numStopped == numProcesses and not self.previewMode:
@@ -2595,6 +2599,7 @@ him know. Otherwise, I had nothing to do with it.
         self.createChildProcesses(createWriters=False)
         self.initializeChildProcesses()
         self.startSyncProcess()
+        self.startMonitors()
 
     def writeButtonClickHandler(self):
         """Send a manual trigger to write processes to trigger recording.
@@ -3150,7 +3155,11 @@ him know. Otherwise, I had nothing to do with it.
         self.actualVideoFrequency = mp.Value('d', -1)
         self.actualAudioFrequency = mp.Value('d', -1)
 
+        synchronizerRequired = p["audioSyncTerminal"] is not None or p["videoSyncTerminal"] is not None
+
         startTime = mp.Value('d', -1)
+        if not synchronizerRequired:
+            startTime.value = time.time_ns()
 
         if p["mergeFiles"] and p["numStreams"] >= 2:
             # Create merge process
@@ -3170,7 +3179,7 @@ him know. Otherwise, I had nothing to do with it.
             mergeMsgQueue = None
 
 
-        if p["audioSyncTerminal"] is not None or p["videoSyncTerminal"] is not None:
+        if synchronizerRequired:
             # Create sync process
             self.syncProcess = Synchronizer(
                 actualVideoFrequency=self.actualVideoFrequency,
@@ -3393,6 +3402,7 @@ him know. Otherwise, I had nothing to do with it.
             if self.videoWriteProcesses[camSerial] is not None:
                 self.videoWriteProcesses[camSerial].start()
             self.videoAcquireProcesses[camSerial].start()
+            print('starting video acquire', camSerial)
 
         # Start other processes
         if self.syncProcess is not None: self.syncProcess.start()
