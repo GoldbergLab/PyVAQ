@@ -591,7 +591,7 @@ class PyVAQ:
 
         # the params dict defines how to access and set all the parameters in the GUI
         self.paramInfo = {
-            'audioFrequency':                   dict(get=lambda:int(self.audioFrequencyVar.get()),              set=self.audioFrequencyVar.set),
+            'audioFrequency':                   dict(get=lambda:int(self.audioFrequencyVar.get()),              set=self.setAudioFrequency),
             'videoFrequency':                   dict(get=lambda:int(self.videoFrequencyVar.get()),              set=self.videoFrequencyVar.set),
             'chunkSize':                        dict(get=lambda:int(self.chunkSizeVar.get()),                   set=self.chunkSizeVar.set),
             "maxGPUVEnc":                       dict(get=lambda:int(self.maxGPUVEncVar.get()),                  set=self.maxGPUVEncVar.set),
@@ -848,6 +848,12 @@ class PyVAQ:
         sendMessage(self.mergeProcess, (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
         for camSerial in self.videoWriteProcesses:
             sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
+
+    def setAudioFrequency(self, audioFrequency):
+        self.audioFrequencyVar.set(audioFrequency)
+        if self.audioMonitor is not None:
+            # Update audio monitor with new audio frequency
+            self.audioMonitor.sampleRate = audioFrequency
 
     def validateVideoExposureTime(self, *args):
         """Sanitize current video exposure time settings.
@@ -1211,7 +1217,8 @@ him know. Otherwise, I had nothing to do with it.
             'audioDirectory',
             'videoBaseFileNames',
             'videoDirectories',
-            'videoMonitorDisplaySize'
+            'videoMonitorDisplaySize',
+            'audioFrequency'
             )
         camSerials = p["camSerials"]
         audioDAQChannels = p["audioDAQChannels"]
@@ -1286,7 +1293,8 @@ him know. Otherwise, I had nothing to do with it.
                 self.audioMonitorDocker.docker,
                 initialDirectory=audioDirectory,
                 initialBaseFileName=audioBaseFileName,
-                showFileWidgets=showWriteWidgets
+                showFileWidgets=showWriteWidgets,
+                sampleRate=p['audioFrequency']
                 )
             self.audioMonitor.grid(row=1, column=0)
 

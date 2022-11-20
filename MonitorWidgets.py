@@ -13,6 +13,10 @@ import matplotlib.pyplot as plt
 from fileWritingEntry import FileWritingEntry
 import cv2
 import PySpinUtilities as psu
+import numpy
+import wave
+import io
+import winsound
 
 WIDGET_COLORS = [
     '#050505', # near black
@@ -28,7 +32,7 @@ with Image.open(r'Resources\NoImages_000.png') as NO_IMAGES_IMAGE:
 class AudioMonitor(ttk.LabelFrame):
     def __init__(self, *args, historyLength=44100*2, displayAmplitude=5,
         autoscale=False, initialDirectory='', initialBaseFileName='',
-        showFileWidgets=True, **kwargs):
+        showFileWidgets=True, sampleRate=22050, **kwargs):
         ttk.LabelFrame.__init__(self, *args, **kwargs)
 
         self.channels = []
@@ -38,6 +42,7 @@ class AudioMonitor(ttk.LabelFrame):
         self.autoscale = autoscale                  # Autoscale axes
         self.audioTraces = []                        # matplotlib line
         self.showFileWidgets = showFileWidgets
+        self.sampleRate = sampleRate
 
         self.fileWidget = FileWritingEntry(
             self,
@@ -56,9 +61,16 @@ class AudioMonitor(ttk.LabelFrame):
         self.enableWriteCheckButton = tk.Checkbutton(self, text="Enable write", variable=self.enableWriteVar, offvalue=False, onvalue=True)
         self.updateEnableWriteCheckButton()
 
+        self.liveAudioVar = tk.BooleanVar(); self.liveAudioVar.set(False)
+        self.liveAudioCheckButton = tk.Checkbutton(self, text="Live audio", variable=self.liveAudioVar, offvalue=False, onvalue=True)
+        self.updateLiveAudioCheckButton()
+
         self.masterDisplayFrame = ttk.Frame(self)
 
         self.data = None
+
+        # Future reference to speaker object from the SoundCard library
+        self.audioPlayerBuffer = io.BytesIO()
 
         for index, channel in enumerate(self.channels):
             self.createChannelDisplay(channel, index)
@@ -71,6 +83,12 @@ class AudioMonitor(ttk.LabelFrame):
             self.enableWriteCheckButton["fg"] = 'green'
         else:
             self.enableWriteCheckButton["fg"] = 'red'
+
+    def updateLiveAudioCheckButton(self, *args):
+        if self.liveAudioVar.get():
+            self.liveAudioCheckButton["fg"] = 'green'
+        else:
+            self.liveAudioCheckButton["fg"] = 'red'
 
     def viewerEnabled(self):
         return self.enableViewerVar.get()
@@ -145,6 +163,18 @@ class AudioMonitor(ttk.LabelFrame):
                 axes.margins(x=0, y=0)
                 fig.canvas.draw()
                 fig.canvas.flush_events()
+        if self.liveAudioVar.get():
+            playAudio(newData.tobytes(), newData.shape[1], newData.dtype.itemsize)
+
+    def playAudio(self, audioBytes, nChannels, bitDepth):
+        virtualWaveFile = wave.open(self.audioPlayerBuffer, mode='wb')
+        virtualWaveFile.setnchannels(nChannels)
+        virtualWaveFile.setframerate(self.sampleRate)
+        virtualWaveFile.setsampwidth(bitDepth)
+        virtualWaveFile.writeframes(audioBytes)
+        virtualWaveFile.close()
+        self.audioPlayerBuffer.seek(0)
+        winsound.PlaySound(self.audioPlayerBuffer.read(), winsound.SND_MEMORY | winsound.SND_ASYNC)
 
     def updateChannels(self, channels):
         self.channels = channels
@@ -178,6 +208,7 @@ class AudioMonitor(ttk.LabelFrame):
                 self.fileWidget.grid(row=1, column=0, rowspan=2, sticky=tk.NSEW)
                 self.enableViewerCheckButton.grid(row=1, column=1)
                 self.enableWriteCheckButton.grid(row=2, column=1)
+                self.liveAudioCheckButton.grid(row=1, column=2)
             else:
                 self.fileWidget.grid_remove()
                 self.enableViewerCheckButton.grid_remove()
