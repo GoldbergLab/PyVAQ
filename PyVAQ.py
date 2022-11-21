@@ -49,6 +49,7 @@ import ctypes
 from ffmpegWriter import DEFAULT_CPU_COMPRESSION_ARGS, DEFAULT_GPU_COMPRESSION_ARGS
 from CameraConfig import CameraConfigPanel
 import copy
+from collections import OrderedDict as odict
 
 VERSION='0.3.0'
 
@@ -3090,7 +3091,13 @@ him know. Otherwise, I had nothing to do with it.
                 newConfiguration = {}
                 camSerials = psu.discoverCameras()
                 for camSerial in camSerials:
-                    newConfiguration[camSerial] = copy.deepcopy(configuration)
+                    newConfiguration[camSerial] = odict()
+                    for attributeName, attributeValue, attributeType in configuration:
+                            newConfiguration[camSerial][attributeName] = dict(
+                                name=attributeName,
+                                value=attributeValue,
+                                type=attributeType
+                            )
                 configuration = newConfiguration
             except:
                 # Well, we tried.
@@ -3099,7 +3106,7 @@ him know. Otherwise, I had nothing to do with it.
 
         # Send updated configuration to camera config panel
         self.cameraConfigurationPanel.setCurrentConfiguration(configuration)
-        
+
         self.endLog(inspect.currentframe().f_code.co_name)
 
     def waitForChildProcessesToStop(self, attempts=10, timeout=5):
