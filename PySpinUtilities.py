@@ -325,33 +325,45 @@ pixelSizes = {
 }
 
 nodeAccessorFunctionsToTypeName = {
-    PySpin.intfIString:'string',
-    PySpin.intfIInteger:'integer',
-    PySpin.intfIFloat:'float',
-    PySpin.intfIBoolean:'boolean',
-    PySpin.intfICommand:'command',
-    PySpin.intfIEnumeration:'enum',
-    PySpin.intfICategory:'category'
+    PySpin.intfIString:         'string',
+    PySpin.intfIInteger:        'integer',
+    PySpin.intfIFloat:          'float',
+    PySpin.intfIBoolean:        'boolean',
+    PySpin.intfICommand:        'command',
+    PySpin.intfIEnumeration:    'enum',
+    PySpin.intfICategory:       'category',
+    PySpin.intfIValue:          'value',
+    PySpin.intfIBase:           'base',
+    PySpin.intfIRegister:       'register',
+    PySpin.intfIEnumEntry:      'enumEntry',
 }
 
 typeNameToNodeAccessorFunctions = {
-    'string':PySpin.intfIString,
-    'integer':PySpin.intfIInteger,
-    'float':PySpin.intfIFloat,
-    'boolean':PySpin.intfIBoolean,
-    'command':PySpin.intfICommand,
-    'enum':PySpin.intfIEnumeration,
-    'category':PySpin.intfICategory,
+    'string':       PySpin.intfIString,
+    'integer':      PySpin.intfIInteger,
+    'float':        PySpin.intfIFloat,
+    'boolean':      PySpin.intfIBoolean,
+    'command':      PySpin.intfICommand,
+    'enum':         PySpin.intfIEnumeration,
+    'category':     PySpin.intfICategory,
+    'value':        PySpin.intfIValue,
+    'base':         PySpin.intfIBase,
+    'register':     PySpin.intfIRegister,
+    'enumEntry':    PySpin.intfIEnumEntry,
 }
 
 typeNameToNodeType = {
-    'string':PySpin.CStringPtr,
-    'integer':PySpin.CIntegerPtr,
-    'float':PySpin.CFloatPtr,
-    'boolean':PySpin.CBooleanPtr,
-    'command':PySpin.CEnumerationPtr,
-    'enum':PySpin.CEnumerationPtr,
-    'category':PySpin.CCategoryPtr
+    'string':       PySpin.CStringPtr,
+    'integer':      PySpin.CIntegerPtr,
+    'float':        PySpin.CFloatPtr,
+    'boolean':      PySpin.CBooleanPtr,
+    'command':      PySpin.CEnumerationPtr,
+    'enum':         PySpin.CEnumerationPtr,
+    'category':     PySpin.CCategoryPtr,
+    'value':        PySpin.CValuePtr,
+    'base':         PySpin.CBasePtr,
+    'register':     PySpin.CRegisterPtr,
+    'enumEntry':    PySpin.CEnumEntryPtr,
 }
 
 nodeMapAccessorFunctions = {
