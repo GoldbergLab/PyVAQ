@@ -314,6 +314,15 @@ def CEnumerationPtr(node):
     return node.attribute
 def CCategoryPtr(node):
     return node.attribute
+def CValuePtr(node):
+    return node.attribute
+def CBasePtr(node):
+    return node.attribute
+def CRegisterPtr(node):
+    return node.attribute
+def CEnumEntryPtr(node):
+    return node.attribute
+
 
 intfIString = 'intfIString'
 intfIInteger = 'intfIInteger'
@@ -322,6 +331,10 @@ intfIBoolean = 'intfIBoolean'
 intfICommand = 'intfICommand'
 intfIEnumeration = 'intfIEnumeration'
 intfICategory = 'intfICategory'
+intfIValue = 'value',
+intfIBase = 'base',
+intfIRegister = 'register',
+intfIEnumEntry = 'enumEntry',
 
 def IsAvailable(nodeAttribute):
     return True
