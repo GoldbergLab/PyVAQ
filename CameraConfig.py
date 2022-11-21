@@ -284,7 +284,7 @@ class CameraConfigPanel(tk.Frame):
             self.valueVar.set('')
             return
 
-        value = pus.convertAttributeValue(attribute['value'], attribute['type'])
+        value = psu.convertAttributeValue(attribute['value'], attribute['type'])
         if attribute['type'] == 'enum':
             self.valueList['values'] = list(attribute['options'].values())
             self.valueEntry.grid_remove()
@@ -300,7 +300,7 @@ class CameraConfigPanel(tk.Frame):
             self.valueEntry.grid()
             self.valueVar.set(value)
 
-        value = pus.convertAttributeValue(attribute['value'], attribute['type'])
+        value = psu.convertAttributeValue(attribute['value'], attribute['type'])
 
         if attribute['type'] == 'enum':
             self.valueVar.set(value)
@@ -426,7 +426,7 @@ class CameraConfigPanel(tk.Frame):
             attributeName = attribute['name']
             attributeType = attribute['type']
             attributeValue = attribute['value']
-            attributeValue = pus.convertAttributeValue(attributeValue, attributeType)
+            attributeValue = psu.convertAttributeValue(attributeValue, attributeType)
             result = psu.setCameraAttribute(attributeName, attributeValue, attributeType, camSerial=camSerial, nodemap='NodeMap')
             if result:
                 message = 'Applied attribute to camera {cs}: {n}={v} ({t})'.format(cs=camSerial, n=attributeName, v=attributeValue, t=attributeType)
