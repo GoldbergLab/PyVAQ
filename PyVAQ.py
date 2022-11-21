@@ -3305,7 +3305,7 @@ him know. Otherwise, I had nothing to do with it.
             videoAcquireProcess = VideoAcquirer(
                 startTime=startTime,
                 camSerial=camSerial,
-                acquireSettings=p["acquireSettings"],
+                acquireSettings=p["acquireSettings"][camSerial].values,
                 frameRate = self.actualVideoFrequency,
                 requestedFrameRate=p["videoFrequency"],
                 monitorFrameRate=self.monitorMasterFrameRate,
