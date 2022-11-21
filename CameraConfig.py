@@ -244,7 +244,7 @@ class CameraConfigPanel(tk.Frame):
 
         camSerial = self.getCurrentCamSerial()
         if camSerial is not None:
-            attributeNames = sorted([attribute['displayName'] for attribute in self.storedAttributes[camSerial] if self.checkFilter(attribute)])
+            attributeNames = sorted([attribute['displayName'] for attribute in self.storedAttributes[camSerial] if attribute['displayName'] is not None and self.checkFilter(attribute)])
             self.attributeList['values'] = attributeNames
             if len(attributeNames) > 0:
                 self.attributeVar.set(attributeNames[0])
