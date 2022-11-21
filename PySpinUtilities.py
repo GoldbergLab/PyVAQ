@@ -567,32 +567,6 @@ def setCameraAttribute(attributeName, attributeValue, attributeType, cam=None, n
         nodeAttribute.SetValue(attributeValue)
     return True
 
-def convertAttributesToTriplets(attributes):
-    # Convert attributes from:
-        # odict(
-        #     attributeName1:{name=attributeName1, value=attributeValue1, type=attributeType1},
-        #     attributeNameN:{name=attributeName1, value=attributeValue1, type=attributeType1},
-        #     ...
-        #     attributeNameN:{name=attributeNameN, value=attributeValueN, type=attributeTypeN},
-        # )
-    # To:
-        # [
-        #     (attributeName1, attributeValue1, attributeType1)
-        #     (attributeName2, attributeValue2, attributeType2)
-        #     ...
-        #     (attributeNameN, attributeValueN, attributeTypeN)
-        # ]
-    triplets = []
-    for attributeName in attributes:
-        triplets.append(
-            (
-                attributes[attributeName]['name'],
-                attributes[attributeName]['value'],
-                attributes[attributeName]['type'],
-            )
-        )
-    return triplets
-
 @handleCam
 def setCameraAttributes(attributeValueTriplets, cam=None, nodemap='NodeMap'):
     if type(nodemap) == str:
@@ -767,6 +741,29 @@ def getAllCameraAttributes(cam=None):
         print('Error: %s' % ex)
         traceback.print_exc()
         return None
+
+@handleCam
+def applyCameraConfiguration(configuration, cam=None):
+    # Apply configuration of the form:
+    # odict(
+    #     attributeName1:{name=attributeName1, value=attributeValue1, type=attributeType1},
+    #     attributeNameN:{name=attributeName1, value=attributeValue1, type=attributeType1},
+    #     ...
+    #     attributeNameN:{name=attributeNameN, value=attributeValueN, type=attributeTypeN},
+    # )
+
+    # Reformat configuration to [(name1, value1, type1), (name2, value2, type2), ..., (nameN, valueN, typeN)]
+    formattedConfiguration = []
+    for attributeName in configuration:
+        attributeValue = configuration[attributeName]['value']
+        attributeType =  configuration[attributeName]['type']
+        attributeValue = self.convertAttributeValue(attributeValue, attributeType)
+        formattedConfiguration.append(
+            (attributeName, attributeValue, attributeType)
+        )
+
+    results = setCameraAttributes(formattedConfiguration, cam=cam)
+    return results
 
 def getAllCamerasAttributes(camSerials=None):
     if camSerials is None:

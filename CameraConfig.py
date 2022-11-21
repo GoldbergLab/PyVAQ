@@ -83,7 +83,7 @@ class CameraConfigPanel(tk.Frame):
         self.configurationText = tk.Text(self, width=60, height=10)
         self.configurationChangeHandler = configurationChangeHandler
         self.configurationText.bind('<KeyRelease>', self.configurationChangeHandler)
-        self.applyConfigurationButton = tk.Button(self, text="Apply configuration now", command=self.applyConfiguration)
+        self.applyConfigurationButton = tk.Button(self, text="Apply configuration now", command=self.applyCurrentConfiguration)
         self.applyConfigurationOnInitVar = tk.BooleanVar()
         self.applyConfigurationOnInitVar.set(True)
         self.applyConfigurationOnInitCheckbox = ttk.Checkbutton(self, text='Apply configuration on initialization', variable=self.applyConfigurationOnInitVar, offvalue=False, onvalue=True)
@@ -449,7 +449,7 @@ class CameraConfigPanel(tk.Frame):
             value = (value == True) or (value == 'True') or value == '1' or value == 1
         return value
 
-    def applyConfiguration(self):
+    def applyCurrentConfiguration(self):
         """Attempt to apply all configurations to the cameras now.
 
         Also reload camera settings afterward.
@@ -464,21 +464,9 @@ class CameraConfigPanel(tk.Frame):
 
         configuration = self.getCurrentConfiguration()
 
-        # Reformat configuration to {camSerial1:[(name1, value1, type1), (name2, value2, type2), ..., (nameN, valueN, typeN)], camSerial2:...}
-        formattedConfiguration = {}
-        for camSerial in configuration:
-            formattedConfiguration[camSerial] = []
-            for attributeName in configuration[camSerial]:
-                attributeValue = configuration[camSerial][attributeName]['value']
-                attributeType =  configuration[camSerial][attributeName]['type']
-                attributeValue = self.convertAttributeValue(attributeValue, attributeType)
-                formattedConfiguration[camSerial].append(
-                    (attributeName, attributeValue, attributeType)
-                )
-
         results = {}
         for camSerial in formattedConfiguration:
-            results[camSerial] = psu.setCameraAttributes(formattedConfiguration[camSerial], camSerial=camSerial)
+            results[camSerial] = psu.applyCameraConfiguration(configuration[camSerial], camSerial=camSerial)
         successCount = sum([sum([results[camSerial][attributeName] for attributeName in results[camSerial]]) for camSerial in results])
         failCount = sum([sum([not results[camSerial][attributeName] for attributeName in results[camSerial]]) for camSerial in results])
         totalCount = failCount + successCount

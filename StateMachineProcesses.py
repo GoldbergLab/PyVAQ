@@ -3421,7 +3421,7 @@ class VideoAcquirer(StateMachineProcess):
                         cam = camList.GetBySerial(self.camSerial)
                         cam.Init()
 
-                        psu.setCameraAttributes(self.acquireSettings, cam=cam)
+                        psu.applyCameraConfiguration(self.acquireSettings, cam=cam)
                         if self.verbose >= 2: self.log("...camera initialization complete")
 
                         monitorFramePeriod = 1.0/self.monitorMasterFrameRate
