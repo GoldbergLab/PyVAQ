@@ -48,6 +48,7 @@ import PySpinUtilities as psu
 import ctypes
 from ffmpegWriter import DEFAULT_CPU_COMPRESSION_ARGS, DEFAULT_GPU_COMPRESSION_ARGS
 from CameraConfig import CameraConfigPanel
+import copy
 
 VERSION='0.3.0'
 
@@ -3079,7 +3080,27 @@ him know. Otherwise, I had nothing to do with it.
 # #            ('ExposureTime', exposureTime, 'float')]
 
     def setCameraSettings(self, configuration):
+        # Handle legacy format:
+        if type(configuration) == list:
+            # Once upon a time, there were no per-camera settings, so the
+            #   acquisition settings were stored as a simple list of attribute
+            #   tuples. Now we have to convert that to a dictionary with camera
+            #   serials as keys
+            try:
+                newConfiguration = {}
+                camSerials = psu.discoverCameras()
+                for camSerial in camSerials:
+                    newConfiguration[camSerial] = copy.deepcopy(configuration)
+                configuration = newConfiguration
+            except:
+                # Well, we tried.
+                self.log('Failed to import legacy camera configuration from settings file')
+                configuration = {}
+
+        # Send updated configuration to camera config panel
         self.cameraConfigurationPanel.setCurrentConfiguration(configuration)
+        
+        self.endLog(inspect.currentframe().f_code.co_name)
 
     def waitForChildProcessesToStop(self, attempts=10, timeout=5):
         """Wait for all state machine child processes to stop.
