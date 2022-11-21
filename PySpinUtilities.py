@@ -567,6 +567,32 @@ def setCameraAttribute(attributeName, attributeValue, attributeType, cam=None, n
         nodeAttribute.SetValue(attributeValue)
     return True
 
+def convertAttributesToTriplets(attributes):
+    # Convert attributes from:
+        # odict(
+        #     attributeName1:{name=attributeName1, value=attributeValue1, type=attributeType1},
+        #     attributeNameN:{name=attributeName1, value=attributeValue1, type=attributeType1},
+        #     ...
+        #     attributeNameN:{name=attributeNameN, value=attributeValueN, type=attributeTypeN},
+        # )
+    # To:
+        # [
+        #     (attributeName1, attributeValue1, attributeType1)
+        #     (attributeName2, attributeValue2, attributeType2)
+        #     ...
+        #     (attributeNameN, attributeValueN, attributeTypeN)
+        # ]
+    triplets = []
+    for attributeName in attributes:
+        triplets.append(
+            (
+                attributes[attributeName]['name'],
+                attributes[attributeName]['value'],
+                attributes[attributeName]['type'],
+            )
+        )
+    return triplets
+
 @handleCam
 def setCameraAttributes(attributeValueTriplets, cam=None, nodemap='NodeMap'):
     if type(nodemap) == str:
@@ -577,6 +603,10 @@ def setCameraAttributes(attributeValueTriplets, cam=None, nodemap='NodeMap'):
         pass
 
     results = {}
+
+    print('triplets:')
+    print(attributeValueTriplets)
+
     for attribute, value, attributeType in attributeValueTriplets:
         results[attribute] = setCameraAttribute(attribute, value, attributeType, cam=cam, nodemap=nodemap)
         # if not result:
