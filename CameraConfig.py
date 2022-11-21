@@ -453,7 +453,7 @@ class CameraConfigPanel(tk.Frame):
         configuration = self.getCurrentConfiguration()
 
         results = {}
-        for camSerial in formattedConfiguration:
+        for camSerial in configuration:
             results[camSerial] = psu.applyCameraConfiguration(configuration[camSerial], camSerial=camSerial)
         successCount = sum([sum([results[camSerial][attributeName] for attributeName in results[camSerial]]) for camSerial in results])
         failCount = sum([sum([not results[camSerial][attributeName] for attributeName in results[camSerial]]) for camSerial in results])

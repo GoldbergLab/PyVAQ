@@ -578,9 +578,6 @@ def setCameraAttributes(attributeValueTriplets, cam=None, nodemap='NodeMap'):
 
     results = {}
 
-    print('triplets:')
-    print(attributeValueTriplets)
-
     for attribute, value, attributeType in attributeValueTriplets:
         results[attribute] = setCameraAttribute(attribute, value, attributeType, cam=cam, nodemap=nodemap)
         # if not result:
