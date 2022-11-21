@@ -284,7 +284,7 @@ class CameraConfigPanel(tk.Frame):
             self.valueVar.set('')
             return
 
-        value = self.convertAttributeValue(attribute['value'], attribute['type'])
+        value = pus.convertAttributeValue(attribute['value'], attribute['type'])
         if attribute['type'] == 'enum':
             self.valueList['values'] = list(attribute['options'].values())
             self.valueEntry.grid_remove()
@@ -300,7 +300,7 @@ class CameraConfigPanel(tk.Frame):
             self.valueEntry.grid()
             self.valueVar.set(value)
 
-        value = self.convertAttributeValue(attribute['value'], attribute['type'])
+        value = pus.convertAttributeValue(attribute['value'], attribute['type'])
 
         if attribute['type'] == 'enum':
             self.valueVar.set(value)
@@ -426,7 +426,7 @@ class CameraConfigPanel(tk.Frame):
             attributeName = attribute['name']
             attributeType = attribute['type']
             attributeValue = attribute['value']
-            attributeValue = self.convertAttributeValue(attributeValue, attributeType)
+            attributeValue = pus.convertAttributeValue(attributeValue, attributeType)
             result = psu.setCameraAttribute(attributeName, attributeValue, attributeType, camSerial=camSerial, nodemap='NodeMap')
             if result:
                 message = 'Applied attribute to camera {cs}: {n}={v} ({t})'.format(cs=camSerial, n=attributeName, v=attributeValue, t=attributeType)
@@ -436,18 +436,6 @@ class CameraConfigPanel(tk.Frame):
                 mb.showerror(title='Failed to apply attribute to camera', message=message)
 
             self.updateCameraAttributes()
-
-    def convertAttributeValue(self, value, attributeType):
-        if attributeType == 'enum':
-            if type(value) == tuple:
-                value = value[1]
-        elif attributeType == 'integer':
-            value = int(value)
-        elif attributeType == 'float':
-            value = float(value)
-        elif attributeType == 'boolean':
-            value = (value == True) or (value == 'True') or value == '1' or value == 1
-        return value
 
     def applyCurrentConfiguration(self):
         """Attempt to apply all configurations to the cameras now.

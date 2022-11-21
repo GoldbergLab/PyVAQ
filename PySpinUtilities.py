@@ -742,6 +742,18 @@ def getAllCameraAttributes(cam=None):
         traceback.print_exc()
         return None
 
+def convertAttributeValue(value, attributeType):
+    if attributeType == 'enum':
+        if type(value) == tuple:
+            value = value[1]
+    elif attributeType == 'integer':
+        value = int(value)
+    elif attributeType == 'float':
+        value = float(value)
+    elif attributeType == 'boolean':
+        value = (value == True) or (value == 'True') or value == '1' or value == 1
+    return value
+
 @handleCam
 def applyCameraConfiguration(configuration, cam=None):
     # Apply configuration of the form:
@@ -757,7 +769,7 @@ def applyCameraConfiguration(configuration, cam=None):
     for attributeName in configuration:
         attributeValue = configuration[attributeName]['value']
         attributeType =  configuration[attributeName]['type']
-        attributeValue = self.convertAttributeValue(attributeValue, attributeType)
+        attributeValue = convertAttributeValue(attributeValue, attributeType)
         formattedConfiguration.append(
             (attributeName, attributeValue, attributeType)
         )
