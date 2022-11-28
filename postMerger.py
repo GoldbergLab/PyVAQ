@@ -85,7 +85,7 @@ def mergeFolder(folderPaths, overwrite=False, dryRun=False):
                 print('Skipping Index {i} found in audio stream; not found in video stream {b}.'.format(i=index, b=baseName))
         for index in videoStreams[baseName]:
             if index not in audioStream:
-                unmergedVideoFiles.append(videoStreams[baseName][index])
+                unMergedVideoFiles.append(videoStreams[baseName][index])
                 print('Skipping Index {i} found in {b} video stream; not found in audio stream.'.format(i=index, b=baseName))
                 continue
             mergeFiles(videoFiles=[videoStreams[baseName][index]], audioFile=audioStream[index], dryRun=dryRun, overwrite=overwrite)
