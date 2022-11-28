@@ -114,7 +114,8 @@ class CameraConfigPanel(tk.Frame):
         self.applyConfigurationOnInitCheckbox.grid(row=7, column=1, sticky=tk.E)
 
         self.updateCameraList()
-        self.updateCameraAttributes()
+        self.grabAllCameraAttributes()
+        self.updateCameraAttributes(grab=False)
 
         self.grid()
 
@@ -183,8 +184,42 @@ class CameraConfigPanel(tk.Frame):
         else:
             return self.cameraList['values'][idx]
 
-    def updateCameraAttributes(self):
-        """Reload current attributes from camera, update widgets.
+    def grabAllCameraAttributes(self):
+        """Get all the camera attributes from all the attached cameras.
+
+        Returns:
+            None
+
+        """
+
+        self.updateCameraList()
+
+        progressPopup = tk.Toplevel(self.parent)
+        progressPopup.title('Gathering camera information...')
+        progressPopup.lift()
+        progressLabel = tk.Label(progressPopup, text='Gathering camera information...')
+        progressBar = ttk.Progressbar(progressPopup, maximum=len(self.camSerials))
+        progressLabel.grid(row=0, column=0, sticky=tk.EW)
+        progressBar.grid(row=1, column=0, sticky=tk.EW)
+
+        for camSerial in self.camSerials:
+            nestedAttributes = psu.getAllCameraAttributes(camSerial=camSerial)
+            flattenedAttributes = psu.flattenCameraAttributes(nestedAttributes)
+            self.storedAttributes[camSerial] = flattenedAttributes
+            progressBar.step(1)
+            self.update_idletasks()
+
+        progressPopup.destroy()
+
+    def updateCameraAttributes(self, camSerial=None, grab=True):
+        """Reload current attributes from current camera, update widgets.
+
+        Args:
+            camSerial: An optional camera serial. If provided, that camSerial
+                will be updated. If left as None, the currently selected
+                camSerial will be selected
+            grab: An optional boolean flag indicating fresh attributes should be
+                grabbed from the camera. Default is True.
 
         Returns:
             type: Description of returned object.
@@ -193,14 +228,17 @@ class CameraConfigPanel(tk.Frame):
 
         self.updateCameraList()
 
-        camSerial = self.getCurrentCamSerial()
+        if camSerial is None:
+            camSerial = self.getCurrentCamSerial()
+
         if camSerial is None:
             # No camera selected
             return
 
-        nestedAttributes = psu.getAllCameraAttributes(camSerial=camSerial)
-        flattenedAttributes = psu.flattenCameraAttributes(nestedAttributes)
-        self.storedAttributes[camSerial] = flattenedAttributes
+        if grab:
+            nestedAttributes = psu.getAllCameraAttributes(camSerial=camSerial)
+            flattenedAttributes = psu.flattenCameraAttributes(nestedAttributes)
+            self.storedAttributes[camSerial] = flattenedAttributes
         self.updateAttributeList()
         self.updateValue()
         self.updateApplyButtonState()
