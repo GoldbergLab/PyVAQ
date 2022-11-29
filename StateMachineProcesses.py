@@ -3687,7 +3687,9 @@ class SimpleVideoWriter(StateMachineProcess):
         'enableWrite',
         'scheduleEnabled',
         'scheduleStartTime',
-        'scheduleStopTime'
+        'scheduleStopTime',
+        'gpuCompressionArgs',
+        'cpuCompressionArgs'
         ]
 
     def __init__(self,
@@ -3705,6 +3707,8 @@ class SimpleVideoWriter(StateMachineProcess):
                 scheduleEnabled=False,
                 scheduleStartTime=None,
                 scheduleStopTime=None,
+                gpuCompressionArgs=None,
+                cpuCompressionArgs=None,
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.camSerial = camSerial
@@ -3727,6 +3731,8 @@ class SimpleVideoWriter(StateMachineProcess):
         self.scheduleEnabled = scheduleEnabled
         self.scheduleStartTime = scheduleStartTime
         self.scheduleStopTime = scheduleStopTime
+        self.gpuCompressionArgs = gpuCompressionArgs
+        self.cpuCompressionArgs = cpuCompressionArgs
 
     def run(self):
         super().run()

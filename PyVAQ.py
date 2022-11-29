@@ -3328,6 +3328,16 @@ him know. Otherwise, I had nothing to do with it.
             else:
                 if p["triggerMode"] == "SimpleContinuous":
                     gpuOk = (gpuCount < p['maxGPUVEnc'])
+
+                    if camSerial in p['gpuVideoCompressionArgs']:
+                        gpuCompressionArgs = p['gpuVideoCompressionArgs']
+                    else:
+                        gpuCompressionArgs = None
+                    if camSerial in p['cpuVideoCompressionArgs']:
+                        cpuCompressionArgs = p['cpuVideoCompressionArgs']
+                    else:
+                        cpuCompressionArgs = None
+
                     if p['maxGPUVEnc'] > 0 and not gpuOk:
                         # Some GPU video encoder sessions requested, but not enough for all cameras.
                         self.log('Warning: Cannot use GPU acceleration for all cameras - not enough GPU VEnc sessions allowed.')
@@ -3348,8 +3358,8 @@ him know. Otherwise, I had nothing to do with it.
                         scheduleStartTime=p['scheduleStartTime'],
                         scheduleStopTime=p['scheduleStopTime'],
                         enableWrite=videoWriteEnable,
-                        gpuCompressionArgs=p['gpuVideoCompressionArgs'],
-                        cpuCompressionArgs=p['cpuVideoCompressionArgs'],
+                        gpuCompressionArgs=gpuCompressionArgs,
+                        cpuCompressionArgs=cpuCompressionArgs,
                         )
                     gpuCount += 1
                 elif p["triggerMode"] == 'None':
