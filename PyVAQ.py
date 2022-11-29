@@ -2597,7 +2597,7 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         self.previewMode = True
-        self.setupInputMonitoringWidgets(showWriteWidgets=not self.previewMode)
+        self.setupInputMonitoringWidgets(showWriteWidgets=False)
         self.createChildProcesses(createWriters=False)
         self.initializeChildProcesses()
         self.startSyncProcess()
@@ -3247,6 +3247,8 @@ him know. Otherwise, I had nothing to do with it.
                 channelConfig=p["audioChannelConfiguration"],
                 syncChannel=p["audioSyncSource"],
                 verbose=self.audioAcquireVerbose,
+                sendToWriter=createWriters,
+                sendToMonitor=True,
                 ready=ready,
                 copyToMonitoringQueue=copyToMonitoringQueue,
                 copyToAnalysisQueue=copyToAnalysisQueue,
