@@ -2176,6 +2176,9 @@ class AudioAcquirer(StateMachineProcess):
                 channelNames = [],                  # Channel name for analog input (microphone signal)
                 channelConfig = "DEFAULT",
                 syncChannel = None,                 # Channel name for synchronization source
+                sendToWriter=True,
+                sendToMonitor=True,
+                sendToAnalysis=True,
                 ready=None,                         # Synchronization barrier to ensure everyone's ready before beginning
                 copyToMonitoringQueue=True,         # Should images be also sent to the monitoring queue?
                 copyToAnalysisQueue=True,           # Should images be also sent to the analysis queue?
@@ -2190,10 +2193,14 @@ class AudioAcquirer(StateMachineProcess):
         self.audioFrequency = None
         self.acquireTimeout = 1 #2*chunkSize / self.audioFrequency
         self.audioQueue = audioQueue
+        self.sendToWriter = sendToWriter
+        self.sendToMonitor = sendToMonitor
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
-        self.monitorQueue = mp.Queue()      # A multiprocessing queue to send data to the UI to monitor the audio
-        self.analysisQueue = mp.Queue()    # A multiprocessing queue to send data to the audio triggerer process for analysis
+        if sendToMonitor:
+            self.monitorQueue = mp.Queue()      # A multiprocessing queue to send data to the UI to monitor the audio
+        if sendToAnalysis:
+            self.analysisQueue = mp.Queue()    # A multiprocessing queue to send data to the audio triggerer process for analysis
         # if len(self.monitorQueue) > 0:
         #     self.monitorQueue.cancel_join_thread()
         self.chunkSize = chunkSize
@@ -2323,7 +2330,7 @@ class AudioAcquirer(StateMachineProcess):
 
                     # Get timestamp of first audio chunk acquisition
                     if not gotStartTime:
-                        if self.verbose >= 1: self.log("Getting start time from sync process...")
+                        if self.verbose >= 2: self.log("Getting start time from sync process...")
                         startTime = self.startTimeSharedValue.value
                         if startTime == -1:
                             gotStartTime = False
@@ -2362,7 +2369,7 @@ class AudioAcquirer(StateMachineProcess):
                         if self.verbose >= 3: self.log('# samples:'+str(sampleCount))
                         processedData = AudioAcquirer.rescaleAudio(data)
                         audioChunk = AudioChunk(chunkStartTime = chunkStartTime, audioFrequency = self.audioFrequency, data = processedData, idspace=self.ID)
-                        if self.audioQueue is not None:
+                        if self.sendToWriter and self.audioQueue is not None:
                             self.audioQueue.put(audioChunk)              # If a data queue is provided, queue up the new data
                         else:
                             if self.verbose >= 2: self.log('' + processedData)
@@ -2376,10 +2383,22 @@ class AudioAcquirer(StateMachineProcess):
                             self.analysisQueue.put((chunkStartTime, monitorDataCopy))
 
                         if self.verbose >= 3:
+                            if self.audioQueue is None:
+                                audioQueueSize = None
+                            else:
+                                audioQueueSize = self.audioQueue.qsize()
+                            if self.monitorQueue is None:
+                                audioQueueSize = None
+                            else:
+                                audioQueueSize = self.monitorQueue.qsize()
+                            if self.analysisQueue is None:
+                                audioQueueSize = None
+                            else:
+                                audioQueueSize = self.analysisQueue.qsize()
                             self.log('Queue sizes:')
-                            self.log('        Main:', self.audioQueue.qsize())
-                            self.log('  Monitoring:', self.monitorQueue.qsize())
-                            self.log('    Analysis:', self.analysisQueue.qsize())
+                            self.log('        Main:', audioQueueSize)
+                            self.log('  Monitoring:', monitorQueueSize)
+                            self.log('    Analysis:', analysisQueueSize)
                     except nidaqmx.errors.DaqError as error:
                         if self.verbose >= 0:
                             if error.error_type == nidaqmx.error_codes.DAQmxErrors.OPERATION_TIMED_OUT:
@@ -2740,7 +2759,7 @@ class SimpleAudioWriter(StateMachineProcess):
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     elif msg in ['', Messages.START]:
-                        if (numSamplesPerFile - numSamplesInCurrentFile) > 0 and (numSamplesPerFile - numSamplesInCurrentFile) < 1:
+                        if (numSamplesPerFile - numSamplesInCurrentFile) > -1 and (numSamplesPerFile - numSamplesInCurrentFile) < 1:
                             # We've reached the desired sample count. Start a new audio file.
                             self.nextState = States.AUDIOINIT
                             # If requested, merge with video
@@ -3421,7 +3440,7 @@ class VideoAcquirer(StateMachineProcess):
                         cam = camList.GetBySerial(self.camSerial)
                         cam.Init()
 
-                        psu.setCameraAttributes(self.acquireSettings, cam=cam)
+                        psu.applyCameraConfiguration(self.acquireSettings, cam=cam)
                         if self.verbose >= 2: self.log("...camera initialization complete")
 
                         monitorFramePeriod = 1.0/self.monitorMasterFrameRate
@@ -3467,7 +3486,7 @@ class VideoAcquirer(StateMachineProcess):
 
                     # Get timestamp of first image acquisition
                     if not gotStartTime:
-                        if self.verbose >= 1: self.log("Getting start time from sync process...")
+                        if self.verbose >= 2: self.log("Getting start time from sync process...")
                         startTime = self.startTimeSharedValue.value
                         if startTime == -1:
                             gotStartTime = False
@@ -3670,7 +3689,9 @@ class SimpleVideoWriter(StateMachineProcess):
         'enableWrite',
         'scheduleEnabled',
         'scheduleStartTime',
-        'scheduleStopTime'
+        'scheduleStopTime',
+        'gpuCompressionArgs',
+        'cpuCompressionArgs'
         ]
 
     def __init__(self,
@@ -3688,6 +3709,8 @@ class SimpleVideoWriter(StateMachineProcess):
                 scheduleEnabled=False,
                 scheduleStartTime=None,
                 scheduleStopTime=None,
+                gpuCompressionArgs=None,
+                cpuCompressionArgs=None,
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.camSerial = camSerial
@@ -3710,6 +3733,8 @@ class SimpleVideoWriter(StateMachineProcess):
         self.scheduleEnabled = scheduleEnabled
         self.scheduleStartTime = scheduleStartTime
         self.scheduleStopTime = scheduleStopTime
+        self.gpuCompressionArgs = gpuCompressionArgs
+        self.cpuCompressionArgs = cpuCompressionArgs
 
     def run(self):
         super().run()
@@ -4612,11 +4637,11 @@ class ContinuousTriggerer(StateMachineProcess):
                     startTime = None
                     lastTriggerTime = None
 
-                    if self.verbose >= 1: self.log("Getting start time from sync process...")
+                    if self.verbose >= 2: self.log("Getting start time from sync process...")
                     while startTime == -1 or startTime is None:
                         # Wait until Synchronizer process has a start time
                         startTime = self.startTimeSharedValue.value
-                    if self.verbose >= 1: self.log("Got start time from sync process: "+str(startTime))
+                    if self.verbose >= 2: self.log("Got start time from sync process: "+str(startTime))
 
                     # CHECK FOR MESSAGES
                     msg, arg = self.checkMessages(block=False)

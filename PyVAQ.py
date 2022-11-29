@@ -329,6 +329,7 @@ class PyVAQ:
 
         self.videoMonitorMasterFrame = self.videoMonitorDocker.docker # ttk.Frame(self.monitorMasterFrame)
 
+        self.audioMonitorDocker = None
         self.audioMonitor = None  #ttk.Frame(self.monitorMasterFrame)
 
         self.cameraAttributes = {}
@@ -658,7 +659,7 @@ class PyVAQ:
 
         self.createAudioAnalysisMonitor()
 
-        self.setupInputMonitoringWidgets()
+        # self.setupInputMonitoringWidgets()
 
         self.updateAcquisitionHardwareDisplay()
 
@@ -1248,6 +1249,7 @@ him know. Otherwise, I had nothing to do with it.
                 videoBaseFileName = videoBaseFileNames[camSerial]
             else:
                 videoBaseFileName = ''
+
             self.cameraMonitors[camSerial] = CameraMonitor(
                 self.videoMonitorMasterFrame,
                 displaySize=p["videoMonitorDisplaySize"],
@@ -2605,7 +2607,7 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         self.previewMode = True
-        self.setupInputMonitoringWidgets(showWriteWidgets=not self.previewMode)
+        self.setupInputMonitoringWidgets(showWriteWidgets=False)
         self.createChildProcesses(createWriters=False)
         self.initializeChildProcesses()
         self.startSyncProcess()
@@ -3255,6 +3257,8 @@ him know. Otherwise, I had nothing to do with it.
                 channelConfig=p["audioChannelConfiguration"],
                 syncChannel=p["audioSyncSource"],
                 verbose=self.audioAcquireVerbose,
+                sendToWriter=createWriters,
+                sendToMonitor=True,
                 ready=ready,
                 copyToMonitoringQueue=copyToMonitoringQueue,
                 copyToAnalysisQueue=copyToAnalysisQueue,
@@ -3313,7 +3317,7 @@ him know. Otherwise, I had nothing to do with it.
             videoAcquireProcess = VideoAcquirer(
                 startTime=startTime,
                 camSerial=camSerial,
-                acquireSettings=p["acquireSettings"],
+                acquireSettings=p["acquireSettings"][camSerial],
                 frameRate = self.actualVideoFrequency,
                 requestedFrameRate=p["videoFrequency"],
                 monitorFrameRate=self.monitorMasterFrameRate,
@@ -3334,6 +3338,16 @@ him know. Otherwise, I had nothing to do with it.
             else:
                 if p["triggerMode"] == "SimpleContinuous":
                     gpuOk = (gpuCount < p['maxGPUVEnc'])
+
+                    if camSerial in p['gpuVideoCompressionArgs']:
+                        gpuCompressionArgs = p['gpuVideoCompressionArgs']
+                    else:
+                        gpuCompressionArgs = None
+                    if camSerial in p['cpuVideoCompressionArgs']:
+                        cpuCompressionArgs = p['cpuVideoCompressionArgs']
+                    else:
+                        cpuCompressionArgs = None
+
                     if p['maxGPUVEnc'] > 0 and not gpuOk:
                         # Some GPU video encoder sessions requested, but not enough for all cameras.
                         self.log('Warning: Cannot use GPU acceleration for all cameras - not enough GPU VEnc sessions allowed.')
@@ -3354,8 +3368,8 @@ him know. Otherwise, I had nothing to do with it.
                         scheduleStartTime=p['scheduleStartTime'],
                         scheduleStopTime=p['scheduleStopTime'],
                         enableWrite=videoWriteEnable,
-                        gpuCompressionArgs=p['gpuVideoCompressionArgs'],
-                        cpuCompressionArgs=p['cpuVideoCompressionArgs'],
+                        gpuCompressionArgs=gpuCompressionArgs,
+                        cpuCompressionArgs=cpuCompressionArgs,
                         )
                     gpuCount += 1
                 elif p["triggerMode"] == 'None':
@@ -3641,7 +3655,8 @@ him know. Otherwise, I had nothing to do with it.
         camSerials = p["camSerials"]
         audioDAQChannels = p["audioDAQChannels"]
 
-        if (self.audioMonitorDocker.isDocked() and
+        if (self.audioMonitorDocker is not None and
+            self.audioMonitorDocker.isDocked() and
             len(audioDAQChannels) > 0 and
             self.audioMonitor is not None) or \
             (self.videoMonitorDocker.isDocked() and
@@ -3659,7 +3674,7 @@ him know. Otherwise, I had nothing to do with it.
         if self.videoMonitorDocker.isDocked():
             self.videoMonitorMasterFrame.grid(row=0, column=0, sticky=tk.NSEW)
 
-        if self.audioMonitorDocker.isDocked():
+        if self.audioMonitorDocker is not None and self.audioMonitorDocker.isDocked():
             self.audioMonitorDocker.docker.grid(row=1, column=0, sticky=tk.NSEW)
 #        self.audioMonitor.grid(row=1, column=0, sticky=tk.NSEW)
 

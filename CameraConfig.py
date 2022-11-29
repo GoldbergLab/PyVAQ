@@ -83,7 +83,7 @@ class CameraConfigPanel(tk.Frame):
         self.configurationText = tk.Text(self, width=60, height=10)
         self.configurationChangeHandler = configurationChangeHandler
         self.configurationText.bind('<KeyRelease>', self.configurationChangeHandler)
-        self.applyConfigurationButton = tk.Button(self, text="Apply configuration now", command=self.applyConfiguration)
+        self.applyConfigurationButton = tk.Button(self, text="Apply configuration now", command=self.applyCurrentConfiguration)
         self.applyConfigurationOnInitVar = tk.BooleanVar()
         self.applyConfigurationOnInitVar.set(True)
         self.applyConfigurationOnInitCheckbox = ttk.Checkbutton(self, text='Apply configuration on initialization', variable=self.applyConfigurationOnInitVar, offvalue=False, onvalue=True)
@@ -114,7 +114,8 @@ class CameraConfigPanel(tk.Frame):
         self.applyConfigurationOnInitCheckbox.grid(row=7, column=1, sticky=tk.E)
 
         self.updateCameraList()
-        self.updateCameraAttributes()
+        self.grabAllCameraAttributes()
+        self.updateCameraAttributes(grab=False)
 
         self.grid()
 
@@ -183,8 +184,42 @@ class CameraConfigPanel(tk.Frame):
         else:
             return self.cameraList['values'][idx]
 
-    def updateCameraAttributes(self):
-        """Reload current attributes from camera, update widgets.
+    def grabAllCameraAttributes(self):
+        """Get all the camera attributes from all the attached cameras.
+
+        Returns:
+            None
+
+        """
+
+        self.updateCameraList()
+
+        progressPopup = tk.Toplevel(self.parent)
+        progressPopup.title('Gathering camera information...')
+        progressPopup.lift()
+        progressLabel = tk.Label(progressPopup, text='Gathering camera information...')
+        progressBar = ttk.Progressbar(progressPopup, maximum=len(self.camSerials))
+        progressLabel.grid(row=0, column=0, sticky=tk.EW)
+        progressBar.grid(row=1, column=0, sticky=tk.EW)
+
+        for camSerial in self.camSerials:
+            nestedAttributes = psu.getAllCameraAttributes(camSerial=camSerial)
+            flattenedAttributes = psu.flattenCameraAttributes(nestedAttributes)
+            self.storedAttributes[camSerial] = flattenedAttributes
+            progressBar.step(1)
+            self.update_idletasks()
+
+        progressPopup.destroy()
+
+    def updateCameraAttributes(self, camSerial=None, grab=True):
+        """Reload current attributes from current camera, update widgets.
+
+        Args:
+            camSerial: An optional camera serial. If provided, that camSerial
+                will be updated. If left as None, the currently selected
+                camSerial will be selected
+            grab: An optional boolean flag indicating fresh attributes should be
+                grabbed from the camera. Default is True.
 
         Returns:
             type: Description of returned object.
@@ -193,14 +228,17 @@ class CameraConfigPanel(tk.Frame):
 
         self.updateCameraList()
 
-        camSerial = self.getCurrentCamSerial()
+        if camSerial is None:
+            camSerial = self.getCurrentCamSerial()
+
         if camSerial is None:
             # No camera selected
             return
 
-        nestedAttributes = psu.getAllCameraAttributes(camSerial=camSerial)
-        flattenedAttributes = psu.flattenCameraAttributes(nestedAttributes)
-        self.storedAttributes[camSerial] = flattenedAttributes
+        if grab:
+            nestedAttributes = psu.getAllCameraAttributes(camSerial=camSerial)
+            flattenedAttributes = psu.flattenCameraAttributes(nestedAttributes)
+            self.storedAttributes[camSerial] = flattenedAttributes
         self.updateAttributeList()
         self.updateValue()
         self.updateApplyButtonState()
@@ -284,7 +322,7 @@ class CameraConfigPanel(tk.Frame):
             self.valueVar.set('')
             return
 
-        value = self.convertAttributeValue(attribute['value'], attribute['type'])
+        value = psu.convertAttributeValue(attribute['value'], attribute['type'])
         if attribute['type'] == 'enum':
             self.valueList['values'] = list(attribute['options'].values())
             self.valueEntry.grid_remove()
@@ -300,7 +338,7 @@ class CameraConfigPanel(tk.Frame):
             self.valueEntry.grid()
             self.valueVar.set(value)
 
-        value = self.convertAttributeValue(attribute['value'], attribute['type'])
+        value = psu.convertAttributeValue(attribute['value'], attribute['type'])
 
         if attribute['type'] == 'enum':
             self.valueVar.set(value)
@@ -408,6 +446,11 @@ class CameraConfigPanel(tk.Frame):
         configurationText = self.configurationText.get("1.0", tk.END).strip()
         attributes = configurationText.split('\n')
         configuration = {}
+        
+        for camSerial in self.camSerials:
+            # Set up empty config for every camera
+            configuration[camSerial] = odict()
+
         for attribute in attributes:
             if len(attribute.strip()) == 0:
                 continue
@@ -426,7 +469,7 @@ class CameraConfigPanel(tk.Frame):
             attributeName = attribute['name']
             attributeType = attribute['type']
             attributeValue = attribute['value']
-            attributeValue = self.convertAttributeValue(attributeValue, attributeType)
+            attributeValue = psu.convertAttributeValue(attributeValue, attributeType)
             result = psu.setCameraAttribute(attributeName, attributeValue, attributeType, camSerial=camSerial, nodemap='NodeMap')
             if result:
                 message = 'Applied attribute to camera {cs}: {n}={v} ({t})'.format(cs=camSerial, n=attributeName, v=attributeValue, t=attributeType)
@@ -437,19 +480,7 @@ class CameraConfigPanel(tk.Frame):
 
             self.updateCameraAttributes()
 
-    def convertAttributeValue(self, value, attributeType):
-        if attributeType == 'enum':
-            if type(value) == tuple:
-                value = value[1]
-        elif attributeType == 'integer':
-            value = int(value)
-        elif attributeType == 'float':
-            value = float(value)
-        elif attributeType == 'boolean':
-            value = (value == True) or (value == 'True') or value == '1' or value == 1
-        return value
-
-    def applyConfiguration(self):
+    def applyCurrentConfiguration(self):
         """Attempt to apply all configurations to the cameras now.
 
         Also reload camera settings afterward.
@@ -464,21 +495,9 @@ class CameraConfigPanel(tk.Frame):
 
         configuration = self.getCurrentConfiguration()
 
-        # Reformat configuration to {camSerial1:[(name1, value1, type1), (name2, value2, type2), ..., (nameN, valueN, typeN)], camSerial2:...}
-        formattedConfiguration = {}
-        for camSerial in configuration:
-            formattedConfiguration[camSerial] = []
-            for attributeName in configuration[camSerial]:
-                attributeValue = configuration[camSerial][attributeName]['value']
-                attributeType =  configuration[camSerial][attributeName]['type']
-                attributeValue = self.convertAttributeValue(attributeValue, attributeType)
-                formattedConfiguration[camSerial].append(
-                    (attributeName, attributeValue, attributeType)
-                )
-
         results = {}
-        for camSerial in formattedConfiguration:
-            results[camSerial] = psu.setCameraAttributes(formattedConfiguration[camSerial], camSerial=camSerial)
+        for camSerial in configuration:
+            results[camSerial] = psu.applyCameraConfiguration(configuration[camSerial], camSerial=camSerial)
         successCount = sum([sum([results[camSerial][attributeName] for attributeName in results[camSerial]]) for camSerial in results])
         failCount = sum([sum([not results[camSerial][attributeName] for attributeName in results[camSerial]]) for camSerial in results])
         totalCount = failCount + successCount

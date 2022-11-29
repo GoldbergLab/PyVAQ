@@ -577,6 +577,7 @@ def setCameraAttributes(attributeValueTriplets, cam=None, nodemap='NodeMap'):
         pass
 
     results = {}
+
     for attribute, value, attributeType in attributeValueTriplets:
         results[attribute] = setCameraAttribute(attribute, value, attributeType, cam=cam, nodemap=nodemap)
         # if not result:
@@ -737,6 +738,41 @@ def getAllCameraAttributes(cam=None):
         print('Error: %s' % ex)
         traceback.print_exc()
         return None
+
+def convertAttributeValue(value, attributeType):
+    if attributeType == 'enum':
+        if type(value) == tuple:
+            value = value[1]
+    elif attributeType == 'integer':
+        value = int(value)
+    elif attributeType == 'float':
+        value = float(value)
+    elif attributeType == 'boolean':
+        value = (value == True) or (value == 'True') or value == '1' or value == 1
+    return value
+
+@handleCam
+def applyCameraConfiguration(configuration, cam=None):
+    # Apply configuration of the form:
+    # odict(
+    #     attributeName1:{name=attributeName1, value=attributeValue1, type=attributeType1},
+    #     attributeNameN:{name=attributeName1, value=attributeValue1, type=attributeType1},
+    #     ...
+    #     attributeNameN:{name=attributeNameN, value=attributeValueN, type=attributeTypeN},
+    # )
+
+    # Reformat configuration to [(name1, value1, type1), (name2, value2, type2), ..., (nameN, valueN, typeN)]
+    formattedConfiguration = []
+    for attributeName in configuration:
+        attributeValue = configuration[attributeName]['value']
+        attributeType =  configuration[attributeName]['type']
+        attributeValue = convertAttributeValue(attributeValue, attributeType)
+        formattedConfiguration.append(
+            (attributeName, attributeValue, attributeType)
+        )
+
+    results = setCameraAttributes(formattedConfiguration, cam=cam)
+    return results
 
 def getAllCamerasAttributes(camSerials=None):
     if camSerials is None:
