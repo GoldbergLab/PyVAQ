@@ -446,6 +446,11 @@ class CameraConfigPanel(tk.Frame):
         configurationText = self.configurationText.get("1.0", tk.END).strip()
         attributes = configurationText.split('\n')
         configuration = {}
+        
+        for camSerial in self.camSerials:
+            # Set up empty config for every camera
+            configuration[camSerial] = odict()
+
         for attribute in attributes:
             if len(attribute.strip()) == 0:
                 continue
