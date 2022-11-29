@@ -329,6 +329,7 @@ class PyVAQ:
 
         self.videoMonitorMasterFrame = self.videoMonitorDocker.docker # ttk.Frame(self.monitorMasterFrame)
 
+        self.audioMonitorDocker = None
         self.audioMonitor = None  #ttk.Frame(self.monitorMasterFrame)
 
         self.cameraAttributes = {}
@@ -658,7 +659,7 @@ class PyVAQ:
 
         self.createAudioAnalysisMonitor()
 
-        self.setupInputMonitoringWidgets()
+        # self.setupInputMonitoringWidgets()
 
         self.updateAcquisitionHardwareDisplay()
 
@@ -1241,6 +1242,7 @@ him know. Otherwise, I had nothing to do with it.
                 videoBaseFileName = videoBaseFileNames[camSerial]
             else:
                 videoBaseFileName = ''
+
             self.cameraMonitors[camSerial] = CameraMonitor(
                 self.videoMonitorMasterFrame,
                 displaySize=p["videoMonitorDisplaySize"],
@@ -3645,7 +3647,8 @@ him know. Otherwise, I had nothing to do with it.
         camSerials = p["camSerials"]
         audioDAQChannels = p["audioDAQChannels"]
 
-        if (self.audioMonitorDocker.isDocked() and
+        if (self.audioMonitorDocker is not None and
+            self.audioMonitorDocker.isDocked() and
             len(audioDAQChannels) > 0 and
             self.audioMonitor is not None) or \
             (self.videoMonitorDocker.isDocked() and
@@ -3663,7 +3666,7 @@ him know. Otherwise, I had nothing to do with it.
         if self.videoMonitorDocker.isDocked():
             self.videoMonitorMasterFrame.grid(row=0, column=0, sticky=tk.NSEW)
 
-        if self.audioMonitorDocker.isDocked():
+        if self.audioMonitorDocker is not None and self.audioMonitorDocker.isDocked():
             self.audioMonitorDocker.docker.grid(row=1, column=0, sticky=tk.NSEW)
 #        self.audioMonitor.grid(row=1, column=0, sticky=tk.NSEW)
 
