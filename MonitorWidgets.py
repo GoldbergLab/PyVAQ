@@ -164,7 +164,8 @@ class AudioMonitor(ttk.LabelFrame):
                 fig.canvas.draw()
                 fig.canvas.flush_events()
         if self.liveAudioVar.get():
-            playAudio(newData.tobytes(), newData.shape[1], newData.dtype.itemsize)
+            print('dtype=', newData.dtype)
+            self.playAudio(newData.tobytes(), newData.shape[1], newData.dtype.itemsize)
 
     def playAudio(self, audioBytes, nChannels, bitDepth):
         virtualWaveFile = wave.open(self.audioPlayerBuffer, mode='wb')
@@ -203,12 +204,12 @@ class AudioMonitor(ttk.LabelFrame):
 
         if len(self.channels) > 0:
             # No channels, it would look weird to display directory entry
-            self.masterDisplayFrame.grid(row=0, column=0, columnspan=2)
+            self.masterDisplayFrame.grid(row=0, column=0, columnspan=3)
+            self.liveAudioCheckButton.grid(row=1, column=2)
             if self.showFileWidgets:
                 self.fileWidget.grid(row=1, column=0, rowspan=2, sticky=tk.NSEW)
                 self.enableViewerCheckButton.grid(row=1, column=1)
                 self.enableWriteCheckButton.grid(row=2, column=1)
-                self.liveAudioCheckButton.grid(row=1, column=2)
             else:
                 self.fileWidget.grid_remove()
                 self.enableViewerCheckButton.grid_remove()
@@ -218,6 +219,7 @@ class AudioMonitor(ttk.LabelFrame):
             self.fileWidget.grid_forget()
             self.enableViewerCheckButton.grid_remove()
             self.enableWriteCheckButton.grid_remove()
+            self.liveAudioCheckButton.grid_remove()
 
     def createChannelDisplay(self, channel, index):
         self.displayWidgets[channel] = {}  # Change this to gracefully remove existing channel widgets under this channel name
