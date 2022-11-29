@@ -2193,6 +2193,8 @@ class AudioAcquirer(StateMachineProcess):
         self.audioFrequency = None
         self.acquireTimeout = 1 #2*chunkSize / self.audioFrequency
         self.audioQueue = audioQueue
+        self.sendToWriter = sendToWriter
+        self.sendToMonitor = sendToMonitor
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
         if sendToMonitor:
