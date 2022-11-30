@@ -71,7 +71,7 @@ class AudioMonitor(ttk.LabelFrame):
         self.liveAudioCheckButton = tk.Checkbutton(self, text="Live audio", variable=self.liveAudioVar, offvalue=False, onvalue=True)
         if not soundcardAvailable:
             self.liveAudioVar.set(False)
-            self.liveAudioVar.state(tk.DISABLED)
+            self.liveAudioCheckButton.config(state=tk.DISABLED)
 
         self.updateLiveAudioCheckButton()
 
