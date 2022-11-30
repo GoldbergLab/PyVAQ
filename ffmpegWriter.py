@@ -76,7 +76,7 @@ class ffmpegWriter():
                     '-v', ffmpegVerbosity, '-f', 'rawvideo', '-c:v', 'rawvideo',
                     '-pix_fmt', self.input_pixel_format, '-s', shapeArg, '-thread_queue_size', '128',
                     '-r', str(self.fps), '-i', '-', *self.gpuCompressionArgs, '-pix_fmt', self.output_pixel_format, '-an',
-                    '-thread_queue_size', '128', self.filename]
+                    self.filename]
             else:
                 # Without GPU acceleration
                 ffmpegCommand = [FFMPEG_EXE, '-y',
