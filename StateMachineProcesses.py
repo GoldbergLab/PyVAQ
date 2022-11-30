@@ -1623,7 +1623,7 @@ class Synchronizer(StateMachineProcess):
                         if self.verbose >= 1: self.log("Sync task startup took {time} s".format(time=(postTime - preTime)/1000000000))
                     except BrokenBarrierError:
                         passedBarrier = False
-                        if self.verbose >= 1: self.log("No simultaneous start - retrying")
+                        if self.verbose >= 2: self.log("No simultaneous start - retrying")
                         time.sleep(0.1)
 
                     # CHECK FOR MESSAGES
@@ -2325,7 +2325,7 @@ class AudioAcquirer(StateMachineProcess):
                             if self.verbose >= 2: self.log('Passed barrier.')
                         except BrokenBarrierError:
                             passedBarrier = False
-                            if self.verbose >= 1: self.log("No simultaneous start - retrying")
+                            if self.verbose >= 2: self.log("No simultaneous start - retrying")
                             time.sleep(0.1)
 
                     # Get timestamp of first audio chunk acquisition
@@ -3481,7 +3481,7 @@ class VideoAcquirer(StateMachineProcess):
                             if self.verbose >= 2: self.log('Passed barrier')
                         except BrokenBarrierError:
                             passedBarrier = False
-                            if self.verbose >= 1: self.log("No simultaneous start - retrying")
+                            if self.verbose >= 2: self.log("No simultaneous start - retrying")
                             time.sleep(0.1)
 
                     # Get timestamp of first image acquisition
