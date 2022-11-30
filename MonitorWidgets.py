@@ -16,7 +16,13 @@ import PySpinUtilities as psu
 import numpy
 import wave
 import io
-import winsound
+try:
+    import soundcard as sc
+    soundcardAvailable = True
+except ModuleNotFoundError:
+    print('ERROR - please install python SoundCard library to use live audio.')
+    print(' See https://pypi.org/project/SoundCard/')
+    soundcardAvailable = False
 
 WIDGET_COLORS = [
     '#050505', # near black
@@ -63,11 +69,20 @@ class AudioMonitor(ttk.LabelFrame):
 
         self.liveAudioVar = tk.BooleanVar(); self.liveAudioVar.set(False)
         self.liveAudioCheckButton = tk.Checkbutton(self, text="Live audio", variable=self.liveAudioVar, offvalue=False, onvalue=True)
+        if not soundcardAvailable:
+            self.liveAudioVar.set(False)
+            self.liveAudioVar.state(tk.DISABLED)
+
         self.updateLiveAudioCheckButton()
 
         self.masterDisplayFrame = ttk.Frame(self)
 
         self.data = None
+
+        if soundcardAvailable:
+            self.speaker = sc.default_speaker()
+        else:
+            self.speaker = None
 
         # Future reference to speaker object from the SoundCard library
         self.audioPlayerBuffer = io.BytesIO()
@@ -163,19 +178,11 @@ class AudioMonitor(ttk.LabelFrame):
                 axes.margins(x=0, y=0)
                 fig.canvas.draw()
                 fig.canvas.flush_events()
-        if self.liveAudioVar.get():
-            print('dtype=', newData.dtype)
-            self.playAudio(newData.tobytes(), newData.shape[1], newData.dtype.itemsize)
+        if soundcardAvailable and self.liveAudioVar.get():
+            self.playAudio2(newData)
 
-    def playAudio(self, audioBytes, nChannels, bitDepth):
-        virtualWaveFile = wave.open(self.audioPlayerBuffer, mode='wb')
-        virtualWaveFile.setnchannels(nChannels)
-        virtualWaveFile.setframerate(self.sampleRate)
-        virtualWaveFile.setsampwidth(bitDepth)
-        virtualWaveFile.writeframes(audioBytes)
-        virtualWaveFile.close()
-        self.audioPlayerBuffer.seek(0)
-        winsound.PlaySound(self.audioPlayerBuffer.read(), winsound.SND_MEMORY | winsound.SND_ASYNC)
+    def playAudio2(self, audio):
+        self.speaker.play(audio.transpose(), samplerate=self.sampleRate)
 
     def updateChannels(self, channels):
         self.channels = channels
