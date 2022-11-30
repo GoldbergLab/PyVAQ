@@ -85,7 +85,7 @@ class ffmpegWriter():
                     '-s', shapeArg, '-r', str(self.fps), '-thread_queue_size', '128',
                      '-i', '-', *self.cpuCompressionArgs,
                     '-pix_fmt', self.output_pixel_format, '-an',
-                    '-thread_queue_size', '128', self.filename]
+                    self.filename]
 
             if self.verbose >= 2:
                 print('ffmpeg command:')
