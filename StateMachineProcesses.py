@@ -17,7 +17,7 @@ import traceback
 import unicodedata
 import re
 from ctypes import c_wchar
-import PySpinUtilities as psu
+import CameraUtilities as cu
 import sys
 from math import floor
 
@@ -3313,12 +3313,12 @@ class VideoAcquirer(StateMachineProcess):
         # self.imageQueue.cancel_join_thread()
         self.bufferSize = int(bufferSizeSeconds * self.requestedFrameRate)
 
-        self.nChannels = psu.getColorChannelCount(camSerial=self.camSerial)
+        self.nChannels = cu.getColorChannelCount(camSerial=self.camSerial)
 
         if self.verbose >= 3: self.log("Temporarily initializing camera to get image size...")
-        videoWidth, videoHeight = psu.getFrameSize(camSerial=self.camSerial)
+        videoWidth, videoHeight = cu.getFrameSize(camSerial=self.camSerial)
         # Get current camera pixel format
-        self.pixelFormat = psu.getPixelFormat(camSerial=self.camSerial)
+        self.pixelFormat = cu.getPixelFormat(camSerial=self.camSerial)
         if self.verbose >= 2: print('Camera pixel format is:', self.pixelFormat)
 
         if sendToWriter:
@@ -3435,12 +3435,9 @@ class VideoAcquirer(StateMachineProcess):
                     else:
                         self.frameRate = self.frameRateVar.value
                         if self.verbose >= 2: self.log("Initializing camera...")
-                        system = PySpin.System.GetInstance()
-                        camList = system.GetCameras()
-                        cam = camList.GetBySerial(self.camSerial)
-                        cam.Init()
+                        cam, camList, system = cu.initCam(self.camSerial)
 
-                        psu.applyCameraConfiguration(self.acquireSettings, cam=cam)
+                        cu.applyCameraConfiguration(self.acquireSettings, cam=cam)
                         if self.verbose >= 2: self.log("...camera initialization complete")
 
                         monitorFramePeriod = 1.0/self.monitorMasterFrameRate
@@ -3884,7 +3881,7 @@ class SimpleVideoWriter(StateMachineProcess):
                                 videoFileInterface.close()
 
                             # Map PySpin pixel format into an ffmpeg pixel format
-                            ffmpegPixelFormats = psu.pixelFormats[self.imageQueue.pixelFormat]['ffmpeg']
+                            ffmpegPixelFormats = cu.pixelFormats[self.imageQueue.pixelFormat]['ffmpeg']
                             if ffmpegPixelFormats is None or len(ffmpegPixelFormats) == 0:
                                 raise TypeError('No ffmpeg format is known for PySpin format {f}'.format(f=self.imageQueue.pixelFormat))
 

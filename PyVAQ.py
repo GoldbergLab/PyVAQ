@@ -44,7 +44,7 @@ from DockableFrame import Docker
 from StateMachineProcesses import sendMessage, States, Messages, Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter
 import inspect
 import CollapsableFrame as cf
-import PySpinUtilities as psu
+import CameraUtilities as cu
 import ctypes
 from ffmpegWriter import DEFAULT_CPU_COMPRESSION_ARGS, DEFAULT_GPU_COMPRESSION_ARGS
 from CameraConfig import CameraConfigPanel
@@ -255,6 +255,7 @@ class PyVAQ:
         self.mergeDirectory = GeneralVar(); self.mergeDirectory.set('')
         self.audioDAQChannels = GeneralVar(); self.audioDAQChannels.set([])
         self.camSerials = GeneralVar(); self.camSerials.set([])  # Cam serials selected for acquisition
+        self.camTypes = GeneralVar(); self.camTypes.set([])  # Cam serials selected for acquisition
         self.audioSyncTerminal = GeneralVar(); self.audioSyncTerminal.set(None)
         self.videoSyncTerminal = GeneralVar(); self.videoSyncTerminal.set(None)
         self.audioSyncSource = GeneralVar(); self.audioSyncSource.set("PFI5")
@@ -641,6 +642,7 @@ class PyVAQ:
             "daySubfolders":                    dict(get=self.daySubfoldersVar.get,                             set=self.daySubfoldersVar.set),
             "audioDAQChannels":                 dict(get=self.audioDAQChannels.get,                             set=self.audioDAQChannels.set),
             "camSerials":                       dict(get=self.camSerials.get,                                   set=self.camSerials.set),
+            "camTypes":                         dict(get=self.camTypes.get,                                     set=self.camTypes.set),
             "audioSyncTerminal":                dict(get=self.audioSyncTerminal.get,                            set=self.audioSyncTerminal.set),
             "videoSyncTerminal":                dict(get=self.videoSyncTerminal.get,                            set=self.videoSyncTerminal.set),
             "audioSyncSource":                  dict(get=self.audioSyncSource.get,                              set=self.audioSyncSource.set),
@@ -1026,6 +1028,7 @@ him know. Otherwise, I had nothing to do with it.
         p = self.getParams(
             "audioDAQChannels",
             "camSerials",
+            "camTypes",
             "audioSyncTerminal",
             "videoSyncTerminal",
             "audioSyncSource",
@@ -1049,7 +1052,9 @@ him know. Otherwise, I had nothing to do with it.
         availableClockChannels = flattenList(discoverDAQClockChannels().values()) + ['None']
         availableDigitalChannels = ['None'] + flattenList(discoverDAQTerminals().values())
 
-        availableCamSerials = psu.discoverCameras()
+        availableFLIRCamSerials, _ = cu.discoverCameras(camType=cu.FLIR_CAM)
+        availableOtherCamSerials, _ = cu.discoverCameras(camType=cu.OTHER_CAM)
+
         audioChannelConfigurations = [
             "DEFAULT",
             "DIFFERENTIAL",
@@ -1062,8 +1067,10 @@ him know. Otherwise, I had nothing to do with it.
         params = []
         if len(availableAudioChannels) > 0:
             params.append(Param(name='Audio Channels', widgetType=Param.MULTICHOICE, options=availableAudioChannels, default=defaultAudioDAQChannels))
-        if len(availableCamSerials) > 0:
-            params.append(Param(name='Cameras', widgetType=Param.MULTICHOICE, options=availableCamSerials, default=defaultCamSerials))
+        if len(availableFLIRCamSerials) > 0:
+            params.append(Param(name='FLIR Cameras', widgetType=Param.MULTICHOICE, options=availableFLIRCamSerials, default=None))
+        if len(availableOtherCamSerials) > 0:
+            params.append(Param(name='Other Cameras', widgetType=Param.MULTICHOICE, options=availableOtherCamSerials, default=None))
         if len(availableClockChannels) > 0:
             params.append(Param(name='Audio Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=defaultAudioSyncTerminal))
             params.append(Param(name='Video Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=defaultVideoSyncTerminal))
@@ -1087,10 +1094,14 @@ him know. Otherwise, I had nothing to do with it.
                     audioDAQChannels = choices['Audio Channels']
                 else:
                     audioDAQChannels = []
-                if 'Cameras' in choices:
-                    camSerials = choices['Cameras']
+                if 'FLIR Cameras' in choices:
+                    FLIRCamSerials = choices['FLIR Cameras']
                 else:
-                    camSerials = []
+                    FLIRCamSerials = []
+                if 'Other Cameras' in choices:
+                    otherCamSerials = choices['Other Cameras']
+                else:
+                    otherCamSerials = []
                 if 'Audio Sync Channel' in choices and choices['Audio Sync Channel'] != "None":
                     audioSyncTerminal = choices['Audio Sync Channel']
                 else:
@@ -1117,10 +1128,14 @@ him know. Otherwise, I had nothing to do with it.
                 if 'Audio channel configuration' in choices and len(choices['Audio channel configuration']) > 0:
                     audioChannelConfiguration = choices['Audio channel configuration']
 
+                camSerials = FLIRCamSerials + otherCamSerials
+                camTypes = [cu.FLIR_CAM for camSerial in FLIRCamSerials] + [cu.OTHER_CAM for camSerial in otherCamSerials]
+
                 # Set chosen parameters
                 self.setParams(
                     audioDAQChannels=audioDAQChannels,
                     camSerials=camSerials,
+                    camTypes=camTypes,
                     audioSyncTerminal=audioSyncTerminal,
                     videoSyncTerminal=videoSyncTerminal,
                     audioSyncSource=audioSyncSource,
@@ -1153,6 +1168,7 @@ him know. Otherwise, I had nothing to do with it.
         p = self.getParams(
             "audioDAQChannels",
             "camSerials",
+            "camTypes",
             "audioSyncTerminal",
             "videoSyncTerminal",
             "audioSyncSource",
@@ -1161,10 +1177,17 @@ him know. Otherwise, I had nothing to do with it.
             "audioChannelConfiguration"
             )
 
+        print('camSerials:', p['camSerials'])
+        print('camTypes', p['camTypes'])
+
+        FLIRCamSerials = [camSerial for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.FLIR_CAM]
+        otherCamSerials = [camSerial for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.OTHER_CAM]
+
         lines.extend([
             'Acquisition hardware selections:',
             '  Audio DAQ channels:   {audioDAQChannels}'.format(audioDAQChannels=', '.join(p['audioDAQChannels'])),
-            '  Cameras:              {camSerials}'.format(camSerials=', '.join(p['camSerials'])),
+            '  FLIR Cameras:         {camSerials}'.format(camSerials=', '.join(FLIRCamSerials)),
+            '  Other Cameras:        {camSerials}'.format(camSerials=', '.join(otherCamSerials)),
             '  Audio sync terminal:  {audioSyncTerminal}'.format(audioSyncTerminal=p['audioSyncTerminal']),
             '  Video sync terminal:  {videoSyncTerminal}'.format(videoSyncTerminal=p['videoSyncTerminal']),
             '  Audio sync source:    {audioSyncSource}'.format(audioSyncSource=p['audioSyncSource']),
@@ -1209,6 +1232,7 @@ him know. Otherwise, I had nothing to do with it.
 
         p = self.getParams(
             'camSerials',
+            'camTypes',
             'audioDAQChannels',
             'audioBaseFileName',
             'audioDirectory',
@@ -1217,6 +1241,7 @@ him know. Otherwise, I had nothing to do with it.
             'videoMonitorDisplaySize'
             )
         camSerials = p["camSerials"]
+        camTypes = p["camTypes"]
         audioDAQChannels = p["audioDAQChannels"]
         audioBaseFileName = p["audioBaseFileName"]
         audioDirectory = p["audioDirectory"]
@@ -1230,7 +1255,7 @@ him know. Otherwise, I had nothing to do with it.
             self.cameraMonitors[camSerial].destroy()
             del self.cameraMonitors[camSerial]
 
-        self.cameraSpeeds = dict([(camSerial, psu.checkCameraSpeed(camSerial=camSerial)) for camSerial in camSerials])
+        self.cameraSpeeds = dict([(camSerial, cu.checkCameraSpeed(camSerial=camSerial, camType=camType)) for camSerial, camType in zip(camSerials, camTypes)])
 
         # Create new video stream monitoring widgets and other entities
         for camSerial in camSerials:
@@ -2700,6 +2725,21 @@ him know. Otherwise, I had nothing to do with it.
                 params = json.loads(f.read())
             self.log('Loading settings from:')
             self.log('    ', path)
+            if len(params['camSerials']) == 0:
+                # Legacy param file format - camSerials is empty - make placeholder structure
+                params['camSerials'] = dict((camType, []) for camType in cu.CAM_TYPES)
+            elif type(params['camSerials']) == dict and any(camType not in params['camSerials'] for camType in cu.CAM_TYPES):
+                # Legacy param file format - missing a cam type - add in a placeholder
+                for camType in cu.CAM_TYPES:
+                    if camType not in params['camSerials']:
+                        params['camSerials'][camType] = []
+            elif type(params['camSerials'][0]) == str:
+                # Legacy param file format - camSerials is a list of strings - convert it to a dict with camtypes as keys
+                # Assume all serials are for FLIR cameras
+                flir_serials = params['camSerials']
+                params['camSerials'] = dict((camType, []) for camType in cu.CAM_TYPES)
+                params['camSerials'][cu.FLIR_CAM] = flir_serials
+
             if 'scheduleStartTime' in params:
                 params['scheduleStartTime'] = serializableToTime(params['scheduleStartTime'])
             if 'scheduleStopTime' in params:
@@ -3041,7 +3081,7 @@ him know. Otherwise, I had nothing to do with it.
         These are settings for FLIR USB3 Vision cameras, such as the Flea3
         and Blackfly S series of cameras.
 
-        See also: PySpinUtilities.setCameraAttributes
+        See also: CameraUtilities.setCameraAttributes
 
         Returns:
             list of tuples: A list of camera settings, formatted as a list of
@@ -3080,7 +3120,7 @@ him know. Otherwise, I had nothing to do with it.
             #   serials as keys
             try:
                 newConfiguration = {}
-                camSerials = psu.discoverCameras()
+                camSerials, _ = cu.discoverCameras(camType=cu.FLIR_CAM)
                 for camSerial in camSerials:
                     newConfiguration[camSerial] = odict()
                     for attributeName, attributeValue, attributeType in configuration:

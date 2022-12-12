@@ -12,7 +12,7 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from fileWritingEntry import FileWritingEntry
 import cv2
-import PySpinUtilities as psu
+import CameraUtilities as cu
 
 WIDGET_COLORS = [
     '#050505', # near black
@@ -364,7 +364,7 @@ class CameraMonitor(ttk.LabelFrame):
     def updateImage(self, image, pixelFormat=None):
         # Expects a PIL image object
         if self.viewerEnabled():
-            if psu.pixelFormats[pixelFormat]['bayer']:
+            if cu.pixelFormats[pixelFormat]['bayer']:
                 # Invert bayer filter to get full color image
                 image = Image.fromarray(cv2.cvtColor(np.asarray(image), cv2.COLOR_BayerRGGB2RGB))
             newSize = self.getBestImageSize(image.size)
