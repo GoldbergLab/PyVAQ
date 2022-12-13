@@ -26,6 +26,145 @@ CBasePtr = None
 CRegisterPtr = None
 CEnumEntryPtr = None
 
+CameraAttributes = dict(
+    POS_MSEC=cv2.CAP_PROP_POS_MSEC,
+    POS_FRAMES=cv2.CAP_PROP_POS_FRAMES,
+    POS_AVI_RATIO=cv2.CAP_PROP_POS_AVI_RATIO,
+    FRAME_WIDTH=cv2.CAP_PROP_FRAME_WIDTH,
+    FRAME_HEIGHT=cv2.CAP_PROP_FRAME_HEIGHT,
+    FPS=cv2.CAP_PROP_FPS,
+    FOURCC=cv2.CAP_PROP_FOURCC,
+    FRAME_COUNT=cv2.CAP_PROP_FRAME_COUNT,
+    FORMAT=cv2.CAP_PROP_FORMAT,
+    MODE=cv2.CAP_PROP_MODE,
+    BRIGHTNESS=cv2.CAP_PROP_BRIGHTNESS,
+    CONTRAST=cv2.CAP_PROP_CONTRAST,
+    SATURATION=cv2.CAP_PROP_SATURATION,
+    HUE=cv2.CAP_PROP_HUE,
+    GAIN=cv2.CAP_PROP_GAIN,
+    EXPOSURE=cv2.CAP_PROP_EXPOSURE,
+    CONVERT_RGB=cv2.CAP_PROP_CONVERT_RGB,
+    WHITE_BALANCE_BLUE_U=cv2.CAP_PROP_WHITE_BALANCE_BLUE_U,
+    RECTIFICATION=cv2.CAP_PROP_RECTIFICATION,
+    MONOCHROME=cv2.CAP_PROP_MONOCHROME,
+    SHARPNESS=cv2.CAP_PROP_SHARPNESS,
+    AUTO_EXPOSURE=cv2.CAP_PROP_AUTO_EXPOSURE,
+    GAMMA=cv2.CAP_PROP_GAMMA,
+    TEMPERATURE=cv2.CAP_PROP_TEMPERATURE,
+    TRIGGER=cv2.CAP_PROP_TRIGGER,
+    TRIGGER_DELAY=cv2.CAP_PROP_TRIGGER_DELAY,
+    WHITE_BALANCE_RED_V=cv2.CAP_PROP_WHITE_BALANCE_RED_V,
+    ZOOM=cv2.CAP_PROP_ZOOM,
+    FOCUS=cv2.CAP_PROP_FOCUS,
+    GUID=cv2.CAP_PROP_GUID,
+    ISO_SPEED=cv2.CAP_PROP_ISO_SPEED,
+    BACKLIGHT=cv2.CAP_PROP_BACKLIGHT,
+    PAN=cv2.CAP_PROP_PAN,
+    TILT=cv2.CAP_PROP_TILT,
+    ROLL=cv2.CAP_PROP_ROLL,
+    IRIS=cv2.CAP_PROP_IRIS,
+    SETTINGS=cv2.CAP_PROP_SETTINGS,
+    BUFFERSIZE=cv2.CAP_PROP_BUFFERSIZE,
+    AUTOFOCUS=cv2.CAP_PROP_AUTOFOCUS,
+    SAR_NUM=cv2.CAP_PROP_SAR_NUM,
+    SAR_DEN=cv2.CAP_PROP_SAR_DEN,
+    BACKEND=cv2.CAP_PROP_BACKEND,
+    CHANNEL=cv2.CAP_PROP_CHANNEL,
+    AUTO_WB=cv2.CAP_PROP_AUTO_WB,
+    WB_TEMPERATURE=cv2.CAP_PROP_WB_TEMPERATURE,
+    CODEC_PIXEL_FORMAT=cv2.CAP_PROP_CODEC_PIXEL_FORMAT,
+    BITRATE=cv2.CAP_PROP_BITRATE,
+    ORIENTATION_META=cv2.CAP_PROP_ORIENTATION_META,
+    ORIENTATION_AUTO=cv2.CAP_PROP_ORIENTATION_AUTO,
+    OPEN_TIMEOUT_MSEC=cv2.CAP_PROP_OPEN_TIMEOUT_MSEC,
+    READ_TIMEOUT_MSEC=cv2.CAP_PROP_READ_TIMEOUT_MSEC
+)
+
+CameraAttributeAccessMode = dict(
+    POS_MSEC='RW',
+    POS_FRAMES='RW',
+    POS_AVI_RATIO='RW',
+    FRAME_WIDTH='RW',
+    FRAME_HEIGHT='RW',
+    FPS='RW',
+    FOURCC='RW',
+    FRAME_COUNT='RW',
+    FORMAT='RW',
+    MODE='RW',
+    BRIGHTNESS='RW',
+    CONTRAST='RW',
+    SATURATION='RW',
+    HUE='RW',
+    GAIN='RW',
+    EXPOSURE='RW',
+    CONVERT_RGB='RW',
+    WHITE_BALANCE_BLUE_U='RW',
+    RECTIFICATION='RW',
+    MONOCHROME='RW',
+    SHARPNESS='RW',
+    AUTO_EXPOSURE='RW',
+    GAMMA='RW',
+    TEMPERATURE='RW',
+    TRIGGER='RW',
+    TRIGGER_DELAY='RW',
+    WHITE_BALANCE_RED_V='RW',
+    ZOOM='RW',
+    FOCUS='RW',
+    GUID='RW',
+    ISO_SPEED='RW',
+    BACKLIGHT='RW',
+    PAN='RW',
+    TILT='RW',
+    ROLL='RW',
+    IRIS='RW',
+    SETTINGS='RW',
+    BUFFERSIZE='RW',
+    AUTOFOCUS='RW',
+    SAR_NUM='RW',
+    SAR_DEN='RW',
+    BACKEND='RO',
+    CHANNEL='RW',
+    AUTO_WB='RW',
+    WB_TEMPERATURE='RW',
+    CODEC_PIXEL_FORMAT='RO',
+    BITRATE='RO',
+    ORIENTATION_META='RO',
+    ORIENTATION_AUTO='RW',
+    OPEN_TIMEOUT_MSEC='RW',
+    READ_TIMEOUT_MSEC='RW',
+)
+
+# For compatibility with PySpin
+AlternateCameraAttributeNames = dict(
+    AcquisitionFrameRate='FPS',
+)
+
+def GetAttributeCode(attributeName):
+    """Attempt to translate a human-readable attribute name into a OpenCV code
+
+    This takes a human-readable attribute name and attempts to translate it into
+        a valid OpenCV VideoCaptureProperty code, using the CameraAttributes and
+        AlternateCameraAttributeNames dictionaries.
+
+    Args:
+        attributeName (str): The attribute name to translate into a code
+
+    Returns:
+        int: OpenCV VideoCaptureProperty code
+
+    """
+    # Attempt to translate the attributeName into a valid OpenCV VideoCaptureProperty code
+    try:
+        attributeCode = CameraAttributes[attributeName]
+    except KeyError:
+        try:
+            # Perhaps this is an alternate attribute name?
+            attributeName = AlternateCameraAttributeNames[attributeName]
+            attributeCode = CameraAttributes[attributeName]
+        except KeyError:
+            raise NameError('Attribute name {n} not recognized.'.format(n=attributeName))
+        return attributeCode
+
 def find_valid_ports(max_attempts=5):
     port_num = 0
     valid_port_nums = []
@@ -674,7 +813,7 @@ class CameraList:
 
         See:   System:ReleaseInstance()
         """
-        raise NotImplementedError()
+        # Nothing to do, really
         return
 
 
@@ -773,6 +912,51 @@ class Camera:
 
         self.Serial = portNumToSerial(self._port_number)
 
+    def GetAttribute(self, attributeName):
+        """Get a camera attribute.
+
+        Ideally this would mirror the PySpin nodemap system, but I was lazy.
+
+        Args:
+            attributeName (str): An attribute name, corresponding to keys of
+                CameraAttributes or AlternateCameraAttributeNames.
+
+        Returns:
+            *: Value corresponding to the given attribute name
+
+        """
+        # Throw error if camera has not been initialized
+        if not self.IsInitialized():
+            raise IOError('Camera must be initialized before getting attribute')
+
+        # Attempt to translate the attributeName into a valid OpenCV VideoCaptureProperty code
+        attributeCode = GetAttributeCode(attributeName)
+
+        return self._camera_pointer.get(attributeCode)
+
+    def SetAttribute(self, attributeName, attributeValue):
+        """Set a camera attribute.
+
+        Ideally this would mirror the PySpin nodemap system, but I was lazy.
+
+        Args:
+            attributeName (str): An attribute name, corresponding to keys of
+                CameraAttributes or AlternateCameraAttributeNames.
+            attributeValue (*): Value to set for the given attribute name
+
+        Returns:
+            None
+
+        """
+        # Throw error if camera has not been initialized
+        if not self.IsInitialized():
+            raise IOError('Camera must be initialized before setting attribute')
+
+        # Attempt to translate the attributeName into a valid OpenCV VideoCaptureProperty code
+        attributeCode = GetAttributeCode(attributeName)
+
+        self._camera_pointer.set(attributeCode, attributeValue)
+
     def Init(self):
         """
         Init(self)
@@ -800,7 +984,6 @@ class Camera:
 
         self._camera_pointer = cv2.VideoCapture(self._port_number)
         return
-
 
     def DeInit(self):
         """
@@ -848,7 +1031,7 @@ class Camera:
         If camera is initialized or not
         """
 
-        return self._camera_pointer is not None and self._camera_pointer.IsOpened()
+        return self._camera_pointer is not None and self._camera_pointer.isOpened()
 
 
     def IsValid(self):
@@ -871,7 +1054,7 @@ class Camera:
         In order to determine the validity of the camera using a CameraPtr,
         user must first call get() to retrieve the CameraBase object.
         """
-        return self._camera_pointer is not None and self._camera_pointer.IsOpened()
+        return self._camera_pointer is not None and self._camera_pointer.isOpened()
 
 
     def GetNodeMap(self):

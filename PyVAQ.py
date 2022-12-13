@@ -256,6 +256,7 @@ class PyVAQ:
         self.audioDAQChannels = GeneralVar(); self.audioDAQChannels.set([])
         self.camSerials = GeneralVar(); self.camSerials.set([])  # Cam serials selected for acquisition
         self.camTypes = GeneralVar(); self.camTypes.set([])  # Cam serials selected for acquisition
+        self.camHardwareSync = GeneralVar(); self.camHardwareSync.set([])  # Boolean var indicating whether or not camera is using hardware synchronization
         self.audioSyncTerminal = GeneralVar(); self.audioSyncTerminal.set(None)
         self.videoSyncTerminal = GeneralVar(); self.videoSyncTerminal.set(None)
         self.audioSyncSource = GeneralVar(); self.audioSyncSource.set("PFI5")
@@ -643,6 +644,7 @@ class PyVAQ:
             "audioDAQChannels":                 dict(get=self.audioDAQChannels.get,                             set=self.audioDAQChannels.set),
             "camSerials":                       dict(get=self.camSerials.get,                                   set=self.camSerials.set),
             "camTypes":                         dict(get=self.camTypes.get,                                     set=self.camTypes.set),
+            "camHardwareSync":                  dict(get=self.camHardwareSync.get,                              set=self.camHardwareSync.set),
             "audioSyncTerminal":                dict(get=self.audioSyncTerminal.get,                            set=self.audioSyncTerminal.set),
             "videoSyncTerminal":                dict(get=self.videoSyncTerminal.get,                            set=self.videoSyncTerminal.set),
             "audioSyncSource":                  dict(get=self.audioSyncSource.get,                              set=self.audioSyncSource.set),
@@ -1029,6 +1031,7 @@ him know. Otherwise, I had nothing to do with it.
             "audioDAQChannels",
             "camSerials",
             "camTypes",
+            "camHardwareSync",
             "audioSyncTerminal",
             "videoSyncTerminal",
             "audioSyncSource",
@@ -1054,6 +1057,9 @@ him know. Otherwise, I had nothing to do with it.
 
         availableFLIRCamSerials, _ = cu.discoverCameras(camType=cu.FLIR_CAM)
         availableOtherCamSerials, _ = cu.discoverCameras(camType=cu.OTHER_CAM)
+        availableCamSerials = availableFLIRCamSerials + availableOtherCamSerials
+
+        camSerials = []
 
         audioChannelConfigurations = [
             "DEFAULT",
@@ -1071,6 +1077,8 @@ him know. Otherwise, I had nothing to do with it.
             params.append(Param(name='FLIR Cameras', widgetType=Param.MULTICHOICE, options=availableFLIRCamSerials, default=None))
         if len(availableOtherCamSerials) > 0:
             params.append(Param(name='Other Cameras', widgetType=Param.MULTICHOICE, options=availableOtherCamSerials, default=None))
+        if len(availableCamSerials) > 0:
+            params.append(Param(name='Cameras Requiring Hardware Sync', widgetType=Param.MULTICHOICE, options=availableCamSerials, default=None))
         if len(availableClockChannels) > 0:
             params.append(Param(name='Audio Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=defaultAudioSyncTerminal))
             params.append(Param(name='Video Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=defaultVideoSyncTerminal))
@@ -1102,6 +1110,10 @@ him know. Otherwise, I had nothing to do with it.
                     otherCamSerials = choices['Other Cameras']
                 else:
                     otherCamSerials = []
+                if 'Cameras Requiring Hardware Sync' in choices:
+                    camHardwareSyncList = choices['Cameras Requiring Hardware Sync']
+                else:
+                    camHardwareSyncList = []
                 if 'Audio Sync Channel' in choices and choices['Audio Sync Channel'] != "None":
                     audioSyncTerminal = choices['Audio Sync Channel']
                 else:
@@ -1130,12 +1142,14 @@ him know. Otherwise, I had nothing to do with it.
 
                 camSerials = FLIRCamSerials + otherCamSerials
                 camTypes = [cu.FLIR_CAM for camSerial in FLIRCamSerials] + [cu.OTHER_CAM for camSerial in otherCamSerials]
+                camHardwareSync = [camSerial in camHardwareSyncList for camSerial in camSerials]
 
                 # Set chosen parameters
                 self.setParams(
                     audioDAQChannels=audioDAQChannels,
                     camSerials=camSerials,
                     camTypes=camTypes,
+                    camHardwareSync=camHardwareSync,
                     audioSyncTerminal=audioSyncTerminal,
                     videoSyncTerminal=videoSyncTerminal,
                     audioSyncSource=audioSyncSource,
@@ -1169,6 +1183,7 @@ him know. Otherwise, I had nothing to do with it.
             "audioDAQChannels",
             "camSerials",
             "camTypes",
+            "camHardwareSync",
             "audioSyncTerminal",
             "videoSyncTerminal",
             "audioSyncSource",
@@ -1177,11 +1192,8 @@ him know. Otherwise, I had nothing to do with it.
             "audioChannelConfiguration"
             )
 
-        print('camSerials:', p['camSerials'])
-        print('camTypes', p['camTypes'])
-
-        FLIRCamSerials = [camSerial for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.FLIR_CAM]
-        otherCamSerials = [camSerial for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.OTHER_CAM]
+        FLIRCamSerials =  [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.FLIR_CAM]
+        otherCamSerials = [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.OTHER_CAM]
 
         lines.extend([
             'Acquisition hardware selections:',
@@ -1193,7 +1205,8 @@ him know. Otherwise, I had nothing to do with it.
             '  Audio sync source:    {audioSyncSource}'.format(audioSyncSource=p['audioSyncSource']),
             '  Video sync source:    {videoSyncSource}'.format(videoSyncSource=p['videoSyncSource']),
             '  Acq signal channel:   {acquisitionSignalChannel}'.format(acquisitionSignalChannel=p['acquisitionSignalChannel']),
-            '  Audio channel config: {audioChannelConfiguration}'.format(audioChannelConfiguration=p['audioChannelConfiguration'])
+            '  Audio channel config: {audioChannelConfiguration}'.format(audioChannelConfiguration=p['audioChannelConfiguration']),
+            '  (* = hardware synchronized)'
         ])
 
         self.acquisitionHardwareText.delete('0.0', tk.END)
@@ -3073,7 +3086,10 @@ him know. Otherwise, I had nothing to do with it.
         """Get # of processes subject to synchronization in current config"""
         audioDAQChannels = self.getParams('audioDAQChannels')
         camSerials = self.getParams('camSerials')
-        synchronizer = 1
+        audioSyncTerminal = self.getParams('audioSyncTerminal')
+        videoSyncTerminal = self.getParams('videoSyncTerminal')
+        # Check if we'll be using a synchronizer process or not
+        synchronizer = audioSyncTerminal is not None or videoSyncTerminal is not None
         return (len(audioDAQChannels)>0) + len(camSerials) + synchronizer  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
     def getCameraSettings(self):
         """Get the current set of camera settings.
@@ -3224,6 +3240,8 @@ him know. Otherwise, I had nothing to do with it.
 
         synchronizerRequired = p["audioSyncTerminal"] is not None or p["videoSyncTerminal"] is not None
 
+        print('synchronizerRequired:', synchronizerRequired)
+
         startTime = mp.Value('d', -1)
         if not synchronizerRequired:
             startTime.value = time.time_ns()
@@ -3331,7 +3349,7 @@ him know. Otherwise, I had nothing to do with it.
                         stdoutQueue=self.StdoutManager.queue)
 
         gpuCount = 0
-        for camSerial in p["camSerials"]:
+        for k, camSerial in enumerate(p["camSerials"]):
             if camSerial in p["videoDirectories"]:
                 videoDirectory = p["videoDirectories"][camSerial]
             else:
@@ -3343,12 +3361,21 @@ him know. Otherwise, I had nothing to do with it.
 
             processes = {}
 
+            if p["camHardwareSync"][k]:
+                # This camera is hardware synced
+                requestedVideoFrequency = p["videoFrequency"]
+                actualVideoFrequency = self.actualVideoFrequency
+            else:
+                # This camera is software synced
+                requestedVideoFrequency = cu.getSoftwareFrameRate(camSerial=camSerial, camType=p["camTypes"][k])
+                actualVideoFrequency = None
+
             videoAcquireProcess = VideoAcquirer(
                 startTime=startTime,
                 camSerial=camSerial,
                 acquireSettings=p["acquireSettings"][camSerial],
-                frameRate = self.actualVideoFrequency,
-                requestedFrameRate=p["videoFrequency"],
+                frameRate=self.actualVideoFrequency,
+                requestedFrameRate=requestedVideoFrequency,
                 monitorFrameRate=self.monitorMasterFrameRate,
                 verbose=self.videoAcquireVerbose,
                 bufferSizeSeconds=p["acquisitionBufferSize"],
@@ -3386,7 +3413,7 @@ him know. Otherwise, I had nothing to do with it.
                         videoBaseFileName=videoBaseFileName,
                         imageQueue=videoAcquireProcess.imageQueueReceiver,
                         frameRate=self.actualVideoFrequency,
-                        requestedFrameRate=p["videoFrequency"],
+                        requestedFrameRate=requestedVideoFrequency,
                         mergeMessageQueue=mergeMsgQueue,
                         videoLength=p["recordTime"],
                         daySubfolders=p['daySubfolders'],

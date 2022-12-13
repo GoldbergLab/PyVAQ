@@ -3307,7 +3307,14 @@ class VideoAcquirer(StateMachineProcess):
         self.acquireSettings = acquireSettings
         self.requestedFrameRate = requestedFrameRate
         self.frameRateVar = frameRate
-        self.frameRate = None
+        if self.frameRateVar is None:
+            # This must be a software timed camera, so frame rate is not controlled by Sync process
+            self.hardwareTimed = False
+            self.frameRate = requestedFrameRate    # The requested frame rate will serve as an approximate frame rate
+        else:
+            # This must be a hardware timed camera, so frame rate is controlled by Sync process
+            self.hardwareTimed = True
+            self.frameRate = None
         self.pixelFormat = None
         # self.imageQueue = mp.Queue()
         # self.imageQueue.cancel_join_thread()
@@ -3419,7 +3426,6 @@ class VideoAcquirer(StateMachineProcess):
                     else:
                         passedBarrier = False
 
-                    self.frameRate = None
                     imageCount = 0
                     im = imp = imageResult = None
                     startTime = -1
@@ -3429,11 +3435,12 @@ class VideoAcquirer(StateMachineProcess):
                     droppedFrameCount = 0
 
                     # Read actual frame rate from the Synchronizer process
-                    if self.frameRateVar.value == -1:
+                    if self.hardwareTimed and self.frameRateVar.value == -1:
                         # Wait for shared value frameRate to be set by the Synchronizer process
                         time.sleep(0.1)
                     else:
-                        self.frameRate = self.frameRateVar.value
+                        if self.hardwareTimed:
+                            self.frameRate = self.frameRateVar.value
                         if self.verbose >= 2: self.log("Initializing camera...")
                         cam, camList, system = cu.initCam(self.camSerial)
 
@@ -3719,7 +3726,14 @@ class SimpleVideoWriter(StateMachineProcess):
         #     self.imageQueue.cancel_join_thread()
         self.requestedFrameRate = requestedFrameRate
         self.frameRateVar = frameRate
-        self.frameRate = None
+        if self.frameRateVar is None:
+            # This must be a software timed camera, so frame rate is not controlled by Sync process
+            self.hardwareTimed = False
+            self.frameRate = requestedFrameRate    # The requested frame rate will serve as an approximate frame rate
+        else:
+            # This must be a hardware timed camera, so frame rate is controlled by Sync process
+            self.hardwareTimed = True
+            self.frameRate = None
         self.mergeMessageQueue = mergeMessageQueue
         self.videoWriteMethod = 'ffmpeg'   # options are ffmpeg, PySpin, OpenCV
         self.daySubfolders = daySubfolders

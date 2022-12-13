@@ -479,6 +479,10 @@ def initCams(camSerials=None, camList=None, camType=FLIR_CAM, system=None):
     return cams, camList, system
 
 @handleCam
+def getSoftwareFrameRate(cam=None, camType=None, **kwargs):
+    return getCameraAttribute('AcquisitionFrameRate', 'float', cam=cam, camType=camType)
+
+@handleCam
 def getFrameSize(cam=None, **kwargs):
     width = cam.Width.GetValue()
     height = cam.Height.GetValue()
@@ -516,7 +520,7 @@ def getColorChannelCount(cam=None, **kwargs):
     return round(numChannels)
 
 @handleCam
-def getCameraAttribute(attributeName, attributeType, cam=None, camSerial=None, nodemap='NodeMap', **kwargs):
+def getCameraAttribute(attributeName, attributeType, cam=None, camSerial=None, nodemap='NodeMap', camType=FLIR_CAM, **kwargs):
     # Get an attribute from a camera
     #
     # Acceptable argument combinations:
@@ -543,6 +547,9 @@ def getCameraAttribute(attributeName, attributeType, cam=None, camSerial=None, n
     #   nodemap = string indicating type of nodemap to use
     #   attributeName = name of attribute
 
+    if camType == OTHER_CAM:
+        return cam.GetAttribute(attributeName)
+
     nodeType = typeNameToNodeType[attributeType]
 
     if type(nodemap) == str:
@@ -567,8 +574,11 @@ def getCameraAttribute(attributeName, attributeType, cam=None, camSerial=None, n
     return value
 
 @handleCam
-def setCameraAttribute(attributeName, attributeValue, attributeType, cam=None, nodemap='NodeMap', **kwargs):
+def setCameraAttribute(attributeName, attributeValue, attributeType, cam=None, camType=None, nodemap='NodeMap', **kwargs):
     # Set camera attribute. Return True if successful, False otherwise.
+
+    if camType == OTHER_CAM:
+
 
     if type(nodemap) == str:
         # nodemap is a string indicating whichy type of nodemap to get from cam
@@ -597,7 +607,7 @@ def setCameraAttribute(attributeName, attributeValue, attributeType, cam=None, n
     return True
 
 @handleCam
-def setCameraAttributes(attributeValueTriplets, cam=None, nodemap='NodeMap', **kwargs):
+def setCameraAttributes(attributeValueTriplets, cam=None, camType=None, nodemap='NodeMap', **kwargs):
     if type(nodemap) == str:
         # nodemap is a string indicating which type of nodemap to get from cam
         nodemap = nodeMapAccessorFunctions[nodemap](cam)
@@ -731,7 +741,7 @@ def queryAttributeNode(nodePtr, nodeType):
         return None
 
 @handleCam
-def getAllCameraAttributes(cam=None, **kwargs):
+def getAllCameraAttributes(cam=None, camType=None, **kwargs):
     # cam must be initialized before being passed to this function
     try:
         nodeData = {
@@ -746,6 +756,28 @@ def getAllCameraAttributes(cam=None, **kwargs):
             'subcategories':[],
             'children':[]}
 
+        if camType == OTHER_CAM:
+            # This is a 3rd party camera - assemble camera info into the same
+            #   type of structure native to PySpin
+            for attributeName in CVSpin.CameraAttributes:
+                attributeValue = cam.GetAttribute(attributeName)
+                nodeData['children'].append(
+                    dict(
+                        type='float',
+                        name=attributeName,
+                        symbolic=attributeName,
+                        displayName=attributeName,
+                        value=attributeValue,
+                        tooltip='',
+                        accessMode=CVSpin.CameraAttributeAccessMode[attributeName],
+                        options=[],
+                        subcategories=[],
+                        children=[],
+                    )
+                )
+            return nodeData
+
+        # This is a FLIR camera
         nodemap_gentl = cam.GetTLDeviceNodeMap()
 
         nodeDataTL = queryAttributeNode(nodemap_gentl.GetNode('Root'), PySpin.intfICategory)

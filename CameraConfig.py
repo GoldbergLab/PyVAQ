@@ -45,6 +45,7 @@ class CameraConfigPanel(tk.Frame):
 
         self.parent = parent
         self.camSerials = []
+        self.camTypes = []
         self.storedAttributes = {}
 
         self.filterLabel = tk.Label(self, text='Attribute filter:', justify=tk.RIGHT)
@@ -165,7 +166,7 @@ class CameraConfigPanel(tk.Frame):
 
         """
 
-        self.camSerials, _ = cu.discoverCameras(camType=cu.FLIR_CAM)
+        self.camSerials, self.camTypes = cu.discoverCameras()
         self.cameraList['values'] = self.camSerials
         if len(self.camSerials) > 0:
             self.cameraList.current(0)
@@ -202,8 +203,8 @@ class CameraConfigPanel(tk.Frame):
         progressLabel.grid(row=0, column=0, sticky=tk.EW)
         progressBar.grid(row=1, column=0, sticky=tk.EW)
 
-        for camSerial in self.camSerials:
-            nestedAttributes = cu.getAllCameraAttributes(camSerial=camSerial)
+        for camSerial, camType in zip(self.camSerials, self.camTypes):
+            nestedAttributes = cu.getAllCameraAttributes(camSerial=camSerial, camType=camType)
             flattenedAttributes = cu.flattenCameraAttributes(nestedAttributes)
             self.storedAttributes[camSerial] = flattenedAttributes
             progressBar.step(1)
@@ -497,7 +498,13 @@ class CameraConfigPanel(tk.Frame):
 
         results = {}
         for camSerial in configuration:
-            results[camSerial] = cu.applyCameraConfiguration(configuration[camSerial], camSerial=camSerial)
+            if camSerial not in self.camSerials:
+                print('Warning: Found camera {s} in configuration, but it is not detected in the system right now.'.format(s=camSerial))
+                continue
+            idx = self.camSerials.index(camSerial)
+            camType = self.camTypes[idx]
+
+            results[camSerial] = cu.applyCameraConfiguration(configuration[camSerial], camSerial=camSerial, camType=camType)
         successCount = sum([sum([results[camSerial][attributeName] for attributeName in results[camSerial]]) for camSerial in results])
         failCount = sum([sum([not results[camSerial][attributeName] for attributeName in results[camSerial]]) for camSerial in results])
         totalCount = failCount + successCount
