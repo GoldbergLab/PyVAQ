@@ -1,6 +1,9 @@
 import cv2
 from PIL import Image
 import re
+import os
+
+os.environ['OPENCV_VIDEOIO_PRIORITY_MSMF'] = '0'
 
 intfIString = None
 intfIInteger = None
@@ -898,6 +901,9 @@ class CameraList:
         raise NotImplementedError()
         return
 
+class Value:
+    def __init__(self, getFcn):
+        self.GetValue = getFcn
 
 class Camera:
     """
@@ -910,7 +916,54 @@ class Camera:
         self._port_number = port_number
         self._camera_pointer = None
 
+        self.Width =  Value(self.GetFrameWidth)
+        self.Height = Value(self.GetFrameHeight)
+        self._width = 0
+        self._height = 0
+
         self.Serial = portNumToSerial(self._port_number)
+
+    def GetFrameWidth(self):
+        """Get the width of the frames the camera acquires.
+
+        Attempt to do so using the camera attribute from OpenCV. If that results
+            in the default nonsense value of 0, try grabbing one frame to
+            measure the width. If it comes to that, also grab the height and
+            store it so next time we don't have to do it again.
+
+        Returns:
+            int: Width of the camera frames in pixels
+
+        """
+        if self._width == 0:
+            self._width = self.GetAttribute('FRAME_WIDTH')
+        if self._width == 0:
+            imagePtr = self.GetNextFrame()
+            self._width = imagePtr.GetWidth()
+            self._height = imagePtr.GetHeight()
+            imagePtr.Release()
+        return self._width
+
+    def GetFrameHeight(self):
+        """Get the height of the frames the camera acquires.
+
+        Attempt to do so using the camera attribute from OpenCV. If that results
+            in the default nonsense value of 0, try grabbing one frame to
+            measure the height. If it comes to that, also grab the width and
+            store it so next time we don't have to do it again.
+
+        Returns:
+            int: Height of the camera frames in pixels
+
+        """
+        if self._height == 0:
+            self._height = self.GetAttribute('FRAME_HEIGHT')
+        if self._height == 0:
+            imagePtr = self.GetNextFrame()
+            self._width = imagePtr.GetWidth()
+            self._height = imagePtr.GetHeight()
+            imagePtr.Release()
+        return self._height
 
     def GetAttribute(self, attributeName):
         """Get a camera attribute.
@@ -1341,7 +1394,7 @@ class Camera:
             raise IOError('Camera capture failed')
         frame_num = self._camera_pointer.get(cv2.CAP_PROP_POS_FRAME)
         timestamp = self._camera_pointer.get(cv2.CAP_PROP_POS_MSEC)
-        return ImagePtr(image_array, frame_id = frame_num, timestamp=timestamp)
+        return ImagePtr(image_array, frame_id=frame_num, timestamp=timestamp)
 
 
     def GetUniqueID(self):

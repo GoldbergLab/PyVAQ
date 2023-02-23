@@ -3085,12 +3085,12 @@ him know. Otherwise, I had nothing to do with it.
     def getNumSyncedProcesses(self):
         """Get # of processes subject to synchronization in current config"""
         audioDAQChannels = self.getParams('audioDAQChannels')
-        camSerials = self.getParams('camSerials')
+        camHardwareSync = self.getParams('camHardwareSync')
         audioSyncTerminal = self.getParams('audioSyncTerminal')
         videoSyncTerminal = self.getParams('videoSyncTerminal')
         # Check if we'll be using a synchronizer process or not
         synchronizer = audioSyncTerminal is not None or videoSyncTerminal is not None
-        return (len(audioDAQChannels)>0) + len(camSerials) + synchronizer  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
+        return (len(audioDAQChannels)>0) + sum(camHardwareSync) + synchronizer  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
     def getCameraSettings(self):
         """Get the current set of camera settings.
 
@@ -3225,7 +3225,10 @@ him know. Otherwise, I had nothing to do with it.
         p = self.getParams()
 
         self.log('Number of synced processes = {k}'.format(k=p["numSyncedProcesses"]))
-        ready = mp.Barrier(p["numSyncedProcesses"], timeout=0.5)
+        if p['numSyncedProcesses'] > 0:
+            ready = mp.Barrier(p["numSyncedProcesses"], timeout=0.5)
+        else:
+            ready = None
 
         if self.StdoutManager is None:
             self.StdoutManager = StdoutManager()
@@ -3240,7 +3243,7 @@ him know. Otherwise, I had nothing to do with it.
 
         synchronizerRequired = p["audioSyncTerminal"] is not None or p["videoSyncTerminal"] is not None
 
-        print('synchronizerRequired:', synchronizerRequired)
+        self.log('synchronizerRequired:', synchronizerRequired)
 
         startTime = mp.Value('d', -1)
         if not synchronizerRequired:
@@ -3361,18 +3364,21 @@ him know. Otherwise, I had nothing to do with it.
 
             processes = {}
 
+            camType = p["camTypes"][k]
+
             if p["camHardwareSync"][k]:
                 # This camera is hardware synced
                 requestedVideoFrequency = p["videoFrequency"]
                 actualVideoFrequency = self.actualVideoFrequency
             else:
                 # This camera is software synced
-                requestedVideoFrequency = cu.getSoftwareFrameRate(camSerial=camSerial, camType=p["camTypes"][k])
+                requestedVideoFrequency = cu.getSoftwareFrameRate(camSerial=camSerial, camType=camType)
                 actualVideoFrequency = None
 
             videoAcquireProcess = VideoAcquirer(
                 startTime=startTime,
                 camSerial=camSerial,
+                camType=camType,
                 acquireSettings=p["acquireSettings"][camSerial],
                 frameRate=self.actualVideoFrequency,
                 requestedFrameRate=requestedVideoFrequency,

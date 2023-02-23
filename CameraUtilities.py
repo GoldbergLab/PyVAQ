@@ -25,7 +25,7 @@ import CVSpin
 FLIR_CAM = 0
 OTHER_CAM = 1
 CAM_TYPES = [FLIR_CAM, OTHER_CAM]
-CamLibs = {FLIR_CAM:PySpin, OTHER_CAM:CVSpin}
+CamLibs = {FLIR_CAM:PySpin, OTHER_CAM:CVSpin, None:PySpin}
 
 # Information about PySpin pixel formats, with a partial mapping to common ffmpeg pixel formats
 pixelFormats = {
@@ -489,34 +489,45 @@ def getFrameSize(cam=None, **kwargs):
     return width, height
 
 @handleCam
-def getPixelFormat(cam=None, **kwargs):
+def getPixelFormat(cam=None, camType=None, **kwargs):
+    if camType == OTHER_CAM:
+        # Quick fix, not sure how to consistently get this from OpenCV across camera backends
+        return "RGB8"
     return getCameraAttribute('PixelFormat', 'enum', cam=cam)[1]
 
 @handleCam
-def isBayerFiltered(cam=None, **kwargs):
+def isBayerFiltered(cam=None, camType=None, **kwargs):
+    if camType == OTHER_CAM:
+        # Quick fix, not sure how to consistently get this from OpenCV across camera backends
+        return False
     name, displayName = getCameraAttribute('PixelFormat', 'enum', nodemap=cam.GetNodeMap())
     return pixelFormats[displayName]['bayer']
 
 @handleCam
-def getColorChannelCount(cam=None, **kwargs):
-    nm = cam.GetNodeMap()
-    # Get max dynamic range, which indicates the maximum value a single color channel can take
-    maxPixelValue = getCameraAttribute('PixelDynamicRangeMax', 'integer', nodemap=nm);
-    if maxPixelValue == 0:
-        # For some reason Blackfly USB (not Blackfly S USB3) cameras return zero for this property.
-        # We'll try to use the pixel format to determine the # of channels.
-        pixelFormat = getPixelFormat(cam=cam)
-        return pixelFormats[pixelFormat]['channelCount']
-    # Get pixel size (indicating total # of bits per pixel)
-    pixelSizeName, pixelSize = getCameraAttribute('PixelSize', 'enum', nodemap=nm)
-    # Convert enum value to an integer
-    pixelSize = pixelSizes[pixelSize]
-    # Convert max value to # of bits
-    channelSize = round(math.log(maxPixelValue + 1)/math.log(2))
-    # Infer # of color channels
-    numChannels = pixelSize / channelSize
-    if abs(numChannels - round(numChannels)) > 0.0001:
-        raise ValueError('Calculated # of color channels for camera {s} was not an integer ({bpp} bpp, {mdr} max channel value)'.format(s=camSerial, bpp=pixelSize, mdr=channelSize))
+def getColorChannelCount(cam=None, camType=None, **kwargs):
+    if camType == OTHER_CAM:
+        numChannels = cam.GetAttribute('CHANNEL')
+        if numChannels == 0:
+            numChannels = 3
+    else:
+        nm = cam.GetNodeMap()
+        # Get max dynamic range, which indicates the maximum value a single color channel can take
+        maxPixelValue = getCameraAttribute('PixelDynamicRangeMax', 'integer', nodemap=nm);
+        if maxPixelValue == 0:
+            # For some reason Blackfly USB (not Blackfly S USB3) cameras return zero for this property.
+            # We'll try to use the pixel format to determine the # of channels.
+            pixelFormat = getPixelFormat(cam=cam)
+            return pixelFormats[pixelFormat]['channelCount']
+        # Get pixel size (indicating total # of bits per pixel)
+        pixelSizeName, pixelSize = getCameraAttribute('PixelSize', 'enum', nodemap=nm)
+        # Convert enum value to an integer
+        pixelSize = pixelSizes[pixelSize]
+        # Convert max value to # of bits
+        channelSize = round(math.log(maxPixelValue + 1)/math.log(2))
+        # Infer # of color channels
+        numChannels = pixelSize / channelSize
+        if abs(numChannels - round(numChannels)) > 0.0001:
+            raise ValueError('Calculated # of color channels for camera {s} was not an integer ({bpp} bpp, {mdr} max channel value)'.format(s=camSerial, bpp=pixelSize, mdr=channelSize))
     return round(numChannels)
 
 @handleCam
@@ -578,7 +589,8 @@ def setCameraAttribute(attributeName, attributeValue, attributeType, cam=None, c
     # Set camera attribute. Return True if successful, False otherwise.
 
     if camType == OTHER_CAM:
-
+        cam.SetAttribute(attributeName, attributeValue)
+        return True
 
     if type(nodemap) == str:
         # nodemap is a string indicating whichy type of nodemap to get from cam
@@ -618,7 +630,7 @@ def setCameraAttributes(attributeValueTriplets, cam=None, camType=None, nodemap=
     results = {}
 
     for attribute, value, attributeType in attributeValueTriplets:
-        results[attribute] = setCameraAttribute(attribute, value, attributeType, cam=cam, nodemap=nodemap)
+        results[attribute] = setCameraAttribute(attribute, value, attributeType, cam=cam, nodemap=nodemap, camType=camType)
         # if not result:
             # print("Failed to set", str(attribute), " to ", str(value))
     return results
@@ -816,7 +828,7 @@ def convertAttributeValue(value, attributeType):
     return value
 
 @handleCam
-def applyCameraConfiguration(configuration, cam=None, **kwargs):
+def applyCameraConfiguration(configuration, cam=None, camType=None, **kwargs):
     # Apply configuration of the form:
     # odict(
     #     attributeName1:{name=attributeName1, value=attributeValue1, type=attributeType1},
@@ -835,7 +847,7 @@ def applyCameraConfiguration(configuration, cam=None, **kwargs):
             (attributeName, attributeValue, attributeType)
         )
 
-    results = setCameraAttributes(formattedConfiguration, cam=cam)
+    results = setCameraAttributes(formattedConfiguration, cam=cam, camType=camType)
     return results
 
 def getAllCamerasAttributes(camSerials=None):
