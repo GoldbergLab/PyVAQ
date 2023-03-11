@@ -112,7 +112,7 @@ def discoverDAQDigitalChannels():
     s = nisys.System.local()
     channels = {}
     for d in s.devices:
-        channels[d.name] = [c.name for c in d.di_physical_chans]
+        channels[d.name] = [c.name for c in d.di_lines]
     return channels
 
 def discoverDAQTerminals():
@@ -3240,7 +3240,7 @@ him know. Otherwise, I had nothing to do with it.
                 signalChannel=p['acquisitionSignalChannel'],
                 startOnHWSignal=p['startOnHWSignal'],
                 writeEnableOnHWSignal=p['writeEnableOnHWSignal'],
-                audioSyncChannel=p["dataSyncTerminal"],
+                dataSyncChannel=p["dataSyncTerminal"],
                 videoSyncChannel=p["videoSyncTerminal"],
                 videoDutyCycle=convertExposureTimeToDutyCycle(p["videoExposureTime"]/1000, p["videoFrequency"]),
                 requestedAudioFrequency=p["dataFrequency"],
