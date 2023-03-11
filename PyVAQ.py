@@ -2307,11 +2307,12 @@ him know. Otherwise, I had nothing to do with it.
         if repeat:
             self.updateStatusDisplayJob = self.master.after(interval, self.updateStatusDisplay)
 
-    def getProcesses(self, audio=True, video=True, acquirers=True, writers=True, auxiliary=True):
+    def getProcesses(self, audio=True, digital=True, video=True, acquirers=True, writers=True, auxiliary=True):
         """Gather a list of processes of the selected types.
 
         Args:
             audio (bool): Include "audio" type processes. Defaults to True.
+            digital (bool): Include "digital" type processes. Defaults to True.
             video (bool): Include "video" type processes. Defaults to True.
             acquirers (bool): Include "acquirers" type processes. Defaults to True.
             writers (bool): Include "writers" type processes. Defaults to True.
@@ -2409,9 +2410,9 @@ him know. Otherwise, I had nothing to do with it.
             States.EXITING:'EXITING', States.DEAD:'DEAD',
             States.IGNORING:'IGNORING', States.MERGING:'MERGING',
             States.SYNCHRONIZING:'SYNCHRONIZING', States.WAITING:'WAITING',
-            States.ANALYZING:'ANALYZING', States.AUDIOINIT:'AUDIOINIT',
+            States.ANALYZING:'ANALYZING', States.FILEINIT:'FILEINIT',
             States.WRITING:'WRITING', States.BUFFERING:'BUFFERING',
-            States.ACQUIRING:'ACQUIRING', States.VIDEOINIT:'VIDEOINIT',
+            States.ACQUIRING:'ACQUIRING', States.FILEINIT:'FILEINIT',
             States.TRIGGERING:'TRIGGERING', None:'None'}
 
         # Tally up the various types of states processes are in

@@ -806,11 +806,11 @@ class States:
     SYNCHRONIZING = 200
     WAITING =       300
     ANALYZING =     301
-    AUDIOINIT =     501
+    FILEINIT =     501
     WRITING =       600
     BUFFERING =     601
     ACQUIRING =     700
-    VIDEOINIT =     801
+    FILEINIT =     801
     TRIGGERING =    1000
 
 class Messages:
@@ -2483,7 +2483,7 @@ class SimpleAudioWriter(StateMachineProcess):
     # Human-readable states
     stateList = {
         States.WRITING :'WRITING',
-        States.AUDIOINIT:'AUDIOINIT',
+        States.FILEINIT:'FILEINIT',
     }
 
     # Include common states from parent class
@@ -2621,7 +2621,7 @@ class SimpleAudioWriter(StateMachineProcess):
                             self.nextState = States.INITIALIZING
                         else:
                             # Ready to go
-                            self.nextState = States.AUDIOINIT
+                            self.nextState = States.FILEINIT
                     elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
                     elif msg == Messages.EXIT:
@@ -2629,8 +2629,8 @@ class SimpleAudioWriter(StateMachineProcess):
                         self.nextState = States.STOPPING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
-# SimpleAudioWriter: ************** AUDIOINIT ********************************
-                elif self.state == States.AUDIOINIT:
+# SimpleAudioWriter: ************** FILEINIT ********************************
+                elif self.state == States.FILEINIT:
                     # Start a new audio file
                     # DO STUFF
 
@@ -2761,7 +2761,7 @@ class SimpleAudioWriter(StateMachineProcess):
                     elif msg in ['', Messages.START]:
                         if (numSamplesPerFile - numSamplesInCurrentFile) > -1 and (numSamplesPerFile - numSamplesInCurrentFile) < 1:
                             # We've reached the desired sample count. Start a new audio file.
-                            self.nextState = States.AUDIOINIT
+                            self.nextState = States.FILEINIT
                             # If requested, merge with video
                             if self.mergeMessageQueue is not None:
                                 # Send file for AV merging:
@@ -3675,7 +3675,7 @@ class SimpleVideoWriter(StateMachineProcess):
     # Human-readable states
     stateList = {
         States.WRITING :'WRITING',
-        States.VIDEOINIT : 'VIDEOINIT',
+        States.FILEINIT : 'FILEINIT',
     }
 
     # Include common states from parent class
@@ -3804,7 +3804,7 @@ class SimpleVideoWriter(StateMachineProcess):
                             self.nextState = States.INITIALIZING
                         else:
                             # Frame rate has been set by synchronizer
-                            self.nextState = States.VIDEOINIT
+                            self.nextState = States.FILEINIT
                     elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
                     elif msg == Messages.EXIT:
@@ -3812,8 +3812,8 @@ class SimpleVideoWriter(StateMachineProcess):
                         self.nextState = States.STOPPING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
-# SimpleVideoWriter: ************** VIDEOINIT *********************************
-                elif self.state == States.VIDEOINIT:
+# SimpleVideoWriter: ************** FILEINIT *********************************
+                elif self.state == States.FILEINIT:
                     # Start a new video file
                     # DO STUFF
 
@@ -3982,7 +3982,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     elif msg in ['', Messages.START]:
                         if numFramesInCurrentVideo == self.videoFrameCount:
                             # We've reached desired video frame count. Start a new video.
-                            self.nextState = States.VIDEOINIT
+                            self.nextState = States.FILEINIT
                             # If requested, merge with audio.
                             #   This doesn't really work with SimpleVideoWriter right now. For potential future use.
                             if self.mergeMessageQueue is not None and videoFileInterface is not None:
@@ -5156,7 +5156,7 @@ class SimpleDigitalWriter(StateMachineProcess):
     # Human-readable states
     stateList = {
         States.WRITING :'WRITING',
-        States.AUDIOINIT:'AUDIOINIT',
+        States.FILEINIT:'FILEINIT',
     }
 
     # Include common states from parent class
@@ -5165,8 +5165,8 @@ class SimpleDigitalWriter(StateMachineProcess):
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
-        'audioBaseFileName',
-        'audioDirectory',
+        'digitalBaseFilename',
+        'digitalDirectory',
         'daySubfolders',
         'enableWrite',
         'scheduleEnabled',
@@ -5175,16 +5175,15 @@ class SimpleDigitalWriter(StateMachineProcess):
         ]
 
     def __init__(self,
-                audioDirectory='.',
-                audioBaseFileName='audioFile',
+                digitalDirectory='.',
+                digitalBaseFilename='digitalFile',
                 channelNames=[],
                 dataQueue=None,
-                sampleRate=None,    # A shared variable for sampleRate
-                frameRate=None,         # A shared variable for video framerate (needed to ensure audio sync)
+                sampleRate=None,            # A shared variable for sampleRate
+                frameRate=None,             # A shared variable for video framerate (needed to ensure audio sync)
                 numChannels=1,
-                videoLength=None,       # Requested time in seconds of each video.
+                videoLength=None,           # Requested time in seconds of each video.
                 audioDepthBytes=2,
-                mergeMessageQueue=None, # Queue to put (filename, trigger) in for merging
                 daySubfolders=True,         # Create and write to subfolders labeled by day?
                 enableWrite=True,
                 scheduleEnabled=False,
@@ -5193,8 +5192,8 @@ class SimpleDigitalWriter(StateMachineProcess):
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.ID = "SAW"
-        self.audioDirectory = audioDirectory
-        self.audioBaseFileName = audioBaseFileName
+        self.digitalDirectory = digitalDirectory
+        self.digitalBaseFilename = digitalBaseFilename
         self.channelNames = channelNames
         self.dataQueue = dataQueue
         if self.dataQueue is not None:
@@ -5205,7 +5204,6 @@ class SimpleDigitalWriter(StateMachineProcess):
         self.frameRate = None
         self.numChannels = numChannels
         self.videoLength = videoLength
-        self.mergeMessageQueue = mergeMessageQueue
         self.audioDepthBytes = audioDepthBytes
         self.daySubfolders = daySubfolders
         self.enableWrite = enableWrite
@@ -5246,9 +5244,9 @@ class SimpleDigitalWriter(StateMachineProcess):
 # SimpleDigitalWriter: ************** INITIALIZING *****************************
                 elif self.state == States.INITIALIZING:
                     # DO STUFF
-                    audioFile = None
+                    digitalFile = None
                     seriesStartTime = time.time()   # Record approximate start time (in seconds since epoch) of series for filenaming purposes
-                    audioFileCount = 0
+                    digitalFileCount = 0
                     numSamplesInCurrentSeries = 0
                     dataChunk = None
                     dataChunkLeftover = None
@@ -5257,7 +5255,7 @@ class SimpleDigitalWriter(StateMachineProcess):
                     writeEnabled = True
                     self.sampleRate = None
 
-                    # Read actual audio frequency from the Synchronizer process
+                    # Read actual data frequency from the Synchronizer process
                     if self.sampleRateVar.value == -1 or self.frameRateVar.value == -1:
                         # Wait for shared value sampleRate & frameRate to be set by the Synchronizer process
                         # Wait for shared value frameRate to be set by the Synchronizer process
@@ -5290,11 +5288,11 @@ class SimpleDigitalWriter(StateMachineProcess):
                         self.nextState = States.STOPPING
                     elif msg in ['', Messages.START]:
                         if self.sampleRate is None or self.frameRate is None:
-                            # Haven't received audio frequency or frame rate from synchronizer - continue waiting
+                            # Haven't received data frequency or frame rate from synchronizer - continue waiting
                             self.nextState = States.INITIALIZING
                         else:
                             # Ready to go
-                            self.nextState = States.AUDIOINIT
+                            self.nextState = States.FILEINIT
                     elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
                     elif msg == Messages.EXIT:
@@ -5302,9 +5300,9 @@ class SimpleDigitalWriter(StateMachineProcess):
                         self.nextState = States.STOPPING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
-# SimpleDigitalWriter: ************** AUDIOINIT ********************************
-                elif self.state == States.AUDIOINIT:
-                    # Start a new audio file
+# SimpleDigitalWriter: ************** FILEINIT ********************************
+                elif self.state == States.FILEINIT:
+                    # Start a new digital file
                     # DO STUFF
 
                     scheduledOn = inSchedule(self.scheduleStartTime, self.scheduleStopTime)
@@ -5318,38 +5316,38 @@ class SimpleDigitalWriter(StateMachineProcess):
                         elif not writeEnabled and writeEnabledPrevious:
                             self.logTime('Audio write now disabled')
 
-                    if audioFile is not None:
+                    if digitalFile is not None:
                         # Close file
-                        audioFile.writeframes(b'')  # Causes recompute of header info?
-                        audioFile.close()
-                        audioFile = None
+                        # digitalFile.writeframes(b'')  # Causes recompute of header info?
+                        digitalFile.close()
+                        digitalFile = None
 
-                    audioFileStartTime = seriesStartTime + numSamplesInCurrentSeries / self.sampleRate
+                    digitalFileStartTime = seriesStartTime + numSamplesInCurrentSeries / self.sampleRate
                     numSamplesInCurrentFile = 0
 
                     if writeEnabled:
                         # Generate new audio file path
-                        audioFileNameTags = [','.join(self.channelNames), generateTimeString(timestamp=seriesStartTime), '{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
+                        digitalFileNameTags = [','.join(self.channelNames), generateTimeString(timestamp=seriesStartTime), '{digitalFileCount:03d}'.format(digitalFileCount=digitalFileCount)]
                         if self.daySubfolders:
-                            audioDirectory = getDaySubfolder(self.audioDirectory, timestamp=audioFileStartTime)
+                            digitalDirectory = getDaySubfolder(self.digitalDirectory, timestamp=digitalFileStartTime)
                         else:
-                            audioDirectory = self.audioDirectory
-                        audioFileName = generateFileName(directory=audioDirectory, baseName=self.audioBaseFileName, extension='.wav', tags=audioFileNameTags)
-                        ensureDirectoryExists(audioDirectory)
+                            digitalDirectory = self.digitalDirectory
+                        digitalFileName = generateFileName(directory=digitalDirectory, baseName=self.digitalBaseFilename, extension='.wav', tags=digitalFileNameTags)
+                        ensureDirectoryExists(digitalDirectory)
 
                         # Open and initialize audio file
-                        audioFile = wave.open(audioFileName, 'w')
-                        audioFile.audioFileName = audioFileName
+                        digitalFile = wave.open(digitalFileName, 'w')
+                        digitalFile.digitalFileName = digitalFileName
                         # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
-                        audioFile.setparams((self.numChannels, self.audioDepthBytes, self.sampleRate, 0, 'NONE', 'not compressed'))
+                        digitalFile.setparams((self.numChannels, self.audioDepthBytes, self.sampleRate, 0, 'NONE', 'not compressed'))
 
-                        newFileInfo = 'Opened audio file #{num:03d}: {n} channels, {b} bytes, {f:.2f} Hz'.format(num=audioFileCount, n=self.numChannels, b=self.audioDepthBytes, f=self.sampleRate);
+                        newFileInfo = 'Opened audio file #{num:03d}: {n} channels, {b} bytes, {f:.2f} Hz'.format(num=digitalFileCount, n=self.numChannels, b=self.audioDepthBytes, f=self.sampleRate);
                         self.updatePublishedInfo(newFileInfo)
 
                         if self.verbose >= 2:
                             self.log(newFileInfo)
 
-                    audioFileCount += 1
+                    digitalFileCount += 1
 
                     # CHECK FOR MESSAGES
                     msg, arg = self.checkMessages(block=False)
@@ -5406,12 +5404,12 @@ class SimpleDigitalWriter(StateMachineProcess):
 
                         # Write chunk of audio to file that was previously retrieved from the buffer
                         if writeEnabled:
-                            audioFile.writeframes(dataChunk.getAsBytes())
+                            digitalFile.writeframes(dataChunk.getAsBytes())
                         numSamplesInCurrentFile += dataChunk.getSampleCount()
                         numSamplesInCurrentSeries += dataChunk.getSampleCount()
 
                         if self.verbose >= 3:
-                            self.log('audio file num: {num}'.format(num=audioFileCount))
+                            self.log('audio file num: {num}'.format(num=digitalFileCount))
                             self.log('  pre-chunk samplesUntilEOF   = {ns}'.format(ns=samplesUntilEOF))
                             self.log('  chunk size                  = {ns}'.format(ns=dataChunk.getSampleCount()))
                             self.log('  numSamplesInCurrentFile     = {ns}'.format(ns=numSamplesInCurrentFile))
@@ -5434,26 +5432,7 @@ class SimpleDigitalWriter(StateMachineProcess):
                     elif msg in ['', Messages.START]:
                         if (numSamplesPerFile - numSamplesInCurrentFile) > -1 and (numSamplesPerFile - numSamplesInCurrentFile) < 1:
                             # We've reached the desired sample count. Start a new audio file.
-                            self.nextState = States.AUDIOINIT
-                            # If requested, merge with video
-                            if self.mergeMessageQueue is not None:
-                                # Send file for AV merging:
-                                fileEvent = dict(
-                                    filePath=audioFile.audioFileName,
-                                    streamType=AVMerger.AUDIO,
-                                    trigger=Trigger(audioFileStartTime,
-                                        audioFileStartTime,
-                                        audioFileStartTime+actualVideoLength,
-                                        id=audioFileCount, idspace='SimpleAVFiles'), #triggers[0],
-                                    streamID='audio',
-                                    startTime=audioFileStartTime,
-                                    tags=['{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
-                                    )
-                                if self.verbose >= 1: self.log("Sending audio filename to merger")
-                                self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
-                            else:
-                                if self.verbose >= 3:
-                                    self.log('No merge message queue available, cannot send to AVMerger')
+                            self.nextState = States.FILEINIT
                         elif (numSamplesPerFile - numSamplesInCurrentFile) >= 1:
                             # Not enough audio samples written to this file yet. Keep writing.
                             self.nextState = States.WRITING
@@ -5465,24 +5444,10 @@ class SimpleDigitalWriter(StateMachineProcess):
 # SimpleDigitalWriter: ************** STOPPING *********************************
                 elif self.state == States.STOPPING:
                     # DO STUFF
-                    if audioFile is not None:
-                        audioFile.writeframes(b'')  # Recompute header info?
-                        audioFile.close()
-                        if self.mergeMessageQueue is not None:
-                            # Send file for AV merging:
-                            fileEvent = dict(
-                                filePath=audioFile.audioFileName,
-                                streamType=AVMerger.AUDIO,
-                                trigger=Trigger(audioFileStartTime,
-                                    audioFileStartTime,
-                                    audioFileStartTime+actualVideoLength,
-                                    id=audioFileCount, idspace='SimpleAVFiles'), #triggers[0],
-                                streamID='audio',
-                                startTime=audioFileStartTime,
-                                tags=['{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
-                            )
-                            self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
-                        audioFile = None
+                    if digitalFile is not None:
+                        digitalFile.writeframes(b'')  # Recompute header info?
+                        digitalFile.close()
+                        digitalFile = None
                     else:
                         if self.verbose >= 3:
                             self.log('No merge message queue available, cannot send to AVMerger')
