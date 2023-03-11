@@ -3243,7 +3243,7 @@ him know. Otherwise, I had nothing to do with it.
                 dataSyncChannel=p["dataSyncTerminal"],
                 videoSyncChannel=p["videoSyncTerminal"],
                 videoDutyCycle=convertExposureTimeToDutyCycle(p["videoExposureTime"]/1000, p["videoFrequency"]),
-                requestedAudioFrequency=p["dataFrequency"],
+                requestedDataFrequency=p["dataFrequency"],
                 requestedVideoFrequency=p["videoFrequency"],
                 verbose=self.syncVerbose,
                 ready=ready,
