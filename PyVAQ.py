@@ -108,6 +108,13 @@ def discoverDAQAudioChannels():
         channels[d.name] = [c.name for c in d.ai_physical_chans]
     return channels
 
+def discoverDAQDigitalChannels():
+    s = nisys.System.local()
+    channels = {}
+    for d in s.devices:
+        channels[d.name] = [c.name for c in d.di_physical_chans]
+    return channels
+
 def discoverDAQTerminals():
     s = nisys.System.local()
     channels = {}
@@ -254,10 +261,11 @@ class PyVAQ:
         self.mergeBaseFileName = GeneralVar(); self.mergeBaseFileName.set('')
         self.mergeDirectory = GeneralVar(); self.mergeDirectory.set('')
         self.audioDAQChannels = GeneralVar(); self.audioDAQChannels.set([])
+        self.digitalDAQChannels = GeneralVar(); self.digitalDAQChannels.set([])
         self.camSerials = GeneralVar(); self.camSerials.set([])  # Cam serials selected for acquisition
-        self.audioSyncTerminal = GeneralVar(); self.audioSyncTerminal.set(None)
+        self.dataSyncTerminal = GeneralVar(); self.dataSyncTerminal.set(None)
         self.videoSyncTerminal = GeneralVar(); self.videoSyncTerminal.set(None)
-        self.audioSyncSource = GeneralVar(); self.audioSyncSource.set("PFI5")
+        self.dataSyncSource = GeneralVar(); self.dataSyncSource.set("PFI5")
         self.videoSyncSource = GeneralVar(); self.videoSyncSource.set("PFI4")
         self.videoWriteEnable = GeneralVar(); self.videoWriteEnable.set({})
         self.audioWriteEnable = tk.BooleanVar(); self.audioWriteEnable.set(True)
@@ -358,7 +366,7 @@ class PyVAQ:
         self.audioFrequencyFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Audio freq. (Hz)", style='SingleContainer.TLabelframe')
         self.audioFrequencyVar =    tk.StringVar(); self.audioFrequencyVar.set("44100")
         self.audioFrequencyEntry =  ttk.Entry(self.audioFrequencyFrame, width=16, textvariable=self.audioFrequencyVar);
-        self.audioFrequencyVar.trace('w', self.updateAudioFrequency)
+        self.audioFrequencyVar.trace('w', self.updateDataFrequency)
 
         self.videoFrequencyFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Video freq (fps)", style='SingleContainer.TLabelframe')
         self.videoFrequencyVar =    tk.StringVar(); self.videoFrequencyVar.set("30")
@@ -575,13 +583,14 @@ class PyVAQ:
 
         # Actual a/v frequency shared vars
         self.actualVideoFrequency = None
-        self.actualAudioFrequency = None
+        self.actualDataFrequency = None
 
         # Verbosity of child processes
         #   0=Errors, 1=Occasional important status updates
         #   2=Minor status updates, 3=Continuous status messages
         # These need to be integrated into the param scheme
         self.audioAcquireVerbose = 1
+        self.digitalAcquireVerbose = 1
         self.audioWriteVerbose = 1
         self.videoAcquireVerbose = 1
         self.videoWriteVerbose = 1
@@ -594,7 +603,7 @@ class PyVAQ:
 
         # the params dict defines how to access and set all the parameters in the GUI
         self.paramInfo = {
-            'audioFrequency':                   dict(get=lambda:int(self.audioFrequencyVar.get()),              set=self.audioFrequencyVar.set),
+            'dataFrequency':                   dict(get=lambda:int(self.audioFrequencyVar.get()),              set=self.audioFrequencyVar.set),
             'videoFrequency':                   dict(get=lambda:int(self.videoFrequencyVar.get()),              set=self.videoFrequencyVar.set),
             'chunkSize':                        dict(get=lambda:int(self.chunkSizeVar.get()),                   set=self.chunkSizeVar.set),
             "maxGPUVEnc":                       dict(get=lambda:int(self.maxGPUVEncVar.get()),                  set=self.maxGPUVEncVar.set),
@@ -640,10 +649,11 @@ class PyVAQ:
             "audioTagContinuousTrigs":          dict(get=self.audioTagContinuousTrigsVar.get,                   set=self.audioTagContinuousTrigsVar.set),
             "daySubfolders":                    dict(get=self.daySubfoldersVar.get,                             set=self.daySubfoldersVar.set),
             "audioDAQChannels":                 dict(get=self.audioDAQChannels.get,                             set=self.audioDAQChannels.set),
+            "digitalDAQChannels":               dict(get=self.digitalDAQChannels.get,                           set=self.digitalDAQChannels.set),
             "camSerials":                       dict(get=self.camSerials.get,                                   set=self.camSerials.set),
-            "audioSyncTerminal":                dict(get=self.audioSyncTerminal.get,                            set=self.audioSyncTerminal.set),
+            "dataSyncTerminal":                 dict(get=self.dataSyncTerminal.get,                             set=self.dataSyncTerminal.set),
             "videoSyncTerminal":                dict(get=self.videoSyncTerminal.get,                            set=self.videoSyncTerminal.set),
-            "audioSyncSource":                  dict(get=self.audioSyncSource.get,                              set=self.audioSyncSource.set),
+            "dataSyncSource":                   dict(get=self.dataSyncSource.get,                               set=self.dataSyncSource.set),
             "videoSyncSource":                  dict(get=self.videoSyncSource.get,                              set=self.videoSyncSource.set),
             "acquisitionSignalChannel":         dict(get=self.acquisitionSignalChannel.get,                     set=self.acquisitionSignalChannel.set),
             "audioChannelConfiguration":        dict(get=self.audioChannelConfiguration.get,                    set=self.audioChannelConfiguration.set),
@@ -768,6 +778,7 @@ class PyVAQ:
         verbosityOptions = ['0', '1', '2', '3']
         names = [
             'AudioAcquirer verbosity',
+            'DigitalAcquirer verbosity',
             'AudioWriter verbosity',
             'Synchronizer verbosity',
             'AVMerger verbosity',
@@ -778,6 +789,7 @@ class PyVAQ:
         ]
         defaults = [
             str(int(self.audioAcquireVerbose)),
+            str(int(self.digitalAcquireVerbose)),
             str(int(self.audioWriteVerbose)),
             str(int(self.syncVerbose)),
             str(int(self.mergeVerbose)),
@@ -795,6 +807,7 @@ class PyVAQ:
         choices = pd.results
         if choices is not None:
             self.audioAcquireVerbose = int(choices['AudioAcquirer verbosity'])
+            self.digitalAcquireVerbose = int(choices['DigitalAcquirer verbosity'])
             self.audioWriteVerbose = int(choices['AudioWriter verbosity'])
             self.syncVerbose = int(choices['Synchronizer verbosity'])
             self.mergeVerbose = int(choices['AVMerger verbosity'])
@@ -812,6 +825,7 @@ class PyVAQ:
 
         """
         sendMessage(self.audioAcquireProcess, (Messages.SETPARAMS, {'verbose':self.audioAcquireVerbose}))
+        sendMessage(self.digitalAcquireProcess, (Messages.SETPARAMS, {'verbose':self.digitalAcquireVerbose}))
         sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, {'verbose':self.audioWriteVerbose}))
         sendMessage(self.syncProcess, (Messages.SETPARAMS, {'verbose':self.syncVerbose}))
         sendMessage(self.mergeProcess, (Messages.SETPARAMS, {'verbose':self.mergeVerbose}))
@@ -942,7 +956,7 @@ him know. Otherwise, I had nothing to do with it.
             return
 
         p = self.getParams()
-        audioMonitorSampleLength = round(self.audioMonitor.historyLength / p['audioFrequency'], 2)
+        audioMonitorSampleLength = round(self.audioMonitor.historyLength / p['dataFrequency'], 2)
         params = [
             Param(name='Audio autoscale', widgetType=Param.MONOCHOICE, options=['Auto', 'Manual'], default=('Auto' if self.audioMonitor.autoscale else 'Manual')),
             Param(name='Audio range', widgetType=Param.TEXT, options=None, default=str(self.audioMonitor.displayAmplitude)),
@@ -966,7 +980,7 @@ him know. Otherwise, I had nothing to do with it.
                     pass
             if 'Audio history length' in choices and len(choices['Audio history length']) > 0:
                 try:
-                    self.audioMonitor.historyLength = float(choices['Audio history length']) * p['audioFrequency']
+                    self.audioMonitor.historyLength = float(choices['Audio history length']) * p['dataFrequency']
                 except ValueError:
                     pass
 
@@ -1025,20 +1039,22 @@ him know. Otherwise, I had nothing to do with it.
         # Get current settings to use as defaults
         p = self.getParams(
             "audioDAQChannels",
+            "digitalDAQChannels",
             "camSerials",
-            "audioSyncTerminal",
+            "dataSyncTerminal",
             "videoSyncTerminal",
-            "audioSyncSource",
+            "dataSyncSource",
             "videoSyncSource",
             "acquisitionSignalChannel",
             "audioChannelConfiguration"
             )
 
+        defaultDigitalDAQChannels = p["digitalDAQChannels"]
         defaultAudioDAQChannels = p["audioDAQChannels"]
         defaultCamSerials = p["camSerials"]
-        defaultAudioSyncTerminal = p["audioSyncTerminal"]
+        defaultDataSyncTerminal = p["dataSyncTerminal"]
         defaultVideoSyncTerminal = p["videoSyncTerminal"]
-        defaultAudioSyncSource = p["audioSyncSource"]
+        defaultdataSyncSource = p["dataSyncSource"]
         defaultVideoSyncSource = p["videoSyncSource"]
         defaultAcquisitionSignalChannel = p["acquisitionSignalChannel"]
         defaultAudioChannelConfiguration = p["audioChannelConfiguration"]
@@ -1046,6 +1062,7 @@ him know. Otherwise, I had nothing to do with it.
         # Query the system to determine what DAQ channels and cameras are
         #   currently available
         availableAudioChannels = flattenList(discoverDAQAudioChannels().values())
+        availableDigitalChannels = flattenList(discoverDAQDigitalChannels().values())
         availableClockChannels = flattenList(discoverDAQClockChannels().values()) + ['None']
         availableDigitalChannels = ['None'] + flattenList(discoverDAQTerminals().values())
 
@@ -1064,17 +1081,19 @@ him know. Otherwise, I had nothing to do with it.
             params.append(Param(name='Audio Channels', widgetType=Param.MULTICHOICE, options=availableAudioChannels, default=defaultAudioDAQChannels))
         if len(availableCamSerials) > 0:
             params.append(Param(name='Cameras', widgetType=Param.MULTICHOICE, options=availableCamSerials, default=defaultCamSerials))
+        if len(availableAudioChannels) > 0:
+            params.append(Param(name='Digital Channels', widgetType=Param.MULTICHOICE, options=availableDigitalChannels, default=defaultDigitalDAQChannels))
         if len(availableClockChannels) > 0:
-            params.append(Param(name='Audio Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=defaultAudioSyncTerminal))
+            params.append(Param(name='Audio/Digital Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=defaultDataSyncTerminal))
             params.append(Param(name='Video Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=defaultVideoSyncTerminal))
-            params.append(Param(name='Audio Sync PFI Interface', widgetType=Param.TEXT, options=None, default=defaultAudioSyncSource, description="This must match your selection for Audio Sync Channel. Check DAQ pinout for matching PFI channel."))
+            params.append(Param(name='Audio Sync PFI Interface', widgetType=Param.TEXT, options=None, default=defaultdataSyncSource, description="This must match your selection for Audio/Digital Sync Channel. Check DAQ pinout for matching PFI channel."))
             params.append(Param(name='Video Sync PFI Interface', widgetType=Param.TEXT, options=None, default=defaultVideoSyncSource, description="This must match your selection for Video Sync Channel. Check DAQ pinout for matching PFI channel."))
         params.append(Param(name='Audio channel configuration', widgetType=Param.MONOCHOICE, options=audioChannelConfigurations, default=defaultAudioChannelConfiguration, description="Choose an analog channel configuration for audio acquisition. Recommend differential if you have a 3-wire XLR-type output, RSE if you only use two wires."))
         params.append(Param(name='Acquisition start trigger channel', widgetType=Param.MONOCHOICE, options=availableDigitalChannels, default=defaultAcquisitionSignalChannel, description="Choose a channel that will trigger the acquisition start with a rising edge. Leave as None if you wish the acquisition to start without waiting for a digital trigger."))
 
         choices = None
         if len(params) > 0:
-            pd = ParamDialog(self.master, params=params, title="Choose audio/video inputs to use", maxHeight=35, arrangement=ParamDialog.HYBRID)
+            pd = ParamDialog(self.master, params=params, title="Choose audio/digital/video inputs to use", maxHeight=35, arrangement=ParamDialog.HYBRID)
             choices = pd.results
             if choices is not None:
                 # We're changing acquisition settings, so stop everything
@@ -1091,18 +1110,22 @@ him know. Otherwise, I had nothing to do with it.
                     camSerials = choices['Cameras']
                 else:
                     camSerials = []
-                if 'Audio Sync Channel' in choices and choices['Audio Sync Channel'] != "None":
-                    audioSyncTerminal = choices['Audio Sync Channel']
+                if 'Digital Channels' in choices:
+                    digitalDAQChannels = choices['Digital Channels']
                 else:
-                    audioSyncTerminal = None
+                    digitalDAQChannels = []
+                if 'Audio/Digital Sync Channel' in choices and choices['Audio/Digital Sync Channel'] != "None":
+                    dataSyncTerminal = choices['Audio/Digital Sync Channel']
+                else:
+                    dataSyncTerminal = None
                 if 'Video Sync Channel' in choices and choices['Video Sync Channel'] != "None":
                     videoSyncTerminal = choices['Video Sync Channel']
                 else:
                     videoSyncTerminal = None
                 if 'Audio Sync PFI Interface' in choices and len(choices['Audio Sync PFI Interface']) > 0:
-                    audioSyncSource = choices['Audio Sync PFI Interface']
+                    dataSyncSource = choices['Audio Sync PFI Interface']
                 else:
-                    audioSyncSource = None
+                    dataSyncSource = None
                 if 'Video Sync PFI Interface' in choices and len(choices['Video Sync PFI Interface']) > 0:
                     videoSyncSource = choices['Video Sync PFI Interface']
                 else:
@@ -1120,16 +1143,18 @@ him know. Otherwise, I had nothing to do with it.
                 # Set chosen parameters
                 self.setParams(
                     audioDAQChannels=audioDAQChannels,
+                    digitalDAQChannels=digitalDAQChannels,
                     camSerials=camSerials,
-                    audioSyncTerminal=audioSyncTerminal,
+                    dataSyncTerminal=dataSyncTerminal,
                     videoSyncTerminal=videoSyncTerminal,
-                    audioSyncSource=audioSyncSource,
+                    dataSyncSource=dataSyncSource,
                     videoSyncSource=videoSyncSource,
                     acquisitionSignalChannel=acquisitionSignalChannel,
                     audioChannelConfiguration=audioChannelConfiguration
                     )
 
                 self.log('Got audioDAQChannels:', audioDAQChannels)
+                self.log('Got digitalDAQChannels:', digitalDAQChannels)
                 self.log('Got camSerials:', camSerials)
 
                 # Update display text
@@ -1153,9 +1178,9 @@ him know. Otherwise, I had nothing to do with it.
         p = self.getParams(
             "audioDAQChannels",
             "camSerials",
-            "audioSyncTerminal",
+            "dataSyncTerminal",
             "videoSyncTerminal",
-            "audioSyncSource",
+            "dataSyncSource",
             "videoSyncSource",
             "acquisitionSignalChannel",
             "audioChannelConfiguration"
@@ -1165,9 +1190,9 @@ him know. Otherwise, I had nothing to do with it.
             'Acquisition hardware selections:',
             '  Audio DAQ channels:   {audioDAQChannels}'.format(audioDAQChannels=', '.join(p['audioDAQChannels'])),
             '  Cameras:              {camSerials}'.format(camSerials=', '.join(p['camSerials'])),
-            '  Audio sync terminal:  {audioSyncTerminal}'.format(audioSyncTerminal=p['audioSyncTerminal']),
+            '  Audio sync terminal:  {dataSyncTerminal}'.format(dataSyncTerminal=p['dataSyncTerminal']),
             '  Video sync terminal:  {videoSyncTerminal}'.format(videoSyncTerminal=p['videoSyncTerminal']),
-            '  Audio sync source:    {audioSyncSource}'.format(audioSyncSource=p['audioSyncSource']),
+            '  Audio sync source:    {dataSyncSource}'.format(dataSyncSource=p['dataSyncSource']),
             '  Video sync source:    {videoSyncSource}'.format(videoSyncSource=p['videoSyncSource']),
             '  Acq signal channel:   {acquisitionSignalChannel}'.format(acquisitionSignalChannel=p['acquisitionSignalChannel']),
             '  Audio channel config: {audioChannelConfiguration}'.format(audioChannelConfiguration=p['audioChannelConfiguration'])
@@ -1408,8 +1433,8 @@ him know. Otherwise, I had nothing to do with it.
         if self.audioWriteProcess is not None:
             sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, scheduleParams))
 
-    def updateAudioFrequency(self, *args):
-        """Send message to Synchronizer to update audio frequency
+    def updateDataFrequency(self, *args):
+        """Send message to Synchronizer to update data acquisition frequency
 
         Note that this will not take effect until the Synchronizer passes
         through the INITIALIZING state.
@@ -1421,10 +1446,10 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
-        # Get current audio frequency parameter
-        newFrequency = self.getParams('audioFrequency')
+        # Get current audio/digital frequency parameter
+        newFrequency = self.getParams('dataFrequency')
         # Send it to the Synchronizer
-        sendMessage(self.syncProcess, (Messages.SETPARAMS, {'audioFrequency':newFrequency}))
+        sendMessage(self.syncProcess, (Messages.SETPARAMS, {'dataFrequency':newFrequency}))
 
     def updateVideoFrequency(self, *args):
         """Send message to Synchronizer to update video frequency
@@ -1767,8 +1792,8 @@ him know. Otherwise, I had nothing to do with it.
                     # Plot high level trigger level demarcation
                     self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, triggerHighLevelTrace, 'g-', linewidth=1)
                     try:
-                        tLow  = t[-1] - (analysisSummary['triggerLowChunks'] -1)*analysisSummary['chunkSize']/analysisSummary['audioFrequency']
-                        tHigh = t[-1] - (analysisSummary['triggerHighChunks']-1)*analysisSummary['chunkSize']/analysisSummary['audioFrequency']
+                        tLow  = t[-1] - (analysisSummary['triggerLowChunks'] -1)*analysisSummary['chunkSize']/analysisSummary['dataFrequency']
+                        tHigh = t[-1] - (analysisSummary['triggerHighChunks']-1)*analysisSummary['chunkSize']/analysisSummary['dataFrequency']
                     except TypeError:
                         self.log('weird analysis monitoring error:')
                         traceback.print_exc()
@@ -3017,8 +3042,8 @@ him know. Otherwise, I had nothing to do with it.
         return preTriggerTime * 2 + 1    # Twice the pretrigger time to make sure we don't miss stuff, plus one second for good measure
     def getBufferSizeAudioChunks(self):
         """Calculate the number of chunks in the audio buffer - not in use"""
-        p = self.getParams('bufferSizeSeconds', 'audioFrequency', 'chunkSize')
-        return p['bufferSizeSeconds'] * p['audioFrequency'] / p['chunkSize']   # Will be rounded up to nearest integer
+        p = self.getParams('bufferSizeSeconds', 'dataFrequency', 'chunkSize')
+        return p['bufferSizeSeconds'] * p['dataFrequency'] / p['chunkSize']   # Will be rounded up to nearest integer
     def getNumStreams(self):
         """Get # of audio/video streams in the current configuration."""
         audioDAQChannels = self.getParams('audioDAQChannels')
@@ -3180,9 +3205,9 @@ him know. Otherwise, I had nothing to do with it.
         #   once when the Synchronizer is initialized, and not again until
         #   all child processes are stopped and restarted.
         self.actualVideoFrequency = mp.Value('d', -1)
-        self.actualAudioFrequency = mp.Value('d', -1)
+        self.actualDataFrequency = mp.Value('d', -1)
 
-        synchronizerRequired = p["audioSyncTerminal"] is not None or p["videoSyncTerminal"] is not None
+        synchronizerRequired = p["dataSyncTerminal"] is not None or p["videoSyncTerminal"] is not None
 
         startTime = mp.Value('d', -1)
         if not synchronizerRequired:
@@ -3210,22 +3235,22 @@ him know. Otherwise, I had nothing to do with it.
             # Create sync process
             self.syncProcess = Synchronizer(
                 actualVideoFrequency=self.actualVideoFrequency,
-                actualAudioFrequency=self.actualAudioFrequency,
+                actualDataFrequency=self.actualDataFrequency,
                 startTime=startTime,
                 signalChannel=p['acquisitionSignalChannel'],
                 startOnHWSignal=p['startOnHWSignal'],
                 writeEnableOnHWSignal=p['writeEnableOnHWSignal'],
-                audioSyncChannel=p["audioSyncTerminal"],
+                audioSyncChannel=p["dataSyncTerminal"],
                 videoSyncChannel=p["videoSyncTerminal"],
                 videoDutyCycle=convertExposureTimeToDutyCycle(p["videoExposureTime"]/1000, p["videoFrequency"]),
-                requestedAudioFrequency=p["audioFrequency"],
+                requestedAudioFrequency=p["dataFrequency"],
                 requestedVideoFrequency=p["videoFrequency"],
                 verbose=self.syncVerbose,
                 ready=ready,
                 stdoutQueue=self.StdoutManager.queue)
         else:
             # We're not creating a synchronizer object, so we'll just manually set the actualVideo/AudioFrequency variable
-            self.actualAudioFrequency.value = p["audioFrequency"]
+            self.actualDataFrequency.value = p["dataFrequency"]
             self.actualVideoFrequency.value = p["videoFrequency"]
 
         copyToMonitoringQueue = True
@@ -3240,11 +3265,11 @@ him know. Otherwise, I had nothing to do with it.
                 startTime=startTime,
                 audioQueue=audioQueue,
                 chunkSize=p["chunkSize"],
-                audioFrequency=self.actualAudioFrequency,
+                audioFrequency=self.actualDataFrequency,
                 bufferSize=None,
                 channelNames=p["audioDAQChannels"],
                 channelConfig=p["audioChannelConfiguration"],
-                syncChannel=p["audioSyncSource"],
+                syncChannel=p["dataSyncSource"],
                 verbose=self.audioAcquireVerbose,
                 sendToWriter=createWriters,
                 sendToMonitor=True,
@@ -3264,7 +3289,7 @@ him know. Otherwise, I had nothing to do with it.
                         audioBaseFileName=p["audioBaseFileName"],
                         channelNames=p["audioDAQChannels"],
                         audioQueue=audioQueue,
-                        audioFrequency=self.actualAudioFrequency,
+                        audioFrequency=self.actualDataFrequency,
                         frameRate=self.actualVideoFrequency,
                         numChannels=len(p["audioDAQChannels"]),
                         videoLength=p["recordTime"],
@@ -3284,7 +3309,7 @@ him know. Otherwise, I had nothing to do with it.
                         mergeMessageQueue=mergeMsgQueue,
                         chunkSize=p["chunkSize"],
                         bufferSizeSeconds=p["bufferSizeSeconds"],
-                        audioFrequency=self.actualAudioFrequency,
+                        audioFrequency=self.actualDataFrequency,
                         numChannels=len(p["audioDAQChannels"]),
                         daySubfolders=p['daySubfolders'],
                         verbose=self.audioWriteVerbose,
@@ -3405,7 +3430,7 @@ him know. Otherwise, I had nothing to do with it.
                 len(p["audioDAQChannels"]) > 0:
             self.audioTriggerProcess = AudioTriggerer(
                 audioQueue=self.audioAcquireProcess.analysisQueue,
-                audioFrequency=self.actualAudioFrequency,
+                audioFrequency=self.actualDataFrequency,
                 chunkSize=p["chunkSize"],
                 triggerHighLevel=p["triggerHighLevel"],
                 triggerLowLevel=p["triggerLowLevel"],
@@ -3551,7 +3576,7 @@ him know. Otherwise, I had nothing to do with it.
         self.exitChildProcesses()
 
         self.actualVideoFrequency = None
-        self.actualAudioFrequency = None
+        self.actualDataFrequency = None
 
         # Give children a chance to register exit message
         time.sleep(0.5)
