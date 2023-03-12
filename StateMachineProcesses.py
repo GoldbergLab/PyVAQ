@@ -20,6 +20,7 @@ from ctypes import c_wchar
 import PySpinUtilities as psu
 import sys
 from math import floor
+from NCFileUtilities import NCFile
 
 simulatedHardware = False
 for arg in sys.argv[1:]:
@@ -619,6 +620,22 @@ def getDaySubfolder(root, trigger=None, timestamp=None):
         timestamp = trigger.triggerTime
     dateString = dt.datetime.fromtimestamp(timestamp).strftime(DATE_FORMAT)
     return os.path.join(root, dateString)
+
+def getTimeVector(timestamp):
+    """Convert a scalar timestamp into a 7-element time vector.
+
+    The elements of the vector are [year, month, day, hour, minute, second, microsecond]
+
+    Args:
+        timestamp (float): A timestamp in seconds since epoch.
+
+    Returns:
+        list: A list of seven time elements in the order [year, month, day,
+            hour, minute, second, microsecond]
+
+    """
+    time = dt.datetime.fromtimestamp(timestamp)
+    return [time.year, time.month, time.day, time.hour, time.minute, time.second, time.microsecond]
 
 def ensureDirectoryExists(directory):
     """Ensure that a directory exists; create it if it does not
@@ -4874,7 +4891,7 @@ class DigitalAcquirer(StateMachineProcess):
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
-        self.ID = "AA"
+        self.ID = "DA"
         self.copyToMonitoringQueue = copyToMonitoringQueue
         self.copyToAnalysisQueue = copyToAnalysisQueue
         self.startTimeSharedValue = startTime
@@ -5181,9 +5198,7 @@ class SimpleDigitalWriter(StateMachineProcess):
                 dataQueue=None,
                 sampleRate=None,            # A shared variable for sampleRate
                 frameRate=None,             # A shared variable for video framerate (needed to ensure audio sync)
-                numChannels=1,
                 videoLength=None,           # Requested time in seconds of each video.
-                audioDepthBytes=2,
                 daySubfolders=True,         # Create and write to subfolders labeled by day?
                 enableWrite=True,
                 scheduleEnabled=False,
@@ -5191,7 +5206,7 @@ class SimpleDigitalWriter(StateMachineProcess):
                 scheduleStopTime=None,
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
-        self.ID = "SAW"
+        self.ID = "SDW"
         self.digitalDirectory = digitalDirectory
         self.digitalBaseFilename = digitalBaseFilename
         self.channelNames = channelNames
@@ -5202,9 +5217,8 @@ class SimpleDigitalWriter(StateMachineProcess):
         self.sampleRate = None
         self.frameRateVar = frameRate
         self.frameRate = None
-        self.numChannels = numChannels
+        self.numChannels = len(channelNames)
         self.videoLength = videoLength
-        self.audioDepthBytes = audioDepthBytes
         self.daySubfolders = daySubfolders
         self.enableWrite = enableWrite
         self.scheduleEnabled = scheduleEnabled
@@ -5254,6 +5268,7 @@ class SimpleDigitalWriter(StateMachineProcess):
                     writeEnabledPrevious = True
                     writeEnabled = True
                     self.sampleRate = None
+                    numSamplesPerFile = 0
 
                     # Read actual data frequency from the Synchronizer process
                     if self.sampleRateVar.value == -1 or self.frameRateVar.value == -1:
@@ -5318,7 +5333,6 @@ class SimpleDigitalWriter(StateMachineProcess):
 
                     if digitalFile is not None:
                         # Close file
-                        # digitalFile.writeframes(b'')  # Causes recompute of header info?
                         digitalFile.close()
                         digitalFile = None
 
@@ -5335,13 +5349,14 @@ class SimpleDigitalWriter(StateMachineProcess):
                         digitalFileName = generateFileName(directory=digitalDirectory, baseName=self.digitalBaseFilename, extension='.wav', tags=digitalFileNameTags)
                         ensureDirectoryExists(digitalDirectory)
 
-                        # Open and initialize audio file
-                        digitalFile = wave.open(digitalFileName, 'w')
-                        digitalFile.digitalFileName = digitalFileName
-                        # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
-                        digitalFile.setparams((self.numChannels, self.audioDepthBytes, self.sampleRate, 0, 'NONE', 'not compressed'))
+                        # Open and initialize digital file
+                        timeVector = getTimeVector(digitalFileStartTime)
+                        metaData = 'Digital input data: ' + self.channelNames.join(',')
+                        digitalFile = NCFileMultiChannel(digitalFileName, timeVector, 1/self.sampleRate, list(range(numChannels)), metaData)
+                        # # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
+                        # digitalFile.setparams((self.numChannels, self.audioDepthBytes, self.sampleRate, 0, 'NONE', 'not compressed'))
 
-                        newFileInfo = 'Opened audio file #{num:03d}: {n} channels, {b} bytes, {f:.2f} Hz'.format(num=digitalFileCount, n=self.numChannels, b=self.audioDepthBytes, f=self.sampleRate);
+                        newFileInfo = 'Opened digital file #{num:03d}: {n} channels, {b} bytes, {f:.2f} Hz'.format(num=digitalFileCount, n=self.numChannels, b=self.audioDepthBytes, f=self.sampleRate);
                         self.updatePublishedInfo(newFileInfo)
 
                         if self.verbose >= 2:
@@ -5377,12 +5392,12 @@ class SimpleDigitalWriter(StateMachineProcess):
 
                     # Write all or part of last audio chunk to file
                     if dataChunk is None:
-                        # No audio chunk yet
+                        # No data chunk yet
                         pass
                     else:
-                        # We have an audio chunk to write.
+                        # We have a data chunk to write.
 
-                        # Tack on audio chunk leftover, if there is one
+                        # Tack on data chunk leftover, if there is one
                         if dataChunkLeftover is not None:
                             if dataChunkLeftover.getSampleCount() != 0:
                                 # There are leftover samples. Include those at the start of this chunk.
@@ -5402,21 +5417,21 @@ class SimpleDigitalWriter(StateMachineProcess):
                             self.log("Pre chunk:", dataChunk)
                             self.log("Post chunk:", dataChunkLeftover)
 
-                        # Write chunk of audio to file that was previously retrieved from the buffer
+                        # Write chunk of digital to file that was previously retrieved from the buffer
                         if writeEnabled:
-                            digitalFile.writeframes(dataChunk.getAsBytes())
+                            digitalFile.addData(dataChunk)
                         numSamplesInCurrentFile += dataChunk.getSampleCount()
                         numSamplesInCurrentSeries += dataChunk.getSampleCount()
 
                         if self.verbose >= 3:
-                            self.log('audio file num: {num}'.format(num=digitalFileCount))
+                            self.log('digital file num: {num}'.format(num=digitalFileCount))
                             self.log('  pre-chunk samplesUntilEOF   = {ns}'.format(ns=samplesUntilEOF))
                             self.log('  chunk size                  = {ns}'.format(ns=dataChunk.getSampleCount()))
                             self.log('  numSamplesInCurrentFile     = {ns}'.format(ns=numSamplesInCurrentFile))
                             self.log('  numSamplesInCurrentSeries   = {ns}'.format(ns=numSamplesInCurrentSeries))
-                            self.log("Wrote audio chunk {id}".format(id=dataChunk.id))
+                            self.log("Wrote data chunk {id}".format(id=dataChunk.id))
                             timeWrote += (dataChunk.getSampleCount() / dataChunk.sampleRate)
-                            self.log("Audio time wrote: {time}".format(time=timeWrote))
+                            self.log("Data time wrote: {time}".format(time=timeWrote))
 
                     # CHECK FOR MESSAGES
                     msg, arg = self.checkMessages(block=False)
@@ -5431,21 +5446,20 @@ class SimpleDigitalWriter(StateMachineProcess):
                         self.nextState = States.STOPPING
                     elif msg in ['', Messages.START]:
                         if (numSamplesPerFile - numSamplesInCurrentFile) > -1 and (numSamplesPerFile - numSamplesInCurrentFile) < 1:
-                            # We've reached the desired sample count. Start a new audio file.
+                            # We've reached the desired sample count. Start a new data file.
                             self.nextState = States.FILEINIT
                         elif (numSamplesPerFile - numSamplesInCurrentFile) >= 1:
-                            # Not enough audio samples written to this file yet. Keep writing.
+                            # Not enough data samples written to this file yet. Keep writing.
                             self.nextState = States.WRITING
                         else:
-                            # Uh oh, too many audio samples in this file? Something went wrong.
-                            raise IOError('More audio samples ({k}) than requested ({n}) in file!'.format(k=numSamplesInCurrentFile, n=numSamplesPerFile))
+                            # Uh oh, too many data samples in this file? Something went wrong.
+                            raise IOError('More data samples ({k}) than requested ({n}) in file!'.format(k=numSamplesInCurrentFile, n=numSamplesPerFile))
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
 # SimpleDigitalWriter: ************** STOPPING *********************************
                 elif self.state == States.STOPPING:
                     # DO STUFF
                     if digitalFile is not None:
-                        digitalFile.writeframes(b'')  # Recompute header info?
                         digitalFile.close()
                         digitalFile = None
                     else:
