@@ -1177,6 +1177,7 @@ him know. Otherwise, I had nothing to do with it.
 
         p = self.getParams(
             "audioDAQChannels",
+            "digitalDAQChannels",
             "camSerials",
             "dataSyncTerminal",
             "videoSyncTerminal",
@@ -1189,6 +1190,7 @@ him know. Otherwise, I had nothing to do with it.
         lines.extend([
             'Acquisition hardware selections:',
             '  Audio DAQ channels:   {audioDAQChannels}'.format(audioDAQChannels=', '.join(p['audioDAQChannels'])),
+            '  Digital DAQ channels: {digitalDAQChannels}'.format(digitalDAQChannels=', '.join(p['digitalDAQChannels'])),
             '  Cameras:              {camSerials}'.format(camSerials=', '.join(p['camSerials'])),
             '  Audio sync terminal:  {dataSyncTerminal}'.format(dataSyncTerminal=p['dataSyncTerminal']),
             '  Video sync terminal:  {videoSyncTerminal}'.format(videoSyncTerminal=p['videoSyncTerminal']),
