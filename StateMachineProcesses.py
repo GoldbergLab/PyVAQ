@@ -2210,6 +2210,8 @@ class AudioAcquirer(StateMachineProcess):
         self.audioFrequency = None
         self.acquireTimeout = 1 #2*chunkSize / self.audioFrequency
         self.audioQueue = audioQueue
+        self.monitorQueue = None
+        self.analysisQueue = None
         self.sendToWriter = sendToWriter
         self.sendToMonitor = sendToMonitor
         if self.audioQueue is not None:
@@ -4898,6 +4900,8 @@ class DigitalAcquirer(StateMachineProcess):
         self.sampleRate = None
         self.acquireTimeout = 1 #2*chunkSize / self.sampleRate
         self.dataQueue = dataQueue
+        self.monitorQueue = None
+        self.analysisQueue = None
         self.sendToWriter = sendToWriter
         self.sendToMonitor = sendToMonitor
         if self.dataQueue is not None:
@@ -5180,7 +5184,7 @@ class SimpleDigitalWriter(StateMachineProcess):
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
-        'digitalBaseFilename',
+        'digitalBaseFileName',
         'digitalDirectory',
         'daySubfolders',
         'enableWrite',
@@ -5191,7 +5195,7 @@ class SimpleDigitalWriter(StateMachineProcess):
 
     def __init__(self,
                 digitalDirectory='.',
-                digitalBaseFilename='digitalFile',
+                digitalBaseFileName='digitalFile',
                 channelNames=[],
                 dataQueue=None,
                 sampleRate=None,            # A shared variable for sampleRate
@@ -5206,7 +5210,7 @@ class SimpleDigitalWriter(StateMachineProcess):
         StateMachineProcess.__init__(self, **kwargs)
         self.ID = "SDW"
         self.digitalDirectory = digitalDirectory
-        self.digitalBaseFilename = digitalBaseFilename
+        self.digitalBaseFileName = digitalBaseFileName
         self.channelNames = channelNames
         self.dataQueue = dataQueue
         if self.dataQueue is not None:

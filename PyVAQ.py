@@ -41,7 +41,7 @@ except ModuleNotFoundError:
 
 from MonitorWidgets import AudioMonitor, CameraMonitor
 from DockableFrame import Docker
-from StateMachineProcesses import sendMessage, States, Messages, Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter
+from StateMachineProcesses import sendMessage, States, Messages, Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter, DigitalAcquirer, SimpleDigitalWriter
 import inspect
 import CollapsableFrame as cf
 import PySpinUtilities as psu
@@ -258,6 +258,8 @@ class PyVAQ:
         self.videoDirectories = GeneralVar(); self.videoDirectories.set({})
         self.audioBaseFileName = GeneralVar(); self.audioBaseFileName.set('')
         self.audioDirectory = GeneralVar(); self.audioDirectory.set('')
+        self.digitalBaseFileName = GeneralVar(); self.digitalBaseFileName.set('')
+        self.digitalDirectory = GeneralVar(); self.digitalDirectory.set('')
         self.mergeBaseFileName = GeneralVar(); self.mergeBaseFileName.set('')
         self.mergeDirectory = GeneralVar(); self.mergeDirectory.set('')
         self.audioDAQChannels = GeneralVar(); self.audioDAQChannels.set([])
@@ -574,8 +576,8 @@ class PyVAQ:
         self.videoAcquireProcesses = {}
         self.audioWriteProcess = None
         self.audioAcquireProcess = None
-        self.digitalAcquireProcess = None
         self.digitalWriteProcess = None
+        self.digitalAcquireProcess = None
         self.audioTriggerProcess = None
         self.continuousTriggerProcess = None
         self.syncProcess = None
@@ -594,6 +596,7 @@ class PyVAQ:
         self.audioAcquireVerbose = 1
         self.digitalAcquireVerbose = 1
         self.audioWriteVerbose = 1
+        self.digitalWriteVerbose = 1
         self.videoAcquireVerbose = 1
         self.videoWriteVerbose = 1
         self.syncVerbose = 1
@@ -628,6 +631,8 @@ class PyVAQ:
             'videoDirectories':                 dict(get=self.videoDirectories.get,                             set=self.setVideoDirectories),
             'audioBaseFileName':                dict(get=self.audioBaseFileName.get,                            set=self.setAudioBaseFileName),
             'audioDirectory':                   dict(get=self.audioDirectory.get,                               set=self.setAudioDirectory),
+            'digitalBaseFileName':              dict(get=self.digitalBaseFileName.get,                          set=self.setDigitalBaseFileName),
+            'digitalDirectory':                 dict(get=self.digitalDirectory.get,                             set=self.setDigitalDirectory),
             'mergeBaseFileName':                dict(get=self.mergeBaseFileName.get,                            set=self.setMergeBaseFileName),
             'mergeDirectory':                   dict(get=self.mergeDirectory.get,                               set=self.setMergeDirectory),
             'mergeFiles':                       dict(get=self.mergeFilesVar.get,                                set=self.mergeFilesVar.set),
@@ -1566,6 +1571,30 @@ him know. Otherwise, I had nothing to do with it.
         """
         newAudioDirectory = self.audioMonitor.getDirectory()
         self.setAudioDirectory(newAudioDirectory, updateGUI=False)
+    def digitalBaseFileNameChangeHandler(self, *args):
+        """Handle changes in digitalBaseFileName
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
+        newDigitalBaseFileName = self.digitalMonitor.getBaseFileName()
+        self.setDigitalBaseFileName(newDigitalBaseFileName, updateGUI=False)
+    def digitalDirectoryChangeHandler(self, *args):
+        """Handle changes in digitalDirectory
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
+        newDigitalDirectory = self.digitalMonitor.getDirectory()
+        self.setDigitalDirectory(newDigitalDirectory, updateGUI=False)
     def mergeBaseFileNameChangeHandler(self, *args):
         """Handle changes in mergeBaseFileName
 
@@ -2939,6 +2968,51 @@ him know. Otherwise, I had nothing to do with it.
         if len(newAudioDirectory) == 0 or os.path.isdir(newAudioDirectory):
             # Notify AudioWriter child process of new write directory
             sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(audioDirectory=newAudioDirectory)))
+    def setDigitalBaseFileName(self, newDigitalBaseFileName, *args, updateGUI=True):
+        """Send message to digital writer process to change base filenames
+
+        Args:
+            newDigitalBaseFileName (str): A string indicating a new base filename
+                to use to save digital files
+            *args (any): Dummy variable to hold unused event data
+            updateGUI (bool): Should this method update the base filename GUI
+                textbox? Set to False when called by the textbox itself to
+                prevent an infinite event loop where the textbox triggers this
+                method, and the method triggers the textbox.
+
+        Returns:
+            None
+
+        """
+        self.digitalBaseFileName.set(newDigitalBaseFileName)
+        if updateGUI and self.digitalMonitor is not None:
+            # Update text field
+            self.digitalMonitor.fileWidget.setBaseFileName(newAudioBaseFileName)
+        # Notify DigitalWriter child process of new write base filename
+        sendMessage(self.digitalWriteProcess, (Messages.SETPARAMS, dict(digitalBaseFileName=newDigitalBaseFileName)))
+    def setDigitalDirectory(self, newDigitalDirectory, *args, updateGUI=True):
+        """Send message to digital writer process to change audio directory
+
+        Args:
+            newDigitalDirectory (str): A string indicating a new directory to use
+                to save digital files
+            *args (any): Dummy variable to hold unused event data
+            updateGUI (bool): Should this method update the audio directory GUI
+                textbox? Set to False when called by the textbox itself to
+                prevent an infinite event loop where the textbox triggers this
+                method, and the method triggers the textbox.
+
+        Returns:
+            None
+
+        """
+        self.digitalDirectory.set(newDigitalDirectory)
+        if updateGUI and self.digitalMonitor is not None:
+            # Update text field
+            self.digitalMonitor.fileWidget.setDirectory(newDigitalDirectory)
+        if len(newDigitalDirectory) == 0 or os.path.isdir(newDigitalDirectory):
+            # Notify DigitalWriter child process of new write directory
+            sendMessage(self.digitalWriteProcess, (Messages.SETPARAMS, dict(digitalDirectory=newDigitalDirectory)))
     def setMergeBaseFileName(self, newMergeBaseFileName, *args, updateGUI=True):
         """Send message to AVMerger process to change merge base filename
 
@@ -3373,9 +3447,9 @@ him know. Otherwise, I had nothing to do with it.
                 digitalQueue = mp.Queue()
             else:
                 digitalQueue = None
-            self.digitalAcquireProcess = AudioAcquirer(
+            self.digitalAcquireProcess = DigitalAcquirer(
                 startTime=startTime,
-                dataQueue=dataQueue,
+                dataQueue=digitalQueue,
                 chunkSize=p["chunkSize"],
                 sampleRate=self.actualDataFrequency,
                 bufferSize=None,
@@ -3394,14 +3468,13 @@ him know. Otherwise, I had nothing to do with it.
                 self.digitalWriteProcess = None
             else:
                 if p["triggerMode"] == "SimpleContinuous":
-                    self.audioWriteProcess = SimpleAudioWriter(
+                    self.digitalWriteProcess = SimpleDigitalWriter(
                         digitalDirectory=p["digitalDirectory"],
                         digitalBaseFileName=p["digitalBaseFileName"],
                         channelNames=p["digitalDAQChannels"],
                         dataQueue=digitalQueue,
                         sampleRate=self.actualDataFrequency,
                         frameRate=self.actualVideoFrequency,
-                        numChannels=len(p["digitalDAQChannels"]),
                         videoLength=p["recordTime"],
                         daySubfolders=p['daySubfolders'],
                         verbose=self.digitalWriteVerbose,
@@ -3571,6 +3644,11 @@ him know. Otherwise, I had nothing to do with it.
                 self.audioWriteProcess.start()
             self.audioAcquireProcess.start()
 
+        if len(p["digitalDAQChannels"]) > 0:
+            if self.digitalWriteProcess is not None:
+                self.digitalWriteProcess.start()
+            self.digitalAcquireProcess.start()
+
         # Start all video-related processes
         for camSerial in p["camSerials"]:
             if self.videoWriteProcesses[camSerial] is not None:
@@ -3604,6 +3682,13 @@ him know. Otherwise, I had nothing to do with it.
 
             # Start AudioAcquirer
             sendMessage(self.audioAcquireProcess, (Messages.START, None))
+
+        if len(p["digitalDAQChannels"]) > 0:
+            # Start DigitalWriter
+            sendMessage(self.digitaloWriteProcess, (Messages.START, None))
+
+            # Start DigitalAcquirer
+            sendMessage(self.digitalAcquireProcess, (Messages.START, None))
 
         # Start continuous trigger process
         if self.getParams('triggerMode') == 'Continuous':
@@ -3652,6 +3737,8 @@ him know. Otherwise, I had nothing to do with it.
             sendMessage(self.videoWriteProcesses[camSerial], (Messages.STOP, None))
         sendMessage(self.audioAcquireProcess, (Messages.STOP, None))
         sendMessage(self.audioWriteProcess, (Messages.STOP, None))
+        sendMessage(self.digitalAcquireProcess, (Messages.STOP, None))
+        sendMessage(self.digitalWriteProcess, (Messages.STOP, None))
         sendMessage(self.mergeProcess, (Messages.STOP, None))
         sendMessage(self.syncProcess, (Messages.STOP, None))
 
@@ -3670,6 +3757,8 @@ him know. Otherwise, I had nothing to do with it.
             sendMessage(self.videoWriteProcesses[camSerial], (Messages.EXIT, None))
         sendMessage(self.audioAcquireProcess, (Messages.EXIT, None))
         sendMessage(self.audioWriteProcess, (Messages.EXIT, None))
+        sendMessage(self.digitalAcquireProcess, (Messages.EXIT, None))
+        sendMessage(self.digitalWriteProcess, (Messages.EXIT, None))
         sendMessage(self.mergeProcess, (Messages.EXIT, None))
         sendMessage(self.syncProcess, (Messages.EXIT, None))
         #self.StdoutManager.queue.put(Messages.EXIT)
