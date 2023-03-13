@@ -1531,7 +1531,7 @@ class Synchronizer(StateMachineProcess):
                             name_to_assign_to_channel="dataFrequency",
                             units=nidaqmx.constants.FrequencyUnits.HZ,
                             initial_delay=0.0,
-                            freq=self.dataFrequ,
+                            freq=self.dataFrequency,
                             duty_cycle=self.dataDutyCycle)     # Prepare a counter output channel for the audio sync signal
                         if self.verbose >= 2:
                             self.log('Added audio sync channel to task')

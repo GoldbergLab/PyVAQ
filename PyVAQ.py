@@ -574,6 +574,8 @@ class PyVAQ:
         self.videoAcquireProcesses = {}
         self.audioWriteProcess = None
         self.audioAcquireProcess = None
+        self.digitalAcquireProcess = None
+        self.digitalWriteProcess = None
         self.audioTriggerProcess = None
         self.continuousTriggerProcess = None
         self.syncProcess = None
@@ -827,6 +829,7 @@ class PyVAQ:
         sendMessage(self.audioAcquireProcess, (Messages.SETPARAMS, {'verbose':self.audioAcquireVerbose}))
         sendMessage(self.digitalAcquireProcess, (Messages.SETPARAMS, {'verbose':self.digitalAcquireVerbose}))
         sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, {'verbose':self.audioWriteVerbose}))
+        sendMessage(self.digitalWriteProcess, (Messages.SETPARAMS, {'verbose':self.digitalWriteVerbose}))
         sendMessage(self.syncProcess, (Messages.SETPARAMS, {'verbose':self.syncVerbose}))
         sendMessage(self.mergeProcess, (Messages.SETPARAMS, {'verbose':self.mergeVerbose}))
         sendMessage(self.audioTriggerProcess, (Messages.SETPARAMS, {'verbose':self.audioTriggerVerbose}))
@@ -862,6 +865,7 @@ class PyVAQ:
         """
         daySubfolders = self.getParams('daySubfolders')
         sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
+        sendMessage(self.digitalWriteProcess, (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
         sendMessage(self.mergeProcess, (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
         for camSerial in self.videoWriteProcesses:
             sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'daySubfolders':daySubfolders}))
@@ -1434,6 +1438,7 @@ him know. Otherwise, I had nothing to do with it.
             sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, scheduleParams))
         if self.audioWriteProcess is not None:
             sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, scheduleParams))
+            sendMessage(self.digitalWriteProcess, (Messages.SETPARAMS, scheduleParams))
 
     def updateDataFrequency(self, *args):
         """Send message to Synchronizer to update data acquisition frequency
@@ -2237,7 +2242,7 @@ him know. Otherwise, I had nothing to do with it.
 
         info = dict(
             videoWriteInfo = {},
-            audioWriteInfo = 'None'
+            audioWriteInfo = 'None',
             digitalWriteInfo = 'None'
         )
         for camSerial in self.videoWriteProcesses:
@@ -3698,6 +3703,8 @@ him know. Otherwise, I had nothing to do with it.
         self.continuousTriggerProcess = None
         self.audioAcquireProcess = None
         self.audioWriteProcess = None
+        self.digitalAcquireProcess = None
+        self.digitalWriteProcess = None
         self.videoAcquireProcesses = {}
         self.videoWriteProcesses = {}
         self.mergeProcess = None
