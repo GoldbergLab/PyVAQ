@@ -4909,7 +4909,7 @@ class DigitalAcquirer(StateMachineProcess):
         if self.dataQueue is not None:
             self.dataQueue.cancel_join_thread()
         if sendToMonitor:
-            self.monitorQueue = mp.Queue()      # A multiprocessing queue to send data to the UI to monitor the audio
+            self.monitorQueue = mp.Queue()      # A multiprocessing queue to send data to the UI to monitor the digital signals
         if sendToAnalysis:
             self.analysisQueue = mp.Queue()    # A multiprocessing queue to send data to the audio triggerer process for analysis
         # if len(self.monitorQueue) > 0:
@@ -4966,7 +4966,7 @@ class DigitalAcquirer(StateMachineProcess):
                     else:
                         passedBarrier = False
 
-                    # Read actual audio frequency from the Synchronizer process
+                    # Read actual data frequency from the Synchronizer process
                     if self.sampleRateVar.value == -1:
                         # Wait for shared value sampleRate to be set by the Synchronizer process
                         time.sleep(0.1)
@@ -5022,7 +5022,7 @@ class DigitalAcquirer(StateMachineProcess):
                             if self.verbose >= 2: self.log("No simultaneous start - retrying")
                             time.sleep(0.1)
 
-                    # Get timestamp of first audio chunk acquisition
+                    # Get timestamp of first digital chunk acquisition
                     if not gotStartTime:
                         if self.verbose >= 2: self.log("Getting start time from sync process...")
                         startTime = self.startTimeSharedValue.value
@@ -5058,7 +5058,7 @@ class DigitalAcquirer(StateMachineProcess):
                             number_of_samples_per_channel=self.chunkSize,
                             timeout=self.acquireTimeout)
 
-                        chunkStartTime = startTime + sampleCount / self.audioFrequency
+                        chunkStartTime = startTime + sampleCount / self.sampleRate
                         sampleCount += self.chunkSize
                         if self.verbose >= 3: self.log('# samples:'+str(sampleCount))
                         dataChunk = DataChunk(chunkStartTime=chunkStartTime, sampleRate=self.sampleRate, data=data, idspace=self.ID)
@@ -5067,13 +5067,14 @@ class DigitalAcquirer(StateMachineProcess):
                         else:
                             if self.verbose >= 2: self.log('' + data)
 
-                        # Copy audio data for monitoring queues
-                        monitorDataCopy = np.copy(data)
+                        if (self.copyToMonitoringQueue and self.monitorQueue is not None) and (self.copyToAnalysisQueue and self.analysisQueue is not None):
+                            # Copy data for monitoring queues
+                            monitorDataCopy = np.copy(data)
 
-                        if self.copyToMonitoringQueue and self.monitorQueue is not None:
-                            self.monitorQueue.put((self.inputChannels, chunkStartTime, monitorDataCopy))      # If a monitoring queue is provided, queue up the data
-                        if self.copyToAnalysisQueue and self.analysisQueue is not None:
-                            self.analysisQueue.put((chunkStartTime, monitorDataCopy))
+                            if self.copyToMonitoringQueue and self.monitorQueue is not None:
+                                self.monitorQueue.put((self.inputChannels, chunkStartTime, monitorDataCopy))      # If a monitoring queue is provided, queue up the data
+                            if self.copyToAnalysisQueue and self.analysisQueue is not None:
+                                self.analysisQueue.put((chunkStartTime, monitorDataCopy))
 
                         if self.verbose >= 3:
                             if self.dataQueue is None:
@@ -5095,13 +5096,13 @@ class DigitalAcquirer(StateMachineProcess):
                     except nidaqmx.errors.DaqError as error:
                         if self.verbose >= 0:
                             if error.error_type == nidaqmx.error_codes.DAQmxErrors.OPERATION_TIMED_OUT:
-                                self.log("Audio chunk acquisition timed out.")
+                                self.log("Digital chunk acquisition timed out.")
                                 self.log(str(error))
                             if error.error_type == nidaqmx.error_codes.DAQmxErrors.SAMPLES_NOT_YET_AVAILABLE:
-                                self.log("DAQ not ready with audio samples.")
+                                self.log("DAQ not ready with digital samples.")
                                 self.log(str(error))
                             else:
-                                self.log("Unrecognized DAQ error encountered during audio acquisition:")
+                                self.log("Unrecognized DAQ error encountered during digital acquisition:")
                                 self.log(str(error))
                                 raise(error)
 
@@ -5167,7 +5168,7 @@ class DigitalAcquirer(StateMachineProcess):
         clearQueue(self.msgQueue)
         clearQueue(self.monitorQueue)
         clearQueue(self.analysisQueue)
-        if self.verbose >= 1: self.log("Audio acquire process STOPPED")
+        if self.verbose >= 1: self.log("Digital acquire process STOPPED")
 
         self.flushStdout()
         self.updatePublishedState(States.DEAD)
@@ -5200,7 +5201,7 @@ class SimpleDigitalWriter(StateMachineProcess):
                 channelNames=[],
                 dataQueue=None,
                 sampleRate=None,            # A shared variable for sampleRate
-                frameRate=None,             # A shared variable for video framerate (needed to ensure audio sync)
+                frameRate=None,             # A shared variable for video framerate (needed to ensure data sync)
                 videoLength=None,           # Requested time in seconds of each video.
                 daySubfolders=True,         # Create and write to subfolders labeled by day?
                 enableWrite=True,
@@ -5293,8 +5294,8 @@ class SimpleDigitalWriter(StateMachineProcess):
                         numSamplesPerFile = actualVideoLength * self.sampleRate
 
                         if self.verbose >= 1:
-                            self.log('Audio writer initialized:')
-                            self.log('\tAudiofreq = {af} Hz'.format(af=self.sampleRate))
+                            self.log('Digital writer initialized:')
+                            self.log('\tSample rate = {af} Hz'.format(af=self.sampleRate))
                             self.log('\tSamples per file = {spf}'.format(spf=numSamplesPerFile))
                             self.log('\tTime per file = {t} s'.format(t=actualVideoLength))
 
@@ -5330,9 +5331,9 @@ class SimpleDigitalWriter(StateMachineProcess):
 
                     if self.verbose >= 1:
                         if writeEnabled and not writeEnabledPrevious:
-                            self.logTime('Audio write now enabled.')
+                            self.logTime('Digital write now enabled.')
                         elif not writeEnabled and writeEnabledPrevious:
-                            self.logTime('Audio write now disabled')
+                            self.logTime('Digital write now disabled')
 
                     if digitalFile is not None:
                         # Close file
@@ -5343,7 +5344,7 @@ class SimpleDigitalWriter(StateMachineProcess):
                     numSamplesInCurrentFile = 0
 
                     if writeEnabled:
-                        # Generate new audio file path
+                        # Generate new digital file path
                         digitalFileNameTags = ['digital', generateTimeString(timestamp=seriesStartTime), '{digitalFileCount:03d}'.format(digitalFileCount=digitalFileCount)]
                         if self.daySubfolders:
                             digitalDirectory = getDaySubfolder(self.digitalDirectory, timestamp=digitalFileStartTime)
@@ -5356,8 +5357,6 @@ class SimpleDigitalWriter(StateMachineProcess):
                         timeVector = getTimeVector(digitalFileStartTime)
                         metaData = 'Digital input channels: ' + ','.join(self.channelNames)
                         digitalFile = NCFileMultiChannel(digitalFileName, timeVector, 1/self.sampleRate, list(range(self.numChannels)), metaData)
-                        # # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
-                        # digitalFile.setparams((self.numChannels, self.audioDepthBytes, self.sampleRate, 0, 'NONE', 'not compressed'))
 
                         newFileInfo = 'Opened digital file #{num:03d}: {n} channels, {f:.2f} Hz'.format(num=digitalFileCount, n=self.numChannels, f=self.sampleRate);
                         self.updatePublishedInfo(newFileInfo)
@@ -5386,14 +5385,14 @@ class SimpleDigitalWriter(StateMachineProcess):
                 elif self.state == States.WRITING:
                     # DO STUFF
                     if self.verbose >= 3:
-                        self.log("Audio queue size: ", self.dataQueue.qsize())
+                        self.log("Digital queue size: ", self.dataQueue.qsize())
 
                     # Calculate how many more samples needed to complete the file
                     samplesUntilEOF = floor(numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile))
 
                     dataChunk = self.getNextChunk()
 
-                    # Write all or part of last audio chunk to file
+                    # Write all or part of last digital chunk to file
                     if dataChunk is None:
                         # No data chunk yet
                         pass
@@ -5511,17 +5510,17 @@ class SimpleDigitalWriter(StateMachineProcess):
             self.state = self.nextState
 
         clearQueue(self.msgQueue)
-        if self.verbose >= 1: self.log("Audio write process STOPPED")
+        if self.verbose >= 1: self.log("Digital write process STOPPED")
 
         self.flushStdout()
         self.updatePublishedState(States.DEAD)
 
     def getNextChunk(self):
         try:
-            # Get new audio chunk and return it
+            # Get new digital chunk and return it
             newDataChunk = self.dataQueue.get(block=True, timeout=0.1)
-            if self.verbose >= 3: self.log("Got audio chunk {id} from acquirer.".format(id=newDataChunk.id))
+            if self.verbose >= 3: self.log("Got digital chunk {id} from acquirer.".format(id=newDataChunk.id))
         except queue.Empty: # None available
             newDataChunk = None
-            if self.verbose >= 3: self.log("No audio chunk available.")
+            if self.verbose >= 3: self.log("No digital chunk available.")
         return newDataChunk
