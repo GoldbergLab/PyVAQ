@@ -4968,15 +4968,14 @@ class DigitalAcquirer(StateMachineProcess):
                     else:
                         self.sampleRate = self.sampleRateVar.value
 
-                        data = np.zeros((len(self.inputChannels), self.chunkSize//8), dtype='uint8')   # A pre-allocated array to receive audio data
+                        data = np.zeros((len(self.inputChannels), self.chunkSize), dtype='uint32')   # A pre-allocated array to receive audio data
 
                         processedData = data.copy()
-                        readTask = nidaqmx.Task(new_task_name="audioTask")                            # Create task
+                        readTask = nidaqmx.Task(new_task_name="digitalTask")                            # Create task
                         reader = DigitalMultiChannelReader(readTask.in_stream)  # Set up an analog stream reader
-                        for inputChannel in self.inputChannels:
-                            readTask.di_channels.add_di_chan(               # Set up analog input channel
-                                inputChannel,
-                                )
+                        readTask.di_channels.add_di_chan(               # Set up digital input channel
+                            ','.join(self.inputChannels),
+                            )
                         readTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
                             rate=self.sampleRate,
                             source=self.syncChannel,                            # Specify a timing source!
@@ -5050,7 +5049,7 @@ class DigitalAcquirer(StateMachineProcess):
                 elif self.state == States.ACQUIRING:
                     # DO STUFF
                     try:
-                        reader.read_many_sample(                            # Read a chunk of digital data
+                        reader.read_many_sample_port_uint32(                            # Read a chunk of digital data
                             data,
                             number_of_samples_per_channel=self.chunkSize,
                             timeout=self.acquireTimeout)
