@@ -4880,7 +4880,6 @@ class DigitalAcquirer(StateMachineProcess):
                 sampleRate = 44100,               # Maximum expected rate of the specified synchronization channel
                 bufferSize = None,                  # Size of device buffer. Defaults to 1 second's worth of data
                 channelNames = [],                  # Channel name for analog input (microphone signal)
-                channelConfig = "DEFAULT",
                 syncChannel = None,                 # Channel name for synchronization source
                 sendToWriter=True,
                 sendToMonitor=True,

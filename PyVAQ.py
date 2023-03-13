@@ -1944,6 +1944,7 @@ him know. Otherwise, I had nothing to do with it.
                     audioMonitorQueueSize=          [[queue size]],
                     audioQueueSize=                 [[queue size]],
                     audioAnalysisMonitorQueueSize=  [[queue size]],
+                    digitalQueueSize=               [[queue size]],
                     mergeQueueSize=                 [[queue size]],
                     stdoutQueueSize=                [[queue size]],
                 }
@@ -1957,6 +1958,7 @@ him know. Otherwise, I had nothing to do with it.
             audioMonitorQueueSize=None,
             audioQueueSize=None,
             audioAnalysisMonitorQueueSize=None,
+            digitalQueueSize=None,
             mergeQueueSize=None,
             stdoutQueueSize=None,
         )
@@ -1969,6 +1971,8 @@ him know. Otherwise, I had nothing to do with it.
             queueSizes['audioAnalysisQueueSize'] = self.getQueueSize(self.audioAcquireProcess.audioQueue)
             queueSizes['audioMonitorQueueSize'] = self.getQueueSize(self.audioAcquireProcess.analysisQueue)
             queueSizes['audioQueueSize'] = self.getQueueSize(self.audioAcquireProcess.monitorQueue)
+        if self.digitalAcquireProcess is not None:
+            queueSizes['digitalQueueSize'] = self.getQueueSize(self.digitalAcquireProcess.monitorQueue)
         if self.audioTriggerProcess is not None:
             queueSizes['audioAnalysisMonitorQueueSize'] = self.getQueueSize(self.audioTriggerProcess.analysisMonitorQueue)
         if self.mergeProcess is not None:
@@ -1985,6 +1989,8 @@ him know. Otherwise, I had nothing to do with it.
                 self.log("  audioAcquireProcess.audioQueue size:", queueSizes['audioAnalysisQueueSize'])
                 self.log("  audioAnalysisQueue size:", queueSizes['audioMonitorQueueSize'])
                 self.log("  audioMonitorQueue size:", queueSizes['audioQueueSize'])
+            if self.audioAcquireProcess is not None:
+                self.log("  digitalMonitorQueue size:", queueSizes['digitalQueueSize'])
             if self.audioTriggerProcess is not None:
                 self.log("  audioAnalysisMonitorQueue size:", queueSizes['audioAnalysisMonitorQueueSize'])
             if self.mergeProcess is not None:
@@ -2024,6 +2030,8 @@ him know. Otherwise, I had nothing to do with it.
                     },
                     audioWritePID=         [[PID]],
                     audioAcquirePID=       [[PID]],
+                    digitalWritePID=       [[PID]],
+                    digitalAcquirePID=     [[PID]],
                     audioTriggerPID=       [[PID]],
                     continuousTriggerPID=  [[PID]],
                     syncPID=               [[PID]],
@@ -2037,6 +2045,8 @@ him know. Otherwise, I had nothing to do with it.
             videoAcquirePIDs = {},
             audioWritePID = 'None',
             audioAcquirePID = 'None',
+            digitalWritePID = 'None',
+            digitalAcquirePID = 'None',
             audioTriggerPID = 'None',
             continuousTriggerPID = 'None',
             syncPID = 'None',
@@ -2053,6 +2063,10 @@ him know. Otherwise, I had nothing to do with it.
             PIDs['audioWritePID'] = self.audioWriteProcess.PID.value
         if self.audioAcquireProcess is not None:
             PIDs['audioAcquirePID'] = self.audioAcquireProcess.PID.value
+        if self.digitalWriteProcess is not None:
+            PIDs['digitalWritePID'] = self.digitalWriteProcess.PID.value
+        if self.digitalAcquireProcess is not None:
+            PIDs['digitalAcquirePID'] = self.digitalAcquireProcess.PID.value
         if self.audioTriggerProcess is not None:
             PIDs['audioTriggerPID'] = self.audioTriggerProcess.PID.value
         if self.continuousTriggerProcess is not None:
@@ -2071,6 +2085,8 @@ him know. Otherwise, I had nothing to do with it.
                 self.log("  videoAcquirePID["+camSerial+"]:", PIDs['videoAcquirePIDs'])[camSerial]
             self.log("  audioWritePID:", PIDs['audioWritePID'])
             self.log("  audioAcquirePID:", PIDs['audioAcquirePID'])
+            self.log("  digitalWritePID:", PIDs['digitalWritePID'])
+            self.log("  digitalAcquirePID:", PIDs['digitalAcquirePID'])
             self.log("  audioTriggerPID:", PIDs['audioTriggerPID'])
             self.log("  continuousTriggerPID:", PIDs['continuousTriggerPID'])
             self.log("  syncPID:", PIDs['syncPID'])
@@ -2107,6 +2123,8 @@ him know. Otherwise, I had nothing to do with it.
                     audioWriteState=         [[state]],
                     audioAcquireState=       [[state]],
                     audioTriggerState=       [[state]],
+                    digitalWriteState=       [[state]],
+                    digitalAcquireState=     [[state]],
                     continuousTriggerState=  [[state]],
                     syncState=               [[state]],
                     mergeState=              [[state]],
@@ -2118,6 +2136,8 @@ him know. Otherwise, I had nothing to do with it.
             videoAcquireStates = {},
             audioWriteState = None,
             audioAcquireState = None,
+            digitalWriteState = None,
+            digitalAcquireState = None,
             syncState = None,
             mergeState = None,
             audioTriggerState = None,
@@ -2128,6 +2148,8 @@ him know. Otherwise, I had nothing to do with it.
             videoAcquireStates = {},
             audioWriteState = 'None',
             audioAcquireState = 'None',
+            digitalWriteState = 'None',
+            digitalAcquireState = 'None',
             syncState = 'None',
             mergeState = 'None',
             audioTriggerState = 'None',
@@ -2148,6 +2170,12 @@ him know. Otherwise, I had nothing to do with it.
         if self.audioAcquireProcess is not None:
             states['audioAcquireState'] = self.audioAcquireProcess.publishedStateVar.value
             stateNames['audioAcquireState'] = self.audioAcquireProcess.stateList[states['audioAcquireState']]
+        if self.digitalWriteProcess is not None:
+            states['digitalWriteState'] = self.digitalWriteProcess.publishedStateVar.value
+            stateNames['digitalWriteState'] = self.digitalWriteProcess.stateList[states['digitalWriteState']]
+        if self.digitalAcquireProcess is not None:
+            states['digitalAcquireState'] = self.digitalAcquireProcess.publishedStateVar.value
+            stateNames['digitalAcquireState'] = self.digitalAcquireProcess.stateList[states['digitalAcquireState']]
         if self.syncProcess is not None:
             states['syncState'] = self.syncProcess.publishedStateVar.value
             stateNames['syncState'] = self.syncProcess.stateList[states['syncState']]
@@ -2169,6 +2197,8 @@ him know. Otherwise, I had nothing to do with it.
                 self.log("videoAcquireStates[", camSerial, "]:", stateNames['videoAcquireStates'][camSerial])
             self.log("audioWriteState:", stateNames['audioWriteState'])
             self.log("audioAcquireState:", stateNames['audioAcquireState'])
+            self.log("digitalWriteState:", stateNames['digitalWriteState'])
+            self.log("digitalAcquireState:", stateNames['digitalAcquireState'])
             self.log("syncState:", stateNames['syncState'])
             self.log("mergeState:", stateNames['mergeState'])
             self.log("audioTriggerState:", stateNames['audioTriggerState'])
@@ -2200,6 +2230,7 @@ him know. Otherwise, I had nothing to do with it.
                         [[cam serial N]]:[[info N]],
                     },
                     audioWriteInfo=[[info]],
+                    digitalWriteInfo=[[info]],
                 }
 
         """
@@ -2207,18 +2238,22 @@ him know. Otherwise, I had nothing to do with it.
         info = dict(
             videoWriteInfo = {},
             audioWriteInfo = 'None'
+            digitalWriteInfo = 'None'
         )
         for camSerial in self.videoWriteProcesses:
             if self.videoWriteProcesses[camSerial] is not None:
                 info['videoWriteInfo'][camSerial] = getSharedString(self.videoWriteProcesses[camSerial].publishedInfoVar)
         if self.audioWriteProcess is not None:
             info['audioWriteInfo'] = getSharedString(self.audioWriteProcess.publishedInfoVar)
+        if self.digitalWriteProcess is not None:
+            info['digitalWriteInfo'] = getSharedString(self.digitalWriteProcess.publishedInfoVar)
 
         if verbose:
             self.log("Check process info...")
             for camSerial in info['videoWriteInfo']:
                 self.log("videoWriteInfo[", camSerial, "]:", info['videoWriteInfo'][camSerial])
             self.log("audioWriteInfo:", info['audioWriteInfo'])
+            self.log("digitalWriteInfo:", info['digitalWriteInfo'])
             self.log("...check process info")
             self.endLog(inspect.currentframe().f_code.co_name)
 
@@ -2295,6 +2330,10 @@ him know. Otherwise, I had nothing to do with it.
                     '   Analysis Monitor Queue: {qsize}'.format(qsize=queueSizes['audioAnalysisMonitorQueueSize']),
                     'AudioWriter ({PID}):\t{state}'.format(PID=PIDs['audioWritePID'], state=stateNames['audioWriteState']),
                     '   Info: {info}'.format(info=info['audioWriteInfo']),
+                    'DigitalAcquirer ({PID}):\t{state}'.format(PID=PIDs['digitalAcquirePID'], state=stateNames['digitalAcquireState']),
+                    '   Digital Queue: {qsize}'.format(qsize=queueSizes['digitalQueueSize']),
+                    'DigitalWriter ({PID}):\t{state}'.format(PID=PIDs['digitalWritePID'], state=stateNames['digitalWriteState']),
+                    '   Info: {info}'.format(info=info['digitalWriteInfo']),
                     'Synchronizer ({PID}):\t{state}'.format(PID=PIDs['syncPID'], state=stateNames['syncState']),
                     'ContinuousTrigger ({PID}):\t{state}'.format(PID=PIDs['continuousTriggerPID'], state=stateNames['continuousTriggerState']),
                     'AudioTriggerer ({PID}):\t{state}'.format(PID=PIDs['audioTriggerPID'], state=stateNames['audioTriggerState']),
@@ -2335,6 +2374,10 @@ him know. Otherwise, I had nothing to do with it.
             processes.append(self.audioWriteProcess)
         if audio and acquirers:
             processes.append(self.audioAcquireProcess)
+        if audio and writers:
+            processes.append(self.digitalWriteProcess)
+        if audio and acquirers:
+            processes.append(self.digitalAcquireProcess)
         if auxiliary:
             processes.extend([
                 self.audioTriggerProcess,
@@ -2400,6 +2443,8 @@ him know. Otherwise, I had nothing to do with it.
 
         stateList.append(states['audioAcquireState']);      isAcquirer.append(True);  isWriter.append(False); isAux.append(False)
         stateList.append(states['audioWriteState']);        isAcquirer.append(False); isWriter.append(True);  isAux.append(False)
+        stateList.append(states['digitalAcquireState']);    isAcquirer.append(True);  isWriter.append(False); isAux.append(False)
+        stateList.append(states['digitalWriteState']);      isAcquirer.append(False); isWriter.append(True);  isAux.append(False)
         stateList.append(states['syncState']);              isAcquirer.append(False); isWriter.append(False); isAux.append(True)
         stateList.append(states['mergeState']);             isAcquirer.append(False); isWriter.append(False); isAux.append(True)
         stateList.append(states['audioTriggerState']);      isAcquirer.append(False); isWriter.append(False); isAux.append(True)
@@ -3317,6 +3362,63 @@ him know. Otherwise, I had nothing to do with it.
                         daySubfolders=p['daySubfolders'],
                         verbose=self.audioWriteVerbose,
                         stdoutQueue=self.StdoutManager.queue)
+
+        if len(p["digitalDAQChannels"]) > 0:
+            if createWriters:
+                digitalQueue = mp.Queue()
+            else:
+                digitalQueue = None
+            self.digitalAcquireProcess = AudioAcquirer(
+                startTime=startTime,
+                dataQueue=dataQueue,
+                chunkSize=p["chunkSize"],
+                sampleRate=self.actualDataFrequency,
+                bufferSize=None,
+                channelNames=p["digitalDAQChannels"],
+                syncChannel=p["dataSyncSource"],
+                verbose=self.digitalAcquireVerbose,
+                sendToWriter=createWriters,
+                sendToMonitor=False,
+                sendToAnalysis=False,
+                ready=ready,
+                copyToMonitoringQueue=False, #copyToMonitoringQueue,
+                copyToAnalysisQueue=False, #copyToAnalysisQueue,
+                stdoutQueue=self.StdoutManager.queue)
+
+            if not createWriters:
+                self.digitalWriteProcess = None
+            else:
+                if p["triggerMode"] == "SimpleContinuous":
+                    self.audioWriteProcess = SimpleAudioWriter(
+                        digitalDirectory=p["digitalDirectory"],
+                        digitalBaseFileName=p["digitalBaseFileName"],
+                        channelNames=p["digitalDAQChannels"],
+                        dataQueue=digitalQueue,
+                        sampleRate=self.actualDataFrequency,
+                        frameRate=self.actualVideoFrequency,
+                        numChannels=len(p["digitalDAQChannels"]),
+                        videoLength=p["recordTime"],
+                        daySubfolders=p['daySubfolders'],
+                        verbose=self.digitalWriteVerbose,
+                        scheduleEnabled=p['scheduleEnabled'],
+                        scheduleStartTime=p['scheduleStartTime'],
+                        scheduleStopTime=p['scheduleStopTime'],
+                        stdoutQueue=self.StdoutManager.queue)
+                elif p["triggerMode"] != 'None':
+                    raise Error('Cannot acquire digital signals without simple continuous triggering.')
+                    # self.audioWriteProcess = AudioWriter(
+                    #     audioDirectory=p["audioDirectory"],
+                    #     audioBaseFileName=p["audioBaseFileName"],
+                    #     channelNames=p["audioDAQChannels"],
+                    #     audioQueue=audioQueue,
+                    #     mergeMessageQueue=mergeMsgQueue,
+                    #     chunkSize=p["chunkSize"],
+                    #     bufferSizeSeconds=p["bufferSizeSeconds"],
+                    #     audioFrequency=self.actualDataFrequency,
+                    #     numChannels=len(p["audioDAQChannels"]),
+                    #     daySubfolders=p['daySubfolders'],
+                    #     verbose=self.audioWriteVerbose,
+                    #     stdoutQueue=self.StdoutManager.queue)
 
         gpuCount = 0
         for camSerial in p["camSerials"]:
