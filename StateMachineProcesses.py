@@ -20,7 +20,7 @@ from ctypes import c_wchar
 import PySpinUtilities as psu
 import sys
 from math import floor
-from NCFileUtilities import NCFile
+from NCFileUtilities import NCFileMultiChannel
 
 simulatedHardware = False
 for arg in sys.argv[1:]:
@@ -2275,6 +2275,8 @@ class AudioAcquirer(StateMachineProcess):
                 elif self.state == States.INITIALIZING:
                     # DO STUFF
                     self.audioFrequency = None
+                    readTask = None
+
                     if self.startTimeSharedValue is None:
                         # no need to get start time
                         gotStartTime = True
@@ -5343,22 +5345,22 @@ class SimpleDigitalWriter(StateMachineProcess):
 
                     if writeEnabled:
                         # Generate new audio file path
-                        digitalFileNameTags = [','.join(self.channelNames), generateTimeString(timestamp=seriesStartTime), '{digitalFileCount:03d}'.format(digitalFileCount=digitalFileCount)]
+                        digitalFileNameTags = ['digital', generateTimeString(timestamp=seriesStartTime), '{digitalFileCount:03d}'.format(digitalFileCount=digitalFileCount)]
                         if self.daySubfolders:
                             digitalDirectory = getDaySubfolder(self.digitalDirectory, timestamp=digitalFileStartTime)
                         else:
                             digitalDirectory = self.digitalDirectory
-                        digitalFileName = generateFileName(directory=digitalDirectory, baseName=self.digitalBaseFilename, extension='.wav', tags=digitalFileNameTags)
+                        digitalFileName = generateFileName(directory=digitalDirectory, baseName=self.digitalBaseFileName, extension='.wav', tags=digitalFileNameTags)
                         ensureDirectoryExists(digitalDirectory)
 
                         # Open and initialize digital file
                         timeVector = getTimeVector(digitalFileStartTime)
-                        metaData = 'Digital input data: ' + self.channelNames.join(',')
-                        digitalFile = NCFileMultiChannel(digitalFileName, timeVector, 1/self.sampleRate, list(range(numChannels)), metaData)
+                        metaData = 'Digital input channels: ' + ','.join(self.channelNames)
+                        digitalFile = NCFileMultiChannel(digitalFileName, timeVector, 1/self.sampleRate, list(range(self.numChannels)), metaData)
                         # # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
                         # digitalFile.setparams((self.numChannels, self.audioDepthBytes, self.sampleRate, 0, 'NONE', 'not compressed'))
 
-                        newFileInfo = 'Opened digital file #{num:03d}: {n} channels, {b} bytes, {f:.2f} Hz'.format(num=digitalFileCount, n=self.numChannels, b=self.audioDepthBytes, f=self.sampleRate);
+                        newFileInfo = 'Opened digital file #{num:03d}: {n} channels, {f:.2f} Hz'.format(num=digitalFileCount, n=self.numChannels, f=self.sampleRate);
                         self.updatePublishedInfo(newFileInfo)
 
                         if self.verbose >= 2:

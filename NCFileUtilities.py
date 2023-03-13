@@ -79,7 +79,7 @@ class NCFile:
         self.timeVectorVar[:] = self.time
         self.deltaTVar[:] = self.dt
         self.channelVar[:] = self.chan
-        self.metaDataVar[:len(metaData)] = self.metaData
+        self.metaDataVar[:len(self.metaData)] = self.metaData
 
     def createVariables(self):
         # Define variables that will go into file
@@ -97,7 +97,7 @@ class NCFile:
         self.channelVar = self.dataset.createVariable('chan', 'i', dimensions=())
     def createMetaDataVar(self):
         metaDataDim =   self.dataset.createDimension('md', size=self.metaDataLength)
-        self.metaDataVar =   self.dataset.createVariable('metaData', 'c', dimensions=(self.metaDataDim,)) # c = NC_CHAR
+        self.metaDataVar =   self.dataset.createVariable('metaData', 'c', dimensions=(metaDataDim,)) # c = NC_CHAR
 
     def initializeDataVar(self, sampleData):
         # Set up dataVar the first time data is added
@@ -135,7 +135,7 @@ class NCFileMultiChannel(NCFile):
         super().__init__(path, time, dt, channels, metaData, dataType=dataType)
     def createChannelVar(self):
         self.channelDim = self.dataset.createDimension('ch', size=len(self.chan))
-        self.channelVar = self.dataset.createVariable('chan', 'i', dimensions=())
+        self.channelVar = self.dataset.createVariable('chan', 'i', dimensions=(self.channelDim,))
     def initializeDataVar(self, sampleData):
         # Set up dataVar the first time data is added
 

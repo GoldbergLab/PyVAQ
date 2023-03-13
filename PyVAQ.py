@@ -3670,7 +3670,7 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
-        p = self.getParams('audioDAQChannels', 'camSerials', 'triggerMode')
+        p = self.getParams('audioDAQChannels', 'digitalDAQChannels', 'camSerials', 'triggerMode')
 
         if len(p["audioDAQChannels"]) > 0:
             # Start audio trigger process
@@ -3685,7 +3685,7 @@ him know. Otherwise, I had nothing to do with it.
 
         if len(p["digitalDAQChannels"]) > 0:
             # Start DigitalWriter
-            sendMessage(self.digitaloWriteProcess, (Messages.START, None))
+            sendMessage(self.digitalWriteProcess, (Messages.START, None))
 
             # Start DigitalAcquirer
             sendMessage(self.digitalAcquireProcess, (Messages.START, None))
