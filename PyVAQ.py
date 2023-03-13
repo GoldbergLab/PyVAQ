@@ -1093,7 +1093,7 @@ him know. Otherwise, I had nothing to do with it.
 
         choices = None
         if len(params) > 0:
-            pd = ParamDialog(self.master, params=params, title="Choose audio/digital/video inputs to use", maxHeight=35, arrangement=ParamDialog.HYBRID)
+            pd = ParamDialog(self.master, params=params, title="Choose audio/digital/video inputs to use", maxHeight=35, arrangement=ParamDialog.COLLAPSABLE)
             choices = pd.results
             if choices is not None:
                 # We're changing acquisition settings, so stop everything

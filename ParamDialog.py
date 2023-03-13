@@ -1,6 +1,7 @@
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
+from CollapsableFrame import CollapsableFrame
 
 class Param():
     TEXT='text'
@@ -154,6 +155,7 @@ class ParamDialog(tk.Frame):
     VERTICAL='v'
     BOX='b'
     HYBRID='y'
+    COLLAPSABLE='c'
 
     def __init__(self, parent, params=[], title=None, arrangement=HORIZONTAL, maxHeight=None, popup=True):
         # params should be a list of Param objects
@@ -230,6 +232,15 @@ class ParamDialog(tk.Frame):
                 else:
                     row += 1
                     lineCount += paramHeight
+                param.createWidgets(self.subFrames[-1], maxHeight=self.maxHeight)
+            elif self.arrangement == ParamDialog.COLLAPSABLE:
+                self.subFrames.append(
+                    CollapsableFrame(
+                        self.paramFrame,
+                        collapseText=param.name
+                    )
+                )
+                self.subFrames[-1].grid(row=k, column=0, sticky=tk.W)
                 param.createWidgets(self.subFrames[-1], maxHeight=self.maxHeight)
             else:
                 raise NameError("Unknown arrangement type: "+str(self.arrangement))
