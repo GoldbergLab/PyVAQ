@@ -4973,9 +4973,8 @@ class DigitalAcquirer(StateMachineProcess):
                     else:
                         self.sampleRate = self.sampleRateVar.value
 
-                        data = np.zeros((len(self.inputChannels), self.chunkSize), dtype='uint32')   # A pre-allocated array to receive audio data
+                        data = np.zeros((1, self.chunkSize), dtype='uint32')   # A pre-allocated array to receive audio data
 
-                        processedData = data.copy()
                         readTask = nidaqmx.Task(new_task_name="digitalTask")                            # Create task
                         reader = DigitalMultiChannelReader(readTask.in_stream)  # Set up an analog stream reader
                         readTask.di_channels.add_di_chan(               # Set up digital input channel

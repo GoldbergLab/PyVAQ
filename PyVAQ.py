@@ -3184,9 +3184,10 @@ him know. Otherwise, I had nothing to do with it.
     def getNumSyncedProcesses(self):
         """Get # of processes subject to synchronization in current config"""
         audioDAQChannels = self.getParams('audioDAQChannels')
+        digitalDAQChannels = self.getParams('digitalDAQChannels')
         camSerials = self.getParams('camSerials')
         synchronizer = 1
-        return (len(audioDAQChannels)>0) + len(camSerials) + synchronizer  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
+        return (len(audioDAQChannels)>0) + (len(digitalDAQChannels)>0) + len(camSerials) + synchronizer  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
     def getCameraSettings(self):
         """Get the current set of camera settings.
 
