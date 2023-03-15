@@ -148,7 +148,6 @@ class NCFileMultiChannel(NCFile):
                 self.dataType = 'f'
 
         unlimDim =      self.dataset.createDimension('da', size=None)
-        print('Data type:', self.dataType, type(self.dataType))
         self.dataVar =  self.dataset.createVariable('data', self.dataType, dimensions=(unlimDim, self.channelDim))
 
 def writeNCFile(path, time, dt, chan, metaData, data, dataType=None):
