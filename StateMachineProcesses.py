@@ -5356,7 +5356,7 @@ class SimpleDigitalWriter(StateMachineProcess):
                         # Open and initialize digital file
                         timeVector = getTimeVector(digitalFileStartTime)
                         metaData = 'Digital input channels: ' + ','.join(self.channelNames)
-                        digitalFile = NCFileMultiChannel(digitalFileName, timeVector, 1/self.sampleRate, list(range(self.numChannels)), metaData)
+                        digitalFile = NCFileMultiChannel(digitalFileName, timeVector, 1/self.sampleRate, list(range(self.numChannels)), metaData, dataType='u4')
 
                         newFileInfo = 'Opened digital file #{num:03d}: {n} channels, {f:.2f} Hz'.format(num=digitalFileCount, n=self.numChannels, f=self.sampleRate);
                         self.updatePublishedInfo(newFileInfo)
@@ -5421,7 +5421,7 @@ class SimpleDigitalWriter(StateMachineProcess):
 
                         # Write chunk of digital to file that was previously retrieved from the buffer
                         if writeEnabled:
-                            digitalFile.addData(dataChunk)
+                            digitalFile.addData(dataChunk.data)
                         numSamplesInCurrentFile += dataChunk.getSampleCount()
                         numSamplesInCurrentSeries += dataChunk.getSampleCount()
 

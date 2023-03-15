@@ -34,10 +34,10 @@ class NCFile:
         dt (float): the data sampling period (time between consecutive samples)
         chan (int): the channel number for the data
         metaData (str): arbitrary descriptive string
-        dataType (str, numpy.dtype, ...): A data type specifier to use to define
-            the data field in the .nc file. If left as None, and data is a
-            numpy array, the dtype of the array will be used. Otherwise the
-            dtype will default to float.
+        dataType (str): A data type specifier to use to define the data field
+            in the .nc file. If left as None, and data is a numpy array, the
+            data type of the array will be used. Otherwise the data type will
+            default to float.
 
     Attributes:
         dataset (netCDF4.Dataset): A netCDF4.Dataset object.
@@ -106,7 +106,7 @@ class NCFile:
             # Attempt to get data type from data as if it were a numpy array.
             #   If it is not, then default to 'f' (float)
             try:
-                self.dataType = data.dtype
+                self.dataType = str(data.dtype)
             except AttributeError:
                 self.dataType = 'f'
 
@@ -118,7 +118,7 @@ class NCFile:
             raise IOError('Dataset is already closed, cannot add data.')
 
         if self.dataVar is None:
-            self.initializeDataVar()
+            self.initializeDataVar(data)
 
         # Append data
         self.dataVar[self.idx:self.idx+len(data), ...] = data
@@ -143,11 +143,12 @@ class NCFileMultiChannel(NCFile):
             # Attempt to get data type from data as if it were a numpy array.
             #   If it is not, then default to 'f' (float)
             try:
-                self.dataType = data.dtype
+                self.dataType = str(sampleData.dtype)
             except AttributeError:
                 self.dataType = 'f'
 
         unlimDim =      self.dataset.createDimension('da', size=None)
+        print('Data type:', self.dataType, type(self.dataType))
         self.dataVar =  self.dataset.createVariable('data', self.dataType, dimensions=(unlimDim, self.channelDim))
 
 def writeNCFile(path, time, dt, chan, metaData, data, dataType=None):
@@ -181,7 +182,7 @@ def writeNCFile(path, time, dt, chan, metaData, data, dataType=None):
         # Attempt to get data type from data as if it were a numpy array.
         #   If it is not, then default to 'f' (float)
         try:
-            dataType = data.dtype
+            dataType = str(data.dtype)
         except AttributeError:
             dataType = 'f'
 
@@ -204,3 +205,19 @@ def writeNCFile(path, time, dt, chan, metaData, data, dataType=None):
 
     # Close file
     dataset.close()
+
+if __name__ == "__main__":
+    import numpy as np
+    print('NCFile test:')
+    path = r'C:\Users\Goldberg\Downloads\test.nc'
+    time = [1, 2, 3, 4, 5, 6, 7]
+    dt = 0.123
+    channels = 0 #[0, 1, 2, 3]
+    metaData = 'testing 1 2 3'
+    data = np.random.randint(100, size=20, dtype='uint8')
+    writeNCFile(path, time, dt, channels, metaData, data)
+    # f = NCFileMultiChannel(path, time, dt, channels, metaData)
+    # data = np.random.randint(100, size=(20, len(channels)), dtype='uint8')
+    # f.addData(data)
+    # f.close()
+    print('done')
