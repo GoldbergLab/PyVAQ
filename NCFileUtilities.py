@@ -208,14 +208,15 @@ def writeNCFile(path, time, dt, chan, metaData, data, dataType=None):
 
 if __name__ == "__main__":
     import numpy as np
+    from pathlib import Path
     print('NCFile test:')
-    path = r'C:\Users\Goldberg\Downloads\test.nc'
+    path = Path.home() / r'Downloads\test.nc'
     time = [1, 2, 3, 4, 5, 6, 7]
     dt = 0.123
     channels = 0 #[0, 1, 2, 3]
     metaData = 'testing 1 2 3'
-    data = np.random.randint(100, size=20, dtype='uint8')
-    writeNCFile(path, time, dt, channels, metaData, data)
+    data = np.random.randint(100, size=441000, dtype='uint32')
+    writeNCFile(path, time, dt, channels, metaData, data, dataType='i4')
     # f = NCFileMultiChannel(path, time, dt, channels, metaData)
     # data = np.random.randint(100, size=(20, len(channels)), dtype='uint8')
     # f.addData(data)
