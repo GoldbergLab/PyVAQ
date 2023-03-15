@@ -198,6 +198,28 @@ WIDGET_COLORS = [
     '#FFC1C1'  # light red
 ]
 
+def MakeVarGetter(variable, conversion=int, default=0):
+    """Factory for creating variable getter functions..
+
+    Args:
+        variable (tk.Variable or similar): A tk style variable object.
+        conversion (function): A function to convert the value of the variable
+            (for instance from string to integer)
+        default (*): A default value to return if the variable returns an empty
+            string
+
+    Returns:
+        type: Description of returned object.
+
+    """
+    def VarGetter():
+        strValue = variable.get()
+        if len(strValue) == 0:
+            return default
+        else:
+            return conversion(strValue)
+    return VarGetter
+
 class GeneralVar:
     def __init__(self):
         self.value = None
@@ -608,25 +630,26 @@ class PyVAQ:
 
         # the params dict defines how to access and set all the parameters in the GUI
         self.paramInfo = {
-            'dataFrequency':                   dict(get=lambda:int(self.audioFrequencyVar.get()),              set=self.audioFrequencyVar.set),
-            'videoFrequency':                   dict(get=lambda:int(self.videoFrequencyVar.get()),              set=self.videoFrequencyVar.set),
-            'chunkSize':                        dict(get=lambda:int(self.chunkSizeVar.get()),                   set=self.chunkSizeVar.set),
-            "maxGPUVEnc":                       dict(get=lambda:int(self.maxGPUVEncVar.get()),                  set=self.maxGPUVEncVar.set),
-            # 'exposureTime':                     dict(get=lambda:int(self.exposureTimeVar.get()),                set=self.exposureTimeVar.set),
-            'gain':                             dict(get=lambda:float(self.gainVar.get()),                      set=self.gainVar.set),
-            'preTriggerTime':                   dict(get=lambda:float(self.preTriggerTimeVar.get()),            set=self.preTriggerTimeVar.set),
-            'acquisitionBufferSize':            dict(get=lambda:float(self.acquisitionBufferSizeVar.get()),     set=self.acquisitionBufferSizeVar.set),
-            'recordTime':                       dict(get=lambda:float(self.recordTimeVar.get()),                set=self.recordTimeVar.set),
-            'triggerHighLevel':                 dict(get=lambda:float(self.triggerHighLevelVar.get()),          set=self.triggerHighLevelVar.set),
-            'triggerLowLevel':                  dict(get=lambda:float(self.triggerLowLevelVar.get()),           set=self.triggerLowLevelVar.set),
-            'triggerHighTime':                  dict(get=lambda:float(self.triggerHighTimeVar.get()),           set=self.triggerHighTimeVar.set),
-            'triggerLowTime':                   dict(get=lambda:float(self.triggerLowTimeVar.get()),            set=self.triggerLowTimeVar.set),
-            'triggerHighFraction':              dict(get=lambda:float(self.triggerHighFractionVar.get()),       set=self.triggerHighFractionVar.set),
-            'triggerLowFraction':               dict(get=lambda:float(self.triggerLowFractionVar.get()),        set=self.triggerLowFractionVar.set),
-            'triggerHighBandpass':              dict(get=lambda:float(self.triggerHighBandpassVar.get()),       set=self.triggerHighBandpassVar.set),
-            'triggerLowBandpass':               dict(get=lambda:float(self.triggerLowBandpassVar.get()),        set=self.triggerLowBandpassVar.set),
-            'maxAudioTriggerTime':              dict(get=lambda:float(self.maxAudioTriggerTimeVar.get()),       set=self.maxAudioTriggerTimeVar.set),
-            "videoExposureTime":                dict(get=lambda:float(self.videoExposureTimeVar.get()),         set=self.videoExposureTimeVar.set),
+            'dataFrequency':                    dict(get=MakeVarGetter(self.audioFrequencyVar),                 set=self.audioFrequencyVar.set),
+            'videoFrequency':                   dict(get=MakeVarGetter(self.videoFrequencyVar),                 set=self.videoFrequencyVar.set),
+            'chunkSize':                        dict(get=MakeVarGetter(self.chunkSizeVar),                      set=self.chunkSizeVar.set),
+            "maxGPUVEnc":                       dict(get=MakeVarGetter(self.maxGPUVEncVar),                     set=self.maxGPUVEncVar.set),
+            # 'exposureTime':                     dict(get=MakeVarGetter(self.exposureTimeVar),               set=self.exposureTimeVar.set),
+            'gain':                             dict(get=MakeVarGetter(self.gainVar, conversion=float),                      set=self.gainVar.set),
+            'preTriggerTime':                   dict(get=MakeVarGetter(self.preTriggerTimeVar, conversion=float),            set=self.preTriggerTimeVar.set),
+            'acquisitionBufferSize':            dict(get=MakeVarGetter(self.acquisitionBufferSizeVar, conversion=float),     set=self.acquisitionBufferSizeVar.set),
+            'recordTime':                       dict(get=MakeVarGetter(self.recordTimeVar, conversion=float),                set=self.recordTimeVar.set),
+            'triggerHighLevel':                 dict(get=MakeVarGetter(self.triggerHighLevelVar, conversion=float),          set=self.triggerHighLevelVar.set),
+            'triggerLowLevel':                  dict(get=MakeVarGetter(self.triggerLowLevelVar, conversion=float),           set=self.triggerLowLevelVar.set),
+            'triggerHighTime':                  dict(get=MakeVarGetter(self.triggerHighTimeVar, conversion=float),           set=self.triggerHighTimeVar.set),
+            'triggerLowTime':                   dict(get=MakeVarGetter(self.triggerLowTimeVar, conversion=float),            set=self.triggerLowTimeVar.set),
+            'triggerHighFraction':              dict(get=MakeVarGetter(self.triggerHighFractionVar, conversion=float),       set=self.triggerHighFractionVar.set),
+            'triggerLowFraction':               dict(get=MakeVarGetter(self.triggerLowFractionVar, conversion=float),        set=self.triggerLowFractionVar.set),
+            'triggerHighBandpass':              dict(get=MakeVarGetter(self.triggerHighBandpassVar, conversion=float),       set=self.triggerHighBandpassVar.set),
+            'triggerLowBandpass':               dict(get=MakeVarGetter(self.triggerLowBandpassVar, conversion=float),        set=self.triggerLowBandpassVar.set),
+            'maxAudioTriggerTime':              dict(get=MakeVarGetter(self.maxAudioTriggerTimeVar, conversion=float),       set=self.maxAudioTriggerTimeVar.set),
+            "videoExposureTime":                dict(get=MakeVarGetter(self.videoExposureTimeVar, conversion=float),         set=self.videoExposureTimeVar.set),
+            "continuousTriggerPeriod":          dict(get=MakeVarGetter(self.continuousTriggerPeriodVar, conversion=float),   set=self.continuousTriggerPeriodVar.set),
             'videoBaseFileNames':               dict(get=self.videoBaseFileNames.get,                           set=self.setVideoBaseFileNames),
             'videoDirectories':                 dict(get=self.videoDirectories.get,                             set=self.setVideoDirectories),
             'audioBaseFileName':                dict(get=self.audioBaseFileName.get,                            set=self.setAudioBaseFileName),
@@ -652,7 +675,6 @@ class PyVAQ:
             "numProcesses":                     dict(get=self.getNumProcesses,                                  set=self.setNumProcesses),
             "numSyncedProcesses":               dict(get=self.getNumSyncedProcesses,                            set=self.setNumSyncedProcesses),
             "acquireSettings":                  dict(get=self.getCameraSettings,                                set=self.setCameraSettings),
-            "continuousTriggerPeriod":          dict(get=lambda:float(self.continuousTriggerPeriodVar.get()),   set=self.continuousTriggerPeriodVar.set),
             "audioTagContinuousTrigs":          dict(get=self.audioTagContinuousTrigsVar.get,                   set=self.audioTagContinuousTrigsVar.set),
             "daySubfolders":                    dict(get=self.daySubfoldersVar.get,                             set=self.daySubfoldersVar.set),
             "audioDAQChannels":                 dict(get=self.audioDAQChannels.get,                             set=self.audioDAQChannels.set),
