@@ -26,20 +26,20 @@ LINE_STYLES = [c+'-' for c in 'bykcmgr']
 with Image.open(r'Resources\NoImages_000.png') as NO_IMAGES_IMAGE:
     NO_IMAGES_IMAGE.load()
 
-class DigitalMonitor(ttk.LabelFrame):
-    def __init__(self, *args, historyLength=44100*2, initialDirectory="",
-                initialBaseFileName='', showFileWidgets=True, **kwargs):
+class BaseMonitor(ttk.LabelFrame):
+    def __init__(self, *args, initialDirectory='', initialBaseFileName='',
+        showFileWidgets=True, filePurposeText='file writing',
+        fileText='File Writing', **kwargs):
         ttk.LabelFrame.__init__(self, *args, **kwargs)
-        self.channels = []
-        self.historyLength = historyLength          # Max number of samples to display in history
+
         self.showFileWidgets = showFileWidgets
 
         self.fileWidget = FileWritingEntry(
             self,
             defaultDirectory=initialDirectory,
             defaultBaseFileName=initialBaseFileName,
-            purposeText='digital writing',
-            text="Digital Writing"
+            purposeText=filePurposeText,
+            text=fileText
             )
 
         self.enableViewerVar = tk.BooleanVar(); self.enableViewerVar.set(True); self.enableViewerVar.trace('w', self.updateEnableViewerCheckButton)
@@ -52,50 +52,6 @@ class DigitalMonitor(ttk.LabelFrame):
         self.updateEnableWriteCheckButton()
 
         self.mainDisplayFrame = ttk.Frame(self)
-
-        self.data = None
-
-        self.updateWidgets()
-
-class AudioMonitor(ttk.LabelFrame):
-    def __init__(self, *args, historyLength=44100*2, displayAmplitude=5,
-        autoscale=False, initialDirectory='', initialBaseFileName='',
-        showFileWidgets=True, **kwargs):
-        ttk.LabelFrame.__init__(self, *args, **kwargs)
-
-        self.channels = []
-        self.displayWidgets = {}
-        self.historyLength = historyLength          # Max number of samples to display in history
-        self.displayAmplitude = displayAmplitude    # Max amplitude to display (if autoscale=False)
-        self.autoscale = autoscale                  # Autoscale axes
-        self.audioTraces = []                        # matplotlib line
-        self.showFileWidgets = showFileWidgets
-
-        self.fileWidget = FileWritingEntry(
-            self,
-            defaultDirectory=initialDirectory,
-            defaultBaseFileName=initialBaseFileName,
-            purposeText='audio writing',
-            text="Audio Writing"
-            )
-
-        self.enableViewerVar = tk.BooleanVar(); self.enableViewerVar.set(True); self.enableViewerVar.trace('w', self.updateEnableViewerCheckButton)
-        self.enableViewerCheckButton = tk.Checkbutton(self, text="Enable viewer", variable=self.enableViewerVar, offvalue=False, onvalue=True)
-        self.updateEnableViewerCheckButton()
-
-        self.enableWriteChangeHandler = lambda:None
-        self.enableWriteVar = tk.BooleanVar(); self.enableWriteVar.set(True); self.enableWriteVar.trace('w', self.updateEnableWriteCheckButton)
-        self.enableWriteCheckButton = tk.Checkbutton(self, text="Enable write", variable=self.enableWriteVar, offvalue=False, onvalue=True)
-        self.updateEnableWriteCheckButton()
-
-        self.mainDisplayFrame = ttk.Frame(self)
-
-        self.data = None
-
-        for index, channel in enumerate(self.channels):
-            self.createChannelDisplay(channel, index)
-
-        self.updateWidgets()
 
     def updateEnableWriteCheckButton(self, *args):
         self.enableWriteChangeHandler()
@@ -130,6 +86,66 @@ class AudioMonitor(ttk.LabelFrame):
 
     def setBaseFileNameChangeHandler(self, function):
         self.fileWidget.setBaseFileNameChangeHandler(function)
+
+class DigitalMonitor(BaseMonitor):
+    def __init__(self, *args, historyLength=44100*2, **kwargs):
+        BaseMonitor.__init__(self, *args, filePurposeText='digital writing',
+            fileText='Digital Writing', **kwargs)
+        self.channels = []
+        self.historyLength = historyLength          # Max number of samples to display in history
+
+        self.displayWidth = 600
+        self.displayheight = 200
+        self.canvas = tk.Canvas(self.mainDisplayFrame, width=displayWidth, height=displayHeight)
+
+        self.data = None
+
+        self.updateWidgets()
+
+    def addDigitalData(self, newData):
+        pass
+
+    def updateChannels(self, channels):
+        self.channels = channels
+        self.updateWidgets()
+
+    def updateWidgets(self):
+        if len(self.channels) > 0:
+            # No channels, it would look weird to display directory entry
+            self.mainDisplayFrame.grid(row=0, column=0, columnspan=2, sticky=tk.NSEW)
+            if self.showFileWidgets:
+                self.fileWidget.grid(row=1, column=0, rowspan=2, sticky=tk.NSEW)
+                self.enableViewerCheckButton.grid(row=1, column=1)
+                self.enableWriteCheckButton.grid(row=2, column=1)
+            else:
+                self.fileWidget.grid_remove()
+                self.enableViewerCheckButton.grid_remove()
+                self.enableWriteCheckButton.grid_remove()
+        else:
+            self.mainDisplayFrame.grid_forget()
+            self.fileWidget.grid_forget()
+            self.enableViewerCheckButton.grid_remove()
+            self.enableWriteCheckButton.grid_remove()
+
+class AudioMonitor(BaseMonitor):
+    def __init__(self, *args, historyLength=44100*2, displayAmplitude=5,
+        autoscale=False, **kwargs):
+        BaseMonitor.__init__(self, *args, filePurposeText='audio writing',
+            fileText='Audio Writing', **kwargs)
+
+        self.channels = []
+        self.displayWidgets = {}
+        self.historyLength = historyLength          # Max number of samples to display in history
+        self.displayAmplitude = displayAmplitude    # Max amplitude to display (if autoscale=False)
+        self.autoscale = autoscale                  # Autoscale axes
+        self.audioTraces = []                        # matplotlib line
+
+        self.data = None
+
+        for index, channel in enumerate(self.channels):
+            self.createChannelDisplay(channel, index)
+
+        self.updateWidgets()
 
     def addAudioData(self, newData):
         # Concatenate new audio data with old data, trim to monitor length if
@@ -254,38 +270,21 @@ class AudioMonitor(ttk.LabelFrame):
         # self.displayWidgets[channel]['figureNavToolbar'] = toolbar
         # self.displayWidgets[channel]['figureLine'] = line
 
-class CameraMonitor(ttk.LabelFrame):
+class CameraMonitor(BaseMonitor):
     def __init__(self, *args, displaySize=(400, 300),
                     camSerial='Unknown camera', speedText='Unknown speed',
-                    initialDirectory='', initialBaseFileName='',
-                    showFileWidgets=True, **kwargs):
-        ttk.LabelFrame.__init__(self, *args, **kwargs)
+                    **kwargs):
         self.camSerial = camSerial
+        fileText = "Video Writing - {camSerial}".format(camSerial=self.camSerial)
+        BaseMonitor.__init__(self, *args, filePurposeText='video writing',
+            fileText=fileText, **kwargs)
         self.config(text="{serial} ({speed})".format(serial=self.camSerial, speed=speedText))
         self.displaySize = displaySize
         self.canvas = tk.Canvas(self, width=self.displaySize[0], height=self.displaySize[1], borderwidth=2, relief=tk.SUNKEN)
         self.imageID = None
         self.currentImage = None
-        self.showFileWidgets = showFileWidgets
 
         self.isIdle = False  # Boolean flag indicating whether the monitor is actively sending images or not
-
-        self.fileWidget = FileWritingEntry(
-            self,
-            defaultDirectory=initialDirectory,
-            defaultBaseFileName=initialBaseFileName,
-            purposeText='video writing',
-            text="Video Writing - {camSerial}".format(camSerial=self.camSerial)
-            )
-
-        self.enableViewerVar = tk.BooleanVar(); self.enableViewerVar.set(True); self.enableViewerVar.trace('w', self.updateEnableViewerCheckButton)
-        self.enableViewerCheckButton = tk.Checkbutton(self, text="Enable viewer", variable=self.enableViewerVar, offvalue=False, onvalue=True)
-        self.updateEnableViewerCheckButton()
-
-        self.enableWriteChangeHandler = lambda:None
-        self.enableWriteVar = tk.BooleanVar(); self.enableWriteVar.set(True); self.enableWriteVar.trace('w', self.updateEnableWriteCheckButton)
-        self.enableWriteCheckButton = tk.Checkbutton(self, text="Enable write", variable=self.enableWriteVar, offvalue=False, onvalue=True)
-        self.updateEnableWriteCheckButton()
 
         self.canvas.grid(row=0, column=0, columnspan=2)
         if self.showFileWidgets:
@@ -315,88 +314,6 @@ class CameraMonitor(ttk.LabelFrame):
     def active(self):
         self.isIdle = False
 
-    def updateEnableWriteCheckButton(self, *args):
-        self.enableWriteChangeHandler()
-        if self.getEnableWrite():
-            self.enableWriteCheckButton["fg"] = 'green'
-        else:
-            self.enableWriteCheckButton["fg"] = 'red'
-
-    def viewerEnabled(self):
-        return self.enableViewerVar.get()
-    def updateEnableViewerCheckButton(self, *args):
-        if self.viewerEnabled():
-            self.enableViewerCheckButton["fg"] = 'green'
-        else:
-            self.enableViewerCheckButton["fg"] = 'red'
-
-    def createAttributeBrowserNode(self, attributeNode, parent, tooltipLabel, gridRow):
-        frame = ttk.Frame(parent)
-        frame.bind("<Enter>", lambda event: tooltipLabel.config(text=attributeNode["tooltip"]))  # Set tooltip rollover callback
-        frame.grid(row=gridRow)
-
-        # syncPrint()
-        # pp = pprint.PrettyPrinter(indent=1, depth=1)
-        # pp.pprint(attributeNode)
-        # syncPrint()
-
-        widgets = [frame]
-        childWidgets = []
-        childCategoryHolder = None
-        childCategoryWidgets = []
-
-        if attributeNode['type'] == "category":
-            children = []
-            parent.add(frame, text=attributeNode['displayName'])
-            if len(attributeNode['subcategories']) > 0:
-                # If this category has subcategories, create a notebook to hold them
-                childCategoryHolder = ttk.Notebook(frame)
-                childCategoryHolder.grid(row=0)
-                widgets.append(childCategoryHolder)
-                for subcategoryAttributeNode in attributeNode['subcategories']:
-                    childCategoryWidgets.append(self.createAttributeBrowserNode(subcategoryAttributeNode, childCategoryHolder, tooltipLabel, 0))
-            for k, childAttributeNode in enumerate(attributeNode['children']):
-                childWidgets.append(self.createAttributeBrowserNode(childAttributeNode, frame, tooltipLabel, k+1))
-        else:
-            if attributeNode['accessMode'] == "RW":
-                # Read/write attribute
-                accessState = 'normal'
-            else:
-                # Read only attribute
-                accessState = 'readonly'
-            if attributeNode['type'] == "command":
-                commandButton = ttk.Button(frame, text=attributeNode['displayName'])
-                commandButton.grid()
-                widgets.append(commandButton)
-            elif attributeNode['type'] == "enum":
-                enumLabel = ttk.Label(frame, text=attributeNode['displayName'])
-                enumLabel.grid(column=0, row=0)
-                options = list(attributeNode['options'].values())
-                enumSelector = ttk.Combobox(frame, state=accessState, values=options)
-                enumSelector.set(attributeNode['value'][1])
-                enumSelector.grid(column=1, row=0)
-                widgets.append(enumLabel)
-                widgets.append(enumSelector)
-            else:
-                entryLabel = ttk.Label(frame, text=attributeNode['displayName'])
-                entryLabel.grid(column=0, row=0)
-                entry = ttk.Entry(frame, state=accessState)
-                entry.insert(0, attributeNode['value'])
-                entry.grid(column=1, row=0)
-                widgets.append(entryLabel)
-                widgets.append(entry)
-
-        return {'widgets':widgets, 'childWidgets':childWidgets, 'childCategoryWidgets':childCategoryWidgets, 'childCategoryHolder':childCategoryHolder}
-
-    def setEnableWriteChangeHandler(self, function):
-        self.enableWriteChangeHandler = function
-
-    def setDirectoryChangeHandler(self, function):
-        self.fileWidget.setDirectoryChangeHandler(function)
-
-    def setBaseFileNameChangeHandler(self, function):
-        self.fileWidget.setBaseFileNameChangeHandler(function)
-
     def updateImage(self, image, pixelFormat=None):
         # Expects a PIL image object
         if self.viewerEnabled():
@@ -423,15 +340,6 @@ class CameraMonitor(ttk.LabelFrame):
         else:
             # image aspect ratio is taller than display - scale based on y ratio
             return (int(imageSize[0] * yRatio), self.displaySize[1])
-
-    def getDirectory(self):
-        return self.fileWidget.getDirectory()
-
-    def getBaseFileName(self):
-        return self.fileWidget.getBaseFileName()
-
-    def getEnableWrite(self):
-        return self.enableWriteVar.get()
 
     def destroy(self):
         ttk.LabelFrame.destroy(self)
