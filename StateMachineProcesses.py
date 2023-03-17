@@ -20,7 +20,7 @@ from ctypes import c_wchar
 import PySpinUtilities as psu
 import sys
 from math import floor
-from NCFileUtilities import NCFileMultiChannel
+from NCFileUtilities import NCFile
 
 simulatedHardware = False
 for arg in sys.argv[1:]:
@@ -5350,13 +5350,13 @@ class SimpleDigitalWriter(StateMachineProcess):
                             digitalDirectory = getDaySubfolder(self.digitalDirectory, timestamp=digitalFileStartTime)
                         else:
                             digitalDirectory = self.digitalDirectory
-                        digitalFileName = generateFileName(directory=digitalDirectory, baseName=self.digitalBaseFileName, extension='.wav', tags=digitalFileNameTags)
+                        digitalFileName = generateFileName(directory=digitalDirectory, baseName=self.digitalBaseFileName, extension='.nc', tags=digitalFileNameTags)
                         ensureDirectoryExists(digitalDirectory)
 
                         # Open and initialize digital file
                         timeVector = getTimeVector(digitalFileStartTime)
                         metaData = 'Digital input channels: ' + ','.join(self.channelNames)
-                        digitalFile = NCFileMultiChannel(digitalFileName, timeVector, 1/self.sampleRate, list(range(self.numChannels)), metaData, dataType='i4')
+                        digitalFile = NCFile(digitalFileName, timeVector, 1/self.sampleRate, 0, metaData, dataType='i4')
 
                         newFileInfo = 'Opened digital file #{num:03d}: {n} channels, {f:.2f} Hz'.format(num=digitalFileCount, n=self.numChannels, f=self.sampleRate);
                         self.updatePublishedInfo(newFileInfo)
@@ -5421,7 +5421,7 @@ class SimpleDigitalWriter(StateMachineProcess):
 
                         # Write chunk of digital to file that was previously retrieved from the buffer
                         if writeEnabled:
-                            digitalFile.addData(dataChunk.data)
+                            digitalFile.addData(dataChunk.data.transpose())
                         numSamplesInCurrentFile += dataChunk.getSampleCount()
                         numSamplesInCurrentSeries += dataChunk.getSampleCount()
 
