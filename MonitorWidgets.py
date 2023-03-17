@@ -95,8 +95,8 @@ class DigitalMonitor(BaseMonitor):
         self.historyLength = historyLength          # Max number of samples to display in history
 
         self.displayWidth = 600
-        self.displayheight = 200
-        self.canvas = tk.Canvas(self.mainDisplayFrame, width=displayWidth, height=displayHeight)
+        self.displayHeight = 200
+        self.canvas = tk.Canvas(self.mainDisplayFrame, width=self.displayWidth, height=self.displayHeight)
 
         self.data = None
 

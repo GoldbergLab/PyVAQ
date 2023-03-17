@@ -39,7 +39,7 @@ except ModuleNotFoundError:
     # pip seems to install PySpin as pyspin sometimes...
     import pyspin as PySpin
 
-from MonitorWidgets import AudioMonitor, CameraMonitor
+from MonitorWidgets import CameraMonitor, AudioMonitor, DigitalMonitor
 from DockableFrame import Docker
 from StateMachineProcesses import sendMessage, States, Messages, Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter, DigitalAcquirer, SimpleDigitalWriter
 import inspect
@@ -293,6 +293,7 @@ class PyVAQ:
         self.videoSyncSource = GeneralVar(); self.videoSyncSource.set("PFI4")
         self.videoWriteEnable = GeneralVar(); self.videoWriteEnable.set({})
         self.audioWriteEnable = tk.BooleanVar(); self.audioWriteEnable.set(True)
+        self.digitalWriteEnable = tk.BooleanVar(); self.digitalWriteEnable.set(True)
         self.acquisitionSignalChannel = GeneralVar(); self.acquisitionSignalChannel.set(None)
         self.audioChannelConfiguration = GeneralVar(); self.audioChannelConfiguration.set(None)
         self.videoMonitorDisplaySize = GeneralVar(); self.videoMonitorDisplaySize.set((400, 300))
@@ -363,6 +364,9 @@ class PyVAQ:
 
         self.audioMonitorDocker = None
         self.audioMonitor = None  #ttk.Frame(self.monitorMasterFrame)
+
+        self.digitalMonitorDocker = None
+        self.digitalMonitor = None
 
         self.cameraAttributes = {}
         self.cameraMonitors = {}
@@ -688,6 +692,7 @@ class PyVAQ:
             "audioChannelConfiguration":        dict(get=self.audioChannelConfiguration.get,                    set=self.audioChannelConfiguration.set),
             "videoWriteEnable":                 dict(get=self.videoWriteEnable.get,                             set=self.setVideoWriteEnable),
             "audioWriteEnable":                 dict(get=self.audioWriteEnable.get,                             set=self.setAudioWriteEnable),
+            "digitalWriteEnable":               dict(get=self.digitalWriteEnable.get,                           set=self.setDigitalWriteEnable),
             "startOnHWSignal":                  dict(get=self.startOnHWSignalVar.get,                           set=self.startOnHWSignalVar.set),
             "writeEnableOnHWSignal":            dict(get=self.writeEnableOnHWSignalVar.get,                     set=self.writeEnableOnHWSignalVar.set),
             "videoMonitorDisplaySize":          dict(get=self.videoMonitorDisplaySize.get,                      set=self.videoMonitorDisplaySize.set),
@@ -1267,19 +1272,25 @@ him know. Otherwise, I had nothing to do with it.
 
         p = self.getParams(
             'camSerials',
+            'videoBaseFileNames',
+            'videoDirectories',
+            'videoMonitorDisplaySize',
             'audioDAQChannels',
             'audioBaseFileName',
             'audioDirectory',
-            'videoBaseFileNames',
-            'videoDirectories',
-            'videoMonitorDisplaySize'
+            'digitalDAQChannels',
+            'digitalBaseFileName',
+            'digitalDirectory',
             )
         camSerials = p["camSerials"]
+        videoBaseFileNames = p["videoBaseFileNames"]
+        videoDirectories = p["videoDirectories"]
         audioDAQChannels = p["audioDAQChannels"]
         audioBaseFileName = p["audioBaseFileName"]
         audioDirectory = p["audioDirectory"]
-        videoBaseFileNames = p["videoBaseFileNames"]
-        videoDirectories = p["videoDirectories"]
+        digitalDAQChannels = p["digitalDAQChannels"]
+        digitalBaseFileName = p["digitalBaseFileName"]
+        digitalDirectory = p["digitalDirectory"]
 
         # Destroy old video stream monitoring widgets
         oldCamSerials = list(self.cameraMonitors.keys())
@@ -1353,6 +1364,7 @@ him know. Otherwise, I had nothing to do with it.
             self.audioMonitor.grid(row=1, column=0, sticky=tk.NSEW)
 
             self.audioMonitor.setEnableWriteChangeHandler(self.audioWriteEnableChangeHandler)
+
         if audioDAQChannels is None or len(audioDAQChannels) == 0:
             # Don't display docker buttons
             self.audioMonitorDocker.unDockButton.grid_forget()
@@ -1361,9 +1373,54 @@ him know. Otherwise, I had nothing to do with it.
             # Re-dock audio monitor, which includes making sure docker buttons
             #   are displayed properly.
             self.audioMonitorDocker.reDock()
+
         self.audioMonitor.updateChannels(audioDAQChannels)
         self.audioMonitor.setDirectoryChangeHandler(self.audioDirectoryChangeHandler)
         self.audioMonitor.setBaseFileNameChangeHandler(self.audioBaseFileNameChangeHandler)
+
+        # Create new digital stream monitoring widgets
+        if self.digitalMonitor is None:
+
+            def unDockFunction(d):
+                d.unDockButton.grid_forget()
+                d.reDockButton.grid(row=0, column=0, sticky=tk.NW)
+                self.update()
+            def reDockFunction(d):
+                d.reDockButton.grid_forget()
+                d.unDockButton.grid(row=0, column=0, sticky=tk.NW)
+                d.docker.grid(row=1, column=0)
+                self.update()
+
+            self.digitalMonitorDocker = Docker(
+                self.monitorMasterFrame, root=self.master,
+                unDockFunction=unDockFunction, reDockFunction=reDockFunction,
+                unDockText='undock', reDockText='dock', background='#d9d9d9')
+            self.digitalMonitorDocker.unDockButton.grid(row=0, column=0, sticky=tk.NW)
+            self.digitalMonitorDocker.reDockButton.grid(row=0, column=0, sticky=tk.NW)
+            self.digitalMonitorDocker.reDockButton.grid_forget()
+
+            self.digitalMonitor = DigitalMonitor(
+                self.digitalMonitorDocker.docker,
+                initialDirectory=digitalDirectory,
+                initialBaseFileName=digitalBaseFileName,
+                showFileWidgets=showWriteWidgets
+                )
+            self.digitalMonitor.grid(row=1, column=0, sticky=tk.NSEW)
+
+            self.digitalMonitor.setEnableWriteChangeHandler(self.digitalWriteEnableChangeHandler)
+
+        if digitalDAQChannels is None or len(digitalDAQChannels) == 0:
+            # Don't display docker buttons
+            self.digitalMonitorDocker.unDockButton.grid_forget()
+            self.digitalMonitorDocker.reDockButton.grid_forget()
+        else:
+            # Re-dock digital monitor, which includes making sure docker buttons
+            #   are displayed properly.
+            self.digitalMonitorDocker.reDock()
+        self.digitalMonitor.updateChannels(digitalDAQChannels)
+        self.digitalMonitor.setDirectoryChangeHandler(self.digitalDirectoryChangeHandler)
+        self.digitalMonitor.setBaseFileNameChangeHandler(self.digitalBaseFileNameChangeHandler)
+
         self.update()
 
     def updateAudioTriggerSettings(self, *args):
@@ -1527,6 +1584,18 @@ him know. Otherwise, I had nothing to do with it.
         """
         audioWriteEnable = self.audioMonitor.getEnableWrite()
         self.setAudioWriteEnable(audioWriteEnable, updateGUI=False)
+    def digitalWriteEnableChangeHandler(self, *args):
+        """Handle changes in digitalWriteEnable
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
+        digitalWriteEnable = self.digitalMonitor.getEnableWrite()
+        self.setDigitalWriteEnable(digitalWriteEnable, updateGUI=False)
     def videoWriteEnableChangeHandler(self, *args):
         """Handle changes in videoWriteEnable
 
@@ -2862,6 +2931,29 @@ him know. Otherwise, I had nothing to do with it.
         # Notify AudioWriter child process of new write enable state
         sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(enableWrite=newAudioWriteEnable)))
 
+    def setDigitalWriteEnable(self, newDigitalWriteEnable, *args, updateGUI=True):
+        """Send a message to digital writer process to enable/disable file writing
+
+        Args:
+            newDigitalWriteEnable (bool): Enable or disable writing? True=enable,
+                False=disable.
+            *args (any): Dummy variable to hold unused event data
+            updateGUI (bool): Should this method update the digital write enable
+                GUI checkbox? Set to False when called by the checkbox itself to
+                prevent an infinite event loop where the checkbox triggers this
+                method, and the method triggers the checkbox.
+
+        Returns:
+            None
+
+        """
+        self.digitalWriteEnable.set(newAudioWriteEnable)
+        if updateGUI:
+            # Update text field
+            self.digitalMonitors.setWriteEnable(newDigitalWriteEnable)
+        # Notify AudioWriter child process of new write enable state
+        sendMessage(self.digitalWriteProcess, (Messages.SETPARAMS, dict(enableWrite=newAudioWriteEnable)))
+
     def setVideoWriteEnable(self, newVideoWriteEnables, *args, updateGUI=True):
         """Send messages to video writer processes to enable/disable file writing
 
@@ -3915,6 +4007,9 @@ him know. Otherwise, I had nothing to do with it.
         if self.audioMonitorDocker is not None and self.audioMonitorDocker.isDocked():
             self.audioMonitorDocker.docker.grid(row=1, column=0, sticky=tk.NSEW)
 #        self.audioMonitor.grid(row=1, column=0, sticky=tk.NSEW)
+
+        if self.digitalMonitorDocker is not None and self.digitalMonitorDocker.isDocked():
+            self.digitalMonitorDocker.docker.grid(row=2, column=0, sticky=tk.NSEW)
 
         self.controlFrame.grid(row=0, column=0, sticky=tk.NSEW)
         # self.controlFrame.columnconfigure(0, weight=1)
