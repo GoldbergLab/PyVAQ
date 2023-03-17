@@ -1350,7 +1350,7 @@ him know. Otherwise, I had nothing to do with it.
                 initialBaseFileName=audioBaseFileName,
                 showFileWidgets=showWriteWidgets
                 )
-            self.audioMonitor.grid(row=1, column=0)
+            self.audioMonitor.grid(row=1, column=0, sticky=tk.NSEW)
 
             self.audioMonitor.setEnableWriteChangeHandler(self.audioWriteEnableChangeHandler)
         if audioDAQChannels is None or len(audioDAQChannels) == 0:

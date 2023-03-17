@@ -93,7 +93,7 @@ class AudioMonitor(ttk.LabelFrame):
         self.data = None
 
         for index, channel in enumerate(self.channels):
-            self.createChannelDisplay(channel, index, collapsable=True)
+            self.createChannelDisplay(channel, index)
 
         self.updateWidgets()
 
@@ -200,12 +200,12 @@ class AudioMonitor(ttk.LabelFrame):
 
 #        wA, hA = getOptimalMonitorGrid(len(self.channels))
         for k, channel in enumerate(self.channels):
-            self.displayWidgets[channel]['displayFrame'].pack()
-            self.displayWidgets[channel]['figureCanvas'].get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
+            self.displayWidgets[channel]['displayFrame'].pack(anchor=tk.NW, fill=tk.X, expand=True)
+            self.displayWidgets[channel]['figureCanvas'].get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         if len(self.channels) > 0:
             # No channels, it would look weird to display directory entry
-            self.mainDisplayFrame.grid(row=0, column=0, columnspan=2)
+            self.mainDisplayFrame.grid(row=0, column=0, columnspan=2, sticky=tk.NSEW)
             if self.showFileWidgets:
                 self.fileWidget.grid(row=1, column=0, rowspan=2, sticky=tk.NSEW)
                 self.enableViewerCheckButton.grid(row=1, column=1)
@@ -220,7 +220,7 @@ class AudioMonitor(ttk.LabelFrame):
             self.enableViewerCheckButton.grid_remove()
             self.enableWriteCheckButton.grid_remove()
 
-    def createChannelDisplay(self, channel, index, collapsable=False):
+    def createChannelDisplay(self, channel, index, collapsable=True):
         if collapsable:
             frameType = CollapsableFrame
         else:
