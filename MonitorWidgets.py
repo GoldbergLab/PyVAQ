@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from fileWritingEntry import FileWritingEntry
 import cv2
 import PySpinUtilities as psu
+from CollapsableFrame import CollapsableFrame
 
 WIDGET_COLORS = [
     '#050505', # near black
@@ -24,6 +25,37 @@ LINE_STYLES = [c+'-' for c in 'bykcmgr']
 
 with Image.open(r'Resources\NoImages_000.png') as NO_IMAGES_IMAGE:
     NO_IMAGES_IMAGE.load()
+
+class DigitalMonitor(ttk.LabelFrame):
+    def __init__(self, *args, historyLength=44100*2, initialDirectory="",
+                initialBaseFileName='', showFileWidgets=True, **kwargs):
+        ttk.LabelFrame.__init__(self, *args, **kwargs)
+        self.channels = []
+        self.historyLength = historyLength          # Max number of samples to display in history
+        self.showFileWidgets = showFileWidgets
+
+        self.fileWidget = FileWritingEntry(
+            self,
+            defaultDirectory=initialDirectory,
+            defaultBaseFileName=initialBaseFileName,
+            purposeText='digital writing',
+            text="Digital Writing"
+            )
+
+        self.enableViewerVar = tk.BooleanVar(); self.enableViewerVar.set(True); self.enableViewerVar.trace('w', self.updateEnableViewerCheckButton)
+        self.enableViewerCheckButton = tk.Checkbutton(self, text="Enable viewer", variable=self.enableViewerVar, offvalue=False, onvalue=True)
+        self.updateEnableViewerCheckButton()
+
+        self.enableWriteChangeHandler = lambda:None
+        self.enableWriteVar = tk.BooleanVar(); self.enableWriteVar.set(True); self.enableWriteVar.trace('w', self.updateEnableWriteCheckButton)
+        self.enableWriteCheckButton = tk.Checkbutton(self, text="Enable write", variable=self.enableWriteVar, offvalue=False, onvalue=True)
+        self.updateEnableWriteCheckButton()
+
+        self.mainDisplayFrame = ttk.Frame(self)
+
+        self.data = None
+
+        self.updateWidgets()
 
 class AudioMonitor(ttk.LabelFrame):
     def __init__(self, *args, historyLength=44100*2, displayAmplitude=5,
@@ -56,12 +88,12 @@ class AudioMonitor(ttk.LabelFrame):
         self.enableWriteCheckButton = tk.Checkbutton(self, text="Enable write", variable=self.enableWriteVar, offvalue=False, onvalue=True)
         self.updateEnableWriteCheckButton()
 
-        self.masterDisplayFrame = ttk.Frame(self)
+        self.mainDisplayFrame = ttk.Frame(self)
 
         self.data = None
 
         for index, channel in enumerate(self.channels):
-            self.createChannelDisplay(channel, index)
+            self.createChannelDisplay(channel, index, collapsable=True)
 
         self.updateWidgets()
 
@@ -173,7 +205,7 @@ class AudioMonitor(ttk.LabelFrame):
 
         if len(self.channels) > 0:
             # No channels, it would look weird to display directory entry
-            self.masterDisplayFrame.grid(row=0, column=0, columnspan=2)
+            self.mainDisplayFrame.grid(row=0, column=0, columnspan=2)
             if self.showFileWidgets:
                 self.fileWidget.grid(row=1, column=0, rowspan=2, sticky=tk.NSEW)
                 self.enableViewerCheckButton.grid(row=1, column=1)
@@ -183,14 +215,18 @@ class AudioMonitor(ttk.LabelFrame):
                 self.enableViewerCheckButton.grid_remove()
                 self.enableWriteCheckButton.grid_remove()
         else:
-            self.masterDisplayFrame.grid_forget()
+            self.mainDisplayFrame.grid_forget()
             self.fileWidget.grid_forget()
             self.enableViewerCheckButton.grid_remove()
             self.enableWriteCheckButton.grid_remove()
 
-    def createChannelDisplay(self, channel, index):
+    def createChannelDisplay(self, channel, index, collapsable=False):
+        if collapsable:
+            frameType = CollapsableFrame
+        else:
+            frameType = ttk.LabelFrame
         self.displayWidgets[channel] = {}  # Change this to gracefully remove existing channel widgets under this channel name
-        self.displayWidgets[channel]['displayFrame'] = ttk.LabelFrame(self.masterDisplayFrame, text=channel)
+        self.displayWidgets[channel]['displayFrame'] = frameType(self.mainDisplayFrame, text=channel)
         fig = Figure(figsize=(7, 0.75), dpi=100, facecolor=WIDGET_COLORS[1])
         t = np.arange(self.historyLength)
         axes = fig.add_subplot(111)

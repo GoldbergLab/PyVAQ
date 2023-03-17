@@ -23,7 +23,7 @@ def config_descendants(widget, ignoreTclErrors=True, collapsableInner=None, **pa
 
 class CollapsableFrame(tk.Frame):
     def __init__(self, parent, *args, collapseSymbol='/\\', collapseText=None,
-        expandSymbol='\\/', expandText=None, collapseFunction=None,
+        expandSymbol='\\/', text=None, expandText=None, collapseFunction=None,
         expandFunction=None, collapsed=True, padx=0, pady=0, ipadx=0,
         ipady=0, **kwargs):
         # CollapsableFrame: A class that provides a "collapsable" frame, meaning
@@ -46,6 +46,9 @@ class CollapsableFrame(tk.Frame):
         # expandText = the header text for the collapsable frame when it is
         #   in its collapsed configuration. This will be displayed as a header,
         #   and will still be visible even when the frame is collapsed.
+        # text = the header text for the frame when it is either collapsed or
+        #   expanded. Provided for compatibility with tk.LabeLFrame, this only
+        #   has an effect if expandText and collapseText are both None
         #
         self.parent = parent
         self.outerFrame = tk.Frame(self.parent, *args, **kwargs)
@@ -68,8 +71,12 @@ class CollapsableFrame(tk.Frame):
 
         # Store text to display on button when frame is collapsed or expanded
         if collapseText is None and expandText is None:
-            collapseText = ''
-            expandText = ''
+            if text is None:
+                collapseText = ''
+                expandText = ''
+            else:
+                collapseText = text
+                expandText = text
         elif collapseText is None and expandText is not None:
             collapseText = expandText
         elif collapseText is not None and expandText is None:
