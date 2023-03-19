@@ -98,21 +98,34 @@ class DigitalMonitor(BaseMonitor):
         self.displayHeight = 200
         self.canvas = tk.Canvas(self.mainDisplayFrame, width=self.displayWidth, height=self.displayHeight)
 
+        self.currentImage = None
+        self.imageID = None
+
         self.data = None
 
         self.updateWidgets()
 
     def addDigitalData(self, newData):
-        pass
+        newData = np.random.rand(*newData.shape) > 0.8
+        image = Image.fromarray(newData)
+        image = image.resize((600, 200), resample=Image.BILINEAR)
+        self.currentImage = ImageTk.PhotoImage(image)
+        if self.imageID is None:
+            self.imageID = self.canvas.create_image((0, 0), image=self.currentImage, anchor=tk.NW)
+        else:
+            self.canvas.itemconfig(self.imageID, image=self.currentImage)
 
     def updateChannels(self, channels):
         self.channels = channels
         self.updateWidgets()
 
     def updateWidgets(self):
+
         if len(self.channels) > 0:
             # No channels, it would look weird to display directory entry
             self.mainDisplayFrame.grid(row=0, column=0, columnspan=2, sticky=tk.NSEW)
+            self.canvas.grid(row=0, column=0)
+
             if self.showFileWidgets:
                 self.fileWidget.grid(row=1, column=0, rowspan=2, sticky=tk.NSEW)
                 self.enableViewerCheckButton.grid(row=1, column=1)

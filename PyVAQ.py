@@ -716,6 +716,7 @@ class PyVAQ:
         self.triggerIndicatorUpdateJob = None
         self.autoUpdateVideoMonitors()
         self.autoUpdateAudioMonitors()
+        self.autoUpdateDigitalMonitors()
         if self.triggerModeVar.get() == "Audio":
             self.autoUpdateAudioAnalysisMonitors()
 
@@ -1815,6 +1816,9 @@ him know. Otherwise, I had nothing to do with it.
         if self.audioMonitorUpdateJob is not None:
             self.master.after_cancel(self.audioMonitorUpdateJob)
             self.audioMonitorUpdateJob = None
+        if self.digitalMonitorUpdateJob is not None:
+            self.master.after_cancel(self.digitalMonitorUpdateJob)
+            self.digitalMonitorUpdateJob = None
         if self.videoMonitorUpdateJob is not None:
             self.master.after_cancel(self.videoMonitorUpdateJob)
             self.videoMonitorUpdateJob = None
@@ -1839,6 +1843,7 @@ him know. Otherwise, I had nothing to do with it.
         """
         self.stopMonitors()
         self.autoUpdateAudioMonitors()
+        self.autoUpdateDigitalMonitors()
         self.autoUpdateVideoMonitors()
         self.autoUpdateAudioAnalysisMonitors()
         # self.updateStatusDisplay()
@@ -1985,6 +1990,41 @@ him know. Otherwise, I had nothing to do with it.
         if beginAuto:
             # Schedule another automatic call to autoUpdateAudioMonitors
             self.audioMonitorUpdateJob = self.master.after(100, self.autoUpdateAudioMonitors)
+
+        self.endLog(inspect.currentframe().f_code.co_name)
+
+    def autoUpdateDigitalMonitors(self, beginAuto=True):
+        """Begin updating digital monitors
+
+        Args:
+            beginAuto (bool): Automatically continue updating on a time
+                interval? Defaults to True.
+
+        Returns:
+            None
+
+        """
+        if self.digitalAcquireProcess is not None:
+            newDigitalData = None
+            try:
+                for chunkCount in range(100):
+                    # Get digital data from monitor queue
+                    channels, chunkStartTime, digitalData = self.digitalAcquireProcess.monitorQueue.get(block=True, timeout=0.001)
+                    # Accumulate all new data chunks together
+                    if newDigitalData is not None:
+                        newDigitalData = np.concatenate((newDigitalData, digitalData), axis=1)
+                    else:
+                        newDigitalData = digitalData
+                self.log("WARNING! Digital monitor is not getting data fast enough to keep up with stream.")
+            except queue.Empty:
+                pass
+
+            if newDigitalData is not None:
+                self.digitalMonitor.addDigitalData(newDigitalData)
+
+        if beginAuto:
+            # Schedule another automatic call to autoUpdateDigitalMonitors
+            self.digitalMonitorUpdateJob = self.master.after(100, self.autoUpdateDigitalMonitors)
 
         self.endLog(inspect.currentframe().f_code.co_name)
 
