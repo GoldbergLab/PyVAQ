@@ -2004,6 +2004,7 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
+
         if self.digitalAcquireProcess is not None:
             newDigitalData = None
             try:
@@ -2012,7 +2013,7 @@ him know. Otherwise, I had nothing to do with it.
                     channels, chunkStartTime, digitalData = self.digitalAcquireProcess.monitorQueue.get(block=True, timeout=0.001)
                     # Accumulate all new data chunks together
                     if newDigitalData is not None:
-                        newDigitalData = np.concatenate((newDigitalData, digitalData), axis=1)
+                        newDigitalData = np.concatenate((newDigitalData, digitalData), axis=0)
                     else:
                         newDigitalData = digitalData
                 self.log("WARNING! Digital monitor is not getting data fast enough to keep up with stream.")
@@ -2020,7 +2021,7 @@ him know. Otherwise, I had nothing to do with it.
                 pass
 
             if newDigitalData is not None:
-                self.digitalMonitor.addDigitalData(newDigitalData)
+                self.digitalMonitor.addDigitalData(newDigitalData.transpose())
 
         if beginAuto:
             # Schedule another automatic call to autoUpdateDigitalMonitors
@@ -3612,10 +3613,10 @@ him know. Otherwise, I had nothing to do with it.
                 syncChannel=p["dataSyncSource"],
                 verbose=self.digitalAcquireVerbose,
                 sendToWriter=createWriters,
-                sendToMonitor=False,
+                sendToMonitor=True,
                 sendToAnalysis=False,
                 ready=ready,
-                copyToMonitoringQueue=False, #copyToMonitoringQueue,
+                copyToMonitoringQueue=copyToMonitoringQueue,
                 copyToAnalysisQueue=False, #copyToAnalysisQueue,
                 stdoutQueue=self.StdoutManager.queue)
 

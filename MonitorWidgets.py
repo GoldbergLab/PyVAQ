@@ -26,11 +26,11 @@ LINE_STYLES = [c+'-' for c in 'bykcmgr']
 with Image.open(r'Resources\NoImages_000.png') as NO_IMAGES_IMAGE:
     NO_IMAGES_IMAGE.load()
 
-class BaseMonitor(ttk.LabelFrame):
+class BaseMonitor(CollapsableFrame):
     def __init__(self, *args, initialDirectory='', initialBaseFileName='',
         showFileWidgets=True, filePurposeText='file writing',
         fileText='File Writing', **kwargs):
-        ttk.LabelFrame.__init__(self, *args, **kwargs)
+        CollapsableFrame.__init__(self, *args, **kwargs)
 
         self.showFileWidgets = showFileWidgets
 
@@ -90,7 +90,8 @@ class BaseMonitor(ttk.LabelFrame):
 class DigitalMonitor(BaseMonitor):
     def __init__(self, *args, historyLength=44100*2, **kwargs):
         BaseMonitor.__init__(self, *args, filePurposeText='digital writing',
-            fileText='Digital Writing', **kwargs)
+            fileText='Digital Writing', text="Digital Monitor", collapsed=False,
+            **kwargs)
         self.channels = []
         self.historyLength = historyLength          # Max number of samples to display in history
 
@@ -106,14 +107,37 @@ class DigitalMonitor(BaseMonitor):
         self.updateWidgets()
 
     def addDigitalData(self, newData):
-        newData = np.random.rand(*newData.shape) > 0.8
-        image = Image.fromarray(newData)
-        image = image.resize((600, 200), resample=Image.BILINEAR)
-        self.currentImage = ImageTk.PhotoImage(image)
-        if self.imageID is None:
-            self.imageID = self.canvas.create_image((0, 0), image=self.currentImage, anchor=tk.NW)
-        else:
-            self.canvas.itemconfig(self.imageID, image=self.currentImage)
+        if self.viewerEnabled():
+            # newData = np.random.rand(*newData.shape) > 0.8
+
+            if newData.shape[1] > self.historyLength:
+                # Ok, this is really unlikely, but just in case
+                newData = newData[:, -self.historyLength:]
+
+            if self.data is None or self.data.shape[0] != newData.shape[0]:
+                # Either data is uninitialied or the new data has a different # of channels from the old data)
+                #   Note that a change in # of channels isn't really supported, just trying to avoid crashing
+                self.data = np.empty((newData.shape[0], 0), dtype=newData.dtype)
+
+            # Pad data to ensure it's self.historyLength long
+            padAmount = self.historyLength - self.data.shape[1]
+            if padAmount > 0:
+                # Pad data up to desired historyLength
+                self.data = np.pad(self.data, [(0, 0), (padAmount, 0)])
+            elif padAmount < 0:
+                # Data is too long for some reason
+                self.data = self.data[:, -self.historyLength:]
+
+            # Now data is guaranteed to have shape (N x L), N=# of channels, L=self.historyLength
+            self.data = np.roll(self.data, -newData.shape[1], axis=1)
+            self.data[:, -newData.shape[1]:] = newData
+
+            image = Image.fromarray(self.data).resize((600, 200), resample=Image.NEAREST)
+            self.currentImage = ImageTk.PhotoImage(image)
+            if self.imageID is None:
+                self.imageID = self.canvas.create_image((0, 0), image=self.currentImage, anchor=tk.NW)
+            else:
+                self.canvas.itemconfig(self.imageID, image=self.currentImage)
 
     def updateChannels(self, channels):
         self.channels = channels
@@ -144,7 +168,8 @@ class AudioMonitor(BaseMonitor):
     def __init__(self, *args, historyLength=44100*2, displayAmplitude=5,
         autoscale=False, **kwargs):
         BaseMonitor.__init__(self, *args, filePurposeText='audio writing',
-            fileText='Audio Writing', **kwargs)
+            fileText='Audio Writing', text="Audio Monitor", collapsed=False,
+            **kwargs)
 
         self.channels = []
         self.displayWidgets = {}
@@ -286,12 +311,12 @@ class AudioMonitor(BaseMonitor):
 class CameraMonitor(BaseMonitor):
     def __init__(self, *args, displaySize=(400, 300),
                     camSerial='Unknown camera', speedText='Unknown speed',
-                    **kwargs):
+                    text="Camera Monitor", collapsed=False, **kwargs):
         self.camSerial = camSerial
         fileText = "Video Writing - {camSerial}".format(camSerial=self.camSerial)
         BaseMonitor.__init__(self, *args, filePurposeText='video writing',
             fileText=fileText, **kwargs)
-        self.config(text="{serial} ({speed})".format(serial=self.camSerial, speed=speedText))
+        self.setText("{serial} ({speed})".format(serial=self.camSerial, speed=speedText))
         self.displaySize = displaySize
         self.canvas = tk.Canvas(self, width=self.displaySize[0], height=self.displaySize[1], borderwidth=2, relief=tk.SUNKEN)
         self.imageID = None

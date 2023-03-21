@@ -749,6 +749,14 @@ def sendMessage(process, msg):
             process.msgQueue.put(msg)
             return True
 
+def getLineNumberFromChannelString(channelString):
+    match = re.search('[a-z0-9]+/port[0-9]+/line([0-9]+)', channelString.lower())
+    try:
+        lineNumber = int(match.group(1))
+    except (IndexError, AttributeError, ValueError):
+        raise NameError('Not a properly formatted NI channel string: ' + channelString)
+    return lineNumber
+
 def extractBooleanDataFromDigitalArray(digitalArray, lineNumbers):
     """Extract boolean data from a digital array of integers.
 
@@ -4928,10 +4936,10 @@ class DigitalAcquirer(StateMachineProcess):
         self.sendToMonitor = sendToMonitor
         if self.dataQueue is not None:
             self.dataQueue.cancel_join_thread()
-        if sendToMonitor:
+        if self.sendToMonitor:
             self.monitorQueue = mp.Queue()      # A multiprocessing queue to send data to the UI to monitor the digital signals
         if sendToAnalysis:
-            self.analysisQueue = mp.Queue()    # A multiprocessing queue to send data to the audio triggerer process for analysis
+            self.analysisQueue = mp.Queue()     # A multiprocessing queue to send data to the audio triggerer process for analysis
         # if len(self.monitorQueue) > 0:
         #     self.monitorQueue.cancel_join_thread()
         self.chunkSize = chunkSize
@@ -4939,6 +4947,8 @@ class DigitalAcquirer(StateMachineProcess):
         self.syncChannel = syncChannel
         self.ready = ready
         self.exitFlag = False
+
+        self.inputLineNumbers = [getLineNumberFromChannelString(channelName) for channelName in self.inputChannels]
 
     def run(self):
         super().run()
@@ -5087,9 +5097,9 @@ class DigitalAcquirer(StateMachineProcess):
                         else:
                             if self.verbose >= 2: self.log('' + data)
 
-                        if (self.copyToMonitoringQueue and self.monitorQueue is not None) and (self.copyToAnalysisQueue and self.analysisQueue is not None):
+                        if (self.copyToMonitoringQueue and self.monitorQueue is not None) or (self.copyToAnalysisQueue and self.analysisQueue is not None):
                             # Copy data for monitoring queues
-                            monitorDataCopy = np.copy(data)
+                            monitorDataCopy = extractBooleanDataFromDigitalArray(data.squeeze(), self.inputLineNumbers)
 
                             if self.copyToMonitoringQueue and self.monitorQueue is not None:
                                 self.monitorQueue.put((self.inputChannels, chunkStartTime, monitorDataCopy))      # If a monitoring queue is provided, queue up the data
