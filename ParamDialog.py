@@ -146,7 +146,7 @@ class Param():
         else:
             raise AttributeError('You must call createWidgets on this Param object before calling get')
 
-class ParamDialog(tk.Toplevel):
+class ParamDialog(tk.Frame):
     # A container for a Tkinter widget
     # This is a separate window for flexibly giving the user the ability to
     #    select values for one or more parameters.
@@ -155,38 +155,49 @@ class ParamDialog(tk.Toplevel):
     BOX='b'
     HYBRID='y'
 
-    def __init__(self, parent, params=[], title=None, arrangement=HORIZONTAL, maxHeight=None):
+    def __init__(self, parent, params=[], title=None, arrangement=HORIZONTAL, maxHeight=None, popup=True):
         # params should be a list of Param objects
         # maxHeight is the maximum number of parameter options that can be stacked before wrapping horizontally. Leave as "None" to disable wrapping.
-        tk.Toplevel.__init__(self, parent)
-        self.transient(parent)
-        if title:
-            self.title(title)
 
-        self.parent = parent
+        self.popup = popup
+
+        if self.popup:
+            # Generate a popup window in which to put the ParamDialog
+            self.rootWindow = parent
+            self.parent = tk.Toplevel(self.rootWindow)
+            self.parent.transient(self.rootWindow)
+            if title:
+                self.parent.title(title)
+            self.parent.grab_set()
+            self.parent.protocol("WM_DELETE_WINDOW", self.cancel)
+            self.parent.geometry("+%d+%d" % (self.rootWindow.winfo_rootx()+50,
+                                      self.rootWindow.winfo_rooty()+50))
+            self.parent.focus_set()
+        else:
+            # Just put ParamDialog in the provided parent widget
+            self.parent = parent
+            self.rootWindow = None
+
+        # Invoke Frame parent class constructor
+        tk.Frame.__init__(self, self.parent)
+
         self.arrangement = arrangement
         self.maxHeight = maxHeight
         self.params = params
         self.results = None
 
-        self.mainFrame = ttk.Frame(self)
-        self.paramFrame = ttk.Frame(self.mainFrame)
-        self.buttonFrame = ttk.Frame(self.mainFrame)
+        self.paramFrame = ttk.Frame(self)
+        self.buttonFrame = ttk.Frame(self)
         self.parameterWidgets = {}
         self.subFrames = []   # For HYBRID arrangement
         self.createParameterWidgets()
 
-        self.grab_set()
-
-        self.mainFrame.grid()
+        self.grid()
         self.paramFrame.grid(row=0, sticky=tk.NSEW)
         self.buttonFrame.grid(row=1, sticky=tk.NSEW)
 
-        self.protocol("WM_DELETE_WINDOW", self.cancel)
-        self.geometry("+%d+%d" % (parent.winfo_rootx()+50,
-                                  parent.winfo_rooty()+50))
-        self.focus_set()
-        self.wait_window(self)
+        if popup:
+            self.parent.wait_window(self.parent)
 
     def createParameterWidgets(self):
         # Create widgets for inputting parameters
@@ -225,13 +236,14 @@ class ParamDialog(tk.Toplevel):
 
             param.grid(row=row, column=col, sticky=tk.NSEW)
 
-        okButton = ttk.Button(self.buttonFrame, text="OK", width=10, command=self.ok, default=tk.ACTIVE)
-        okButton.grid(row=0, column=0)
-        cancelButton = ttk.Button(self.buttonFrame, text="Cancel", width=10, command=self.cancel)
-        cancelButton.grid(row=0, column=1)
-
-        self.bind("<Return>", self.ok)
-        self.bind("<Escape>", self.cancel)
+        if self.popup:
+            # If we're in a popup window, we probably want an "ok" and "cancel" button to finish
+            okButton = ttk.Button(self.buttonFrame, text="OK", width=10, command=self.ok, default=tk.ACTIVE)
+            okButton.grid(row=0, column=0)
+            cancelButton = ttk.Button(self.buttonFrame, text="Cancel", width=10, command=self.cancel)
+            cancelButton.grid(row=0, column=1)
+            self.bind("<Return>", self.ok)
+            self.bind("<Escape>", self.cancel)
 
     def collectParams(self):
         self.results = {}
@@ -243,17 +255,17 @@ class ParamDialog(tk.Toplevel):
         #     self.initial_focus.focus_set() # put focus back
         #     return
         self.collectParams()
-        self.withdraw()
-        self.update_idletasks()
+        self.parent.withdraw()
+        self.parent.update_idletasks()
         # self.apply()
-        self.parent.focus_set()
-        self.destroy()
+        self.rootWindow.focus_set()
+        self.parent.destroy()
 
     def cancel(self, event=None):
         # put focus back to the parent window
         self.results = None
-        self.parent.focus_set()
-        self.destroy()
+        self.rootWindow.focus_set()
+        self.parent.destroy()
 
     # def validate(self):
     #     return 1 # override

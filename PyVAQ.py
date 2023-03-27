@@ -46,6 +46,10 @@ import inspect
 import CollapsableFrame as cf
 import PySpinUtilities as psu
 import ctypes
+from ffmpegWriter import DEFAULT_CPU_COMPRESSION_ARGS, DEFAULT_GPU_COMPRESSION_ARGS
+from CameraConfig import CameraConfigPanel
+import copy
+from collections import OrderedDict as odict
 
 VERSION='0.3.0'
 
@@ -67,6 +71,18 @@ except:
 # 3 - Everything
 
 ICON_PATH = r'Resources\PyVAQ.ico'
+
+
+BG_COLOR = '#eeeeff'
+
+COLLAPSABLE_FRAME_STYLE = {
+    'relief':tk.GROOVE,
+    'borderwidth':3,
+    'bg':BG_COLOR
+    }
+COLLAPSABLE_FRAME_BUTTON_STYLE = {
+    'bg':BG_COLOR
+}
 
 #plt.style.use("dark_background")
 
@@ -249,19 +265,12 @@ class PyVAQ:
         self.audioChannelConfiguration = GeneralVar(); self.audioChannelConfiguration.set(None)
         self.videoMonitorDisplaySize = GeneralVar(); self.videoMonitorDisplaySize.set((400, 300))
         self.videoMonitorDisplaySize.trace('w', self.updateVideoMonitorDisplaySize)
+        self.cpuVideoCompressionArgs = GeneralVar(); self.cpuVideoCompressionArgs.set({})   # camSerial dict containing an array of ffmpeg argument strings
+        self.cpuVideoCompressionArgs.trace('w', self.transmitVideoCompressionArgs)
+        self.gpuVideoCompressionArgs = GeneralVar(); self.gpuVideoCompressionArgs.set({})   # camSerial dict containing an array of ffmpeg argument strings
+        self.gpuVideoCompressionArgs.trace('w', self.transmitVideoCompressionArgs)
 
         ########### GUI WIDGETS #####################
-
-        BG_COLOR = '#eeeeff'
-
-        collapsableFrameStyle = {
-            'relief':tk.GROOVE,
-            'borderwidth':3,
-            'bg':BG_COLOR
-            }
-        collapsableFrameButtonStyle = {
-            'bg':BG_COLOR
-        }
 
         self.mainFrame = ttk.Frame(self.master)
 
@@ -320,6 +329,7 @@ class PyVAQ:
 
         self.videoMonitorMasterFrame = self.videoMonitorDocker.docker # ttk.Frame(self.monitorMasterFrame)
 
+        self.audioMonitorDocker = None
         self.audioMonitor = None  #ttk.Frame(self.monitorMasterFrame)
 
         self.cameraAttributes = {}
@@ -327,10 +337,10 @@ class PyVAQ:
 
         self.controlFrame = ttk.Frame(self.mainFrame)
 
-        self.statusFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Status", **collapsableFrameStyle); self.statusFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        self.statusFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Status", **COLLAPSABLE_FRAME_STYLE); self.statusFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         self.childStatusText = tk.Text(self.statusFrame, tabs=('7c',))
 
-        self.acquisitionControlFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Control", **collapsableFrameStyle); self.acquisitionControlFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        self.acquisitionControlFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Control", **COLLAPSABLE_FRAME_STYLE); self.acquisitionControlFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         self.acquisitionControlFrame.expand()
         # self.acquisitionFrame = ttk.LabelFrame(self.controlFrame, text="Acquisition")
 
@@ -338,8 +348,12 @@ class PyVAQ:
         self.haltAcquisitionButton =            ttk.Button(self.acquisitionControlFrame, text='Halt acquisition', command=self.haltAcquisition)
         self.restartAcquisitionButton =         ttk.Button(self.acquisitionControlFrame, text='Restart acquisition', command=self.restartAcquisition)
         self.shutDownAcquisitionButton =        ttk.Button(self.acquisitionControlFrame, text='Shut down acquisition', command=self.shutDownAcquisition)
+        self.previewButton =                    ttk.Button(self.acquisitionControlFrame, text='Preview', command=self.previewAcquisition)
 
-        self.acquisitionParametersFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Parameters", **collapsableFrameStyle); self.acquisitionParametersFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        # Boolean hint to the application that the user is trying to preview cameras
+        self.previewMode = False
+
+        self.acquisitionParametersFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Acquisition Parameters", **COLLAPSABLE_FRAME_STYLE); self.acquisitionParametersFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
 
         self.audioFrequencyFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Audio freq. (Hz)", style='SingleContainer.TLabelframe')
         self.audioFrequencyVar =    tk.StringVar(); self.audioFrequencyVar.set("44100")
@@ -389,7 +403,10 @@ class PyVAQ:
 
         self.chunkSizeVar =         tk.StringVar(); self.chunkSizeVar.set(1000)
 
-        self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", **collapsableFrameStyle); self.mergeFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        self.cameraConfigurationFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Camera Configuration", **COLLAPSABLE_FRAME_STYLE); self.cameraConfigurationFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
+        self.cameraConfigurationPanel = CameraConfigPanel(self.cameraConfigurationFrame)
+
+        self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", **COLLAPSABLE_FRAME_STYLE); self.mergeFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         # self.mergeFrame = ttk.LabelFrame(self.acquisitionFrame, text="AV File merging")
 
         self.mergeFileWidget = FileWritingEntry(
@@ -425,13 +442,13 @@ class PyVAQ:
         self.mergeCompression = ttk.Combobox(self.mergeCompressionFrame, textvariable=self.mergeCompressionVar, values=AVMerger.COMPRESSION_OPTIONS, width=12)
         self.mergeCompressionVar.trace('w', lambda *args: self.changeAVMergerParams(compression=self.mergeCompressionVar.get()))
 
-        self.fileSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="File writing settings", **collapsableFrameStyle); self.fileSettingsFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        self.fileSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="File writing settings", **COLLAPSABLE_FRAME_STYLE); self.fileSettingsFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
 
         self.daySubfoldersVar = tk.BooleanVar(); self.daySubfoldersVar.set(True)
         self.daySubfoldersCheckbutton = ttk.Checkbutton(self.fileSettingsFrame, text="File in day subfolders", variable=self.daySubfoldersVar)
-        self.daySubfoldersVar.trace('w', lambda *args: self.updateDaySubfolderSetting())
+        self.daySubfoldersVar.trace('w', lambda *args: self.transmitDaySubfolderSetting())
 
-        self.scheduleFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Recording Schedule", **collapsableFrameStyle); self.scheduleFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        self.scheduleFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Recording Schedule", **COLLAPSABLE_FRAME_STYLE); self.scheduleFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
 
         self.scheduleEnabledVar = tk.BooleanVar(); self.scheduleEnabledVar.set(False)
         self.scheduleEnabledVar.trace('w', self.updateChildSchedulingState)
@@ -441,7 +458,7 @@ class PyVAQ:
         self.scheduleStopTimeVar = TimeVar(); self.scheduleStopTimeVar.trace('w', self.updateChildSchedulingState)
         self.scheduleStopTimeEntry = TimeEntry(self.scheduleFrame, text="Stop time", timevar=self.scheduleStopTimeVar, style=self.style)
 
-        self.triggerFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Triggering", **collapsableFrameStyle); self.triggerFrame.stateChangeButton.config(**collapsableFrameButtonStyle)
+        self.triggerFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Triggering", **COLLAPSABLE_FRAME_STYLE); self.triggerFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         # self.triggerFrame = ttk.LabelFrame(self.controlFrame, text='Triggering')
 
         self.triggerModes = ['Manual', 'Audio', 'Continuous', 'SimpleContinuous', 'None']
@@ -563,6 +580,7 @@ class PyVAQ:
         # Verbosity of child processes
         #   0=Errors, 1=Occasional important status updates
         #   2=Minor status updates, 3=Continuous status messages
+        # These need to be integrated into the param scheme
         self.audioAcquireVerbose = 1
         self.audioWriteVerbose = 1
         self.videoAcquireVerbose = 1
@@ -594,13 +612,13 @@ class PyVAQ:
             'triggerHighBandpass':              dict(get=lambda:float(self.triggerHighBandpassVar.get()),       set=self.triggerHighBandpassVar.set),
             'triggerLowBandpass':               dict(get=lambda:float(self.triggerLowBandpassVar.get()),        set=self.triggerLowBandpassVar.set),
             'maxAudioTriggerTime':              dict(get=lambda:float(self.maxAudioTriggerTimeVar.get()),       set=self.maxAudioTriggerTimeVar.set),
-            "videoExposureTime":                dict(get=lambda:float(self.videoExposureTimeVar.get()),            set=self.videoExposureTimeVar.set),
-            'videoBaseFileNames':               dict(get=self.videoBaseFileNames.get,                            set=self.setVideoBaseFileNames),
-            'videoDirectories':                 dict(get=self.videoDirectories.get,                              set=self.setVideoDirectories),
-            'audioBaseFileName':                dict(get=self.audioBaseFileName.get,                             set=self.setAudioBaseFileName),
-            'audioDirectory':                   dict(get=self.audioDirectory.get,                                set=self.setAudioDirectory),
-            'mergeBaseFileName':                dict(get=self.mergeBaseFileName.get,                             set=self.setMergeBaseFileName),
-            'mergeDirectory':                   dict(get=self.mergeDirectory.get,                                set=self.setMergeDirectory),
+            "videoExposureTime":                dict(get=lambda:float(self.videoExposureTimeVar.get()),         set=self.videoExposureTimeVar.set),
+            'videoBaseFileNames':               dict(get=self.videoBaseFileNames.get,                           set=self.setVideoBaseFileNames),
+            'videoDirectories':                 dict(get=self.videoDirectories.get,                             set=self.setVideoDirectories),
+            'audioBaseFileName':                dict(get=self.audioBaseFileName.get,                            set=self.setAudioBaseFileName),
+            'audioDirectory':                   dict(get=self.audioDirectory.get,                               set=self.setAudioDirectory),
+            'mergeBaseFileName':                dict(get=self.mergeBaseFileName.get,                            set=self.setMergeBaseFileName),
+            'mergeDirectory':                   dict(get=self.mergeDirectory.get,                               set=self.setMergeDirectory),
             'mergeFiles':                       dict(get=self.mergeFilesVar.get,                                set=self.mergeFilesVar.set),
             'deleteMergedAudioFiles':           dict(get=self.deleteMergedAudioFilesVar.get,                    set=self.deleteMergedAudioFilesVar.set),
             'deleteMergedVideoFiles':           dict(get=self.deleteMergedVideoFilesVar.get,                    set=self.deleteMergedVideoFilesVar.set),
@@ -617,7 +635,7 @@ class PyVAQ:
             "numStreams":                       dict(get=self.getNumStreams,                                    set=self.setNumStreams),
             "numProcesses":                     dict(get=self.getNumProcesses,                                  set=self.setNumProcesses),
             "numSyncedProcesses":               dict(get=self.getNumSyncedProcesses,                            set=self.setNumSyncedProcesses),
-            "acquireSettings":                  dict(get=self.getCameraSettings,                               set=self.setAcquireSettings),
+            "acquireSettings":                  dict(get=self.getCameraSettings,                                set=self.setCameraSettings),
             "continuousTriggerPeriod":          dict(get=lambda:float(self.continuousTriggerPeriodVar.get()),   set=self.continuousTriggerPeriodVar.set),
             "audioTagContinuousTrigs":          dict(get=self.audioTagContinuousTrigsVar.get,                   set=self.audioTagContinuousTrigsVar.set),
             "daySubfolders":                    dict(get=self.daySubfoldersVar.get,                             set=self.daySubfoldersVar.set),
@@ -634,11 +652,14 @@ class PyVAQ:
             "startOnHWSignal":                  dict(get=self.startOnHWSignalVar.get,                           set=self.startOnHWSignalVar.set),
             "writeEnableOnHWSignal":            dict(get=self.writeEnableOnHWSignalVar.get,                     set=self.writeEnableOnHWSignalVar.set),
             "videoMonitorDisplaySize":          dict(get=self.videoMonitorDisplaySize.get,                      set=self.videoMonitorDisplaySize.set),
+            "cpuVideoCompressionArgs":          dict(get=self.cpuVideoCompressionArgs.get,                      set=self.cpuVideoCompressionArgs.set),
+            "gpuVideoCompressionArgs":          dict(get=self.gpuVideoCompressionArgs.get,                      set=self.gpuVideoCompressionArgs.set),
+            "applyConfigurationOnInit":         dict(get=self.cameraConfigurationPanel.applyConfigurationOnInit,set=self.cameraConfigurationPanel.applyConfigurationOnInit),
         }
 
         self.createAudioAnalysisMonitor()
 
-        self.setupInputMonitoringWidgets()
+        # self.setupInputMonitoringWidgets()
 
         self.updateAcquisitionHardwareDisplay()
 
@@ -781,9 +802,9 @@ class PyVAQ:
             self.continuousTriggerVerbose = int(choices['ContinuousTriggerer verbosity'])
             self.videoAcquireVerbose = int(choices['VideoAcquirer verbosity'])
             self.videoWriteVerbose = int(choices['VideoWriter verbosity'])
-        self.updateChildProcessVerbosity()
+        self.transmitChildProcessVerbosity()
 
-    def updateChildProcessVerbosity(self):
+    def transmitChildProcessVerbosity(self):
         """Update child process logging verbosity based on current settings
 
         Returns:
@@ -800,7 +821,22 @@ class PyVAQ:
             sendMessage(self.videoAcquireProcesses[camSerial], (Messages.SETPARAMS, {'verbose':self.videoAcquireVerbose}))
             sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'verbose':self.videoWriteVerbose}))
 
-    def updateDaySubfolderSetting(self, *args):
+    def transmitVideoCompressionArgs(self):
+        """Update video writer video compression args based on current settings
+
+        Returns:
+            None
+
+        """
+        cca = self.getParams('cpuVideoCompressionArgs')
+        gca = self.getParams('gpuVideoCompressionArgs')
+        for camSerial in self.videoWriteProcesses:
+            if camSerial in cca:
+                sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'cpuVideoCompressionArgs':cca[camSerial]}))
+            if camSerial in gca:
+                sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'gpuVideoCompressionArgs':gca[camSerial]}))
+
+    def transmitDaySubfolderSetting(self, *args):
         """Change day subfolder setting in all child processes.
 
         Args:
@@ -902,7 +938,7 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         if self.audioMonitor is None:
-            showinfo('Please initialize acquisition before configuring audio monitor')
+            showinfo('Not ready', 'Please initialize acquisition before configuring audio monitor')
             return
 
         p = self.getParams()
@@ -942,7 +978,7 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         if len(self.cameraMonitors) == 0:
-            showinfo('Please initialize acquisition before configuring audio monitor')
+            showinfo('Not ready', 'Please initialize acquisition before configuring audio monitor')
             return
 
         # Get current video monitor display size, to use as default
@@ -1012,6 +1048,7 @@ him know. Otherwise, I had nothing to do with it.
         availableAudioChannels = flattenList(discoverDAQAudioChannels().values())
         availableClockChannels = flattenList(discoverDAQClockChannels().values()) + ['None']
         availableDigitalChannels = ['None'] + flattenList(discoverDAQTerminals().values())
+
         availableCamSerials = psu.discoverCameras()
         audioChannelConfigurations = [
             "DEFAULT",
@@ -1157,8 +1194,12 @@ him know. Otherwise, I had nothing to do with it.
         self.audioMonitor = None
         self.update()
 
-    def setupInputMonitoringWidgets(self):
+    def setupInputMonitoringWidgets(self, showWriteWidgets=True):
         """Set up widgets for selected audio and video inputs.
+
+        Args:
+            showWriteWidgets (bool): Should the file writing widgets be shown?
+                Default is True.
 
         Returns:
             None
@@ -1201,13 +1242,15 @@ him know. Otherwise, I had nothing to do with it.
                 videoBaseFileName = videoBaseFileNames[camSerial]
             else:
                 videoBaseFileName = ''
+
             self.cameraMonitors[camSerial] = CameraMonitor(
                 self.videoMonitorMasterFrame,
                 displaySize=p["videoMonitorDisplaySize"],
                 camSerial=camSerial,
                 speedText=self.cameraSpeeds[camSerial],
                 initialDirectory=videoDirectory,
-                initialBaseFileName=videoBaseFileName
+                initialBaseFileName=videoBaseFileName,
+                showFileWidgets=showWriteWidgets
             )
             self.cameraMonitors[camSerial].setDirectoryChangeHandler(self.videoDirectoryChangeHandler)
             self.cameraMonitors[camSerial].setBaseFileNameChangeHandler(self.videoBaseFileNameChangeHandler)
@@ -1246,7 +1289,8 @@ him know. Otherwise, I had nothing to do with it.
             self.audioMonitor = AudioMonitor(
                 self.audioMonitorDocker.docker,
                 initialDirectory=audioDirectory,
-                initialBaseFileName=audioBaseFileName
+                initialBaseFileName=audioBaseFileName,
+                showFileWidgets=showWriteWidgets
                 )
             self.audioMonitor.grid(row=1, column=0)
 
@@ -1641,6 +1685,7 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
+        self.stopMonitors()
         self.autoUpdateAudioMonitors()
         self.autoUpdateVideoMonitors()
         self.autoUpdateAudioAnalysisMonitors()
@@ -1830,106 +1875,21 @@ him know. Otherwise, I had nothing to do with it.
             period = int(round(1000.0/(2*self.monitorMasterFrameRate)))
             self.videoMonitorUpdateJob = self.master.after(period, self.autoUpdateVideoMonitors)
 
-    def createCameraAttributeBrowser(self, camSerial):
-        """Create a window allowing user to browse camera settings.
+    def getQueueSize(self, queue, defaultValue=-1):
+        """Convenience function for safely getting queue size.
 
         Args:
-            camSerial (str): String representing the serial number of a camera
-                currently attached to the computer
+            queue (mp.Queue): A queue-like object that has a qsize function
+            defaultValue (any): Something to return if the queue isn't valid
 
         Returns:
-            None
+            int: Size of the queue.
 
         """
-        main = tk.Toplevel()
-        nb = ttk.Notebook(main)
-        nb.grid(row=0)
-        tooltipLabel = ttk.Label(main, text="temp")
-        tooltipLabel.grid(row=1)
-
-        #self.cameraAttributesWidget[camSerial]
-        widgets = self.createAttributeBrowserNode(self.cameraAttributes[camSerial], nb, tooltipLabel, 1)
-
-    def createAttributeBrowserNode(self, attributeNode, parent, tooltipLabel, gridRow):
-        """Create widgets for one camera attribute node in the browser.
-
-        See createCameraAttributeBrowser
-
-        Args:
-            attributeNode (type): Description of parameter `attributeNode`.
-            parent (type): Description of parameter `parent`.
-            tooltipLabel (type): Description of parameter `tooltipLabel`.
-            gridRow (type): Description of parameter `gridRow`.
-
-        Returns:
-            dict: Dictionary containing widgets created, organized by type
-
-        """
-        frame = ttk.Frame(parent)
-        frame.bind("<Enter>", lambda event: tooltipLabel.config(text=attributeNode["tooltip"]))  # Set tooltip rollover callback
-        frame.grid(row=gridRow)
-
-        # syncPrint()
-        # pp = pprint.PrettyPrinter(indent=1, depth=1)
-        # pp.pprint(attributeNode)
-        # syncPrint.log()
-
-        widgets = [frame]
-        childWidgets = []
-        childCategoryHolder = None
-        childCategoryWidgets = []
-
-        if attributeNode['type'] == "category":
-            children = []
-            parent.add(frame, text=attributeNode['displayName'])
-            if len(attributeNode['subcategories']) > 0:
-                # If this category has subcategories, create a notebook to hold them
-                childCategoryHolder = ttk.Notebook(frame)
-                childCategoryHolder.grid(row=0)
-                widgets.append(childCategoryHolder)
-                for subcategoryAttributeNode in attributeNode['subcategories']:
-                    childCategoryWidgets.append(self.createAttributeBrowserNode(subcategoryAttributeNode, childCategoryHolder, tooltipLabel, 0))
-            for k, childAttributeNode in enumerate(attributeNode['children']):
-                childWidgets.append(self.createAttributeBrowserNode(childAttributeNode, frame, tooltipLabel, k+1))
+        if queue is None:
+            return defaultValue
         else:
-            if attributeNode['accessMode'] == "RW":
-                # Read/write attribute
-                accessState = 'normal'
-            else:
-                # Read only attribute
-                accessState = 'readonly'
-            if attributeNode['type'] == "command":
-                commandButton = ttk.Button(frame, text=attributeNode['displayName'])
-                commandButton.grid()
-                widgets.append(commandButton)
-            elif attributeNode['type'] == "enum":
-                enumLabel = ttk.Label(frame, text=attributeNode['displayName'])
-                enumLabel.grid(column=0, row=0)
-                options = list(attributeNode['options'].values())
-                enumSelector = ttk.Combobox(frame, state=accessState, values=options)
-                enumSelector.set(attributeNode['value'][1])
-                enumSelector.grid(column=1, row=0)
-                widgets.append(enumLabel)
-                widgets.append(enumSelector)
-            else:
-                entryLabel = ttk.Label(frame, text=attributeNode['displayName'])
-                entryLabel.grid(column=0, row=0)
-                entry = ttk.Entry(frame, state=accessState)
-                entry.insert(0, attributeNode['value'])
-                entry.grid(column=1, row=0)
-                widgets.append(entryLabel)
-                widgets.append(entry)
-
-        return {'widgets':widgets, 'childWidgets':childWidgets, 'childCategoryWidgets':childCategoryWidgets, 'childCategoryHolder':childCategoryHolder}
-
-    def updateAllCamerasAttributes(self):
-        """Update the current camera attributes from some camera??.
-
-        Returns:
-            None
-
-        """
-        self.cameraAttributes = psu.getAllCamerasAttributes()
+            return queue.qsize()
 
     def getQueueSizes(self, verbose=True):
         """Determine the sizes of the various queues used by child processes
@@ -1975,18 +1935,19 @@ him know. Otherwise, I had nothing to do with it.
         )
 
         for camSerial in self.videoAcquireProcesses:
-            queueSizes['videoMonitorQueueSizes'][camSerial] = self.videoAcquireProcesses[camSerial].monitorImageReceiver.qsize()
-            queueSizes['imageQueueSizes'][camSerial] = self.videoAcquireProcesses[camSerial].imageQueue.qsize()
+            if self.videoAcquireProcesses[camSerial].monitorImageReceiver is not None:
+                queueSizes['videoMonitorQueueSizes'][camSerial] = self.getQueueSize(self.videoAcquireProcesses[camSerial].monitorImageReceiver)
+                queueSizes['imageQueueSizes'][camSerial] = self.getQueueSize(self.videoAcquireProcesses[camSerial].imageQueue)
         if self.audioAcquireProcess is not None:
-            queueSizes['audioAnalysisQueueSize'] = self.audioAcquireProcess.audioQueue.qsize()
-            queueSizes['audioMonitorQueueSize'] = self.audioAcquireProcess.analysisQueue.qsize()
-            queueSizes['audioQueueSize'] = self.audioAcquireProcess.monitorQueue.qsize()
+            queueSizes['audioAnalysisQueueSize'] = self.getQueueSize(self.audioAcquireProcess.audioQueue)
+            queueSizes['audioMonitorQueueSize'] = self.getQueueSize(self.audioAcquireProcess.analysisQueue)
+            queueSizes['audioQueueSize'] = self.getQueueSize(self.audioAcquireProcess.monitorQueue)
         if self.audioTriggerProcess is not None:
-            queueSizes['audioAnalysisMonitorQueueSize'] = self.audioTriggerProcess.analysisMonitorQueue.qsize()
+            queueSizes['audioAnalysisMonitorQueueSize'] = self.getQueueSize(self.audioTriggerProcess.analysisMonitorQueue)
         if self.mergeProcess is not None:
-            queueSizes['mergeQueueSize'] = self.mergeProcess.msgQueue.qsize()
+            queueSizes['mergeQueueSize'] = self.getQueueSize(self.mergeProcess.msgQueue)
         if self.StdoutManager is not None:
-            queueSizes['stdoutQueueSize'] = self.StdoutManager.queue.qsize()
+            queueSizes['stdoutQueueSize'] = self.getQueueSize(self.StdoutManager.queue)
 
         if verbose:
             self.log("Get qsizes...")
@@ -2283,8 +2244,8 @@ him know. Otherwise, I had nothing to do with it.
         lines.append(
                     'VideoAcquirers' #[['VideoAcquirers:'], ['normal']]
         )
-        for camSerial in self.videoWriteProcesses:
-            if self.videoWriteProcesses[camSerial] is not None:
+        for camSerial in self.videoAcquireProcesses:
+            if self.videoAcquireProcesses[camSerial] is not None:
                 lines.extend([
                     '   {camSerial} ({PID}):\t{state}'.format(camSerial=camSerial, PID=PIDs['videoAcquirePIDs'][camSerial], state=stateNames['videoAcquireStates'][camSerial])
                 ])
@@ -2292,7 +2253,7 @@ him know. Otherwise, I had nothing to do with it.
                     'VideoWriters:'
         )
         for camSerial in self.videoWriteProcesses:
-            if self.videoAcquireProcesses[camSerial] is not None:
+            if self.videoWriteProcesses[camSerial] is not None:
                 lines.extend([
                     '   {camSerial} ({PID}):\t{state}'.format(camSerial=camSerial, PID=PIDs['videoWritePIDs'][camSerial], state=stateNames['videoWriteStates'][camSerial]),
                     '       Image Queue: {qsize}'.format(qsize=queueSizes['videoMonitorQueueSizes'][camSerial]),
@@ -2367,6 +2328,8 @@ him know. Otherwise, I had nothing to do with it.
                                 initializing or similar state
             'acquiring'     All processes running (inc at least one acquire),
                                 and all in an acquire-ey state
+            'previewing'    At least one acquirer and optionally synchronizer
+                                processes running
             'halted'        All processes running but in stopped state
             'dead'          No processes running
             'error'         At least one process in error state
@@ -2447,15 +2410,17 @@ him know. Otherwise, I had nothing to do with it.
 
         # Determine an overall application meta state by examining the tallies
         #   of the child states
-        if numProcesses == 0:
+        if numProcesses == 0 and not self.previewMode:
             self.metaState = 'dead'
         elif numError > 0:
             self.metaState = 'error'
-        elif numInitializing == (numAcquirersRunning + numAuxiliariesRunning):
+        elif numInitializing == (numAcquirersRunning + numAuxiliariesRunning) and not self.previewMode:
             self.metaState = 'initialized'
-        elif numAcquirersRunning > 0 and numAcquiresAcquiring == numAcquirersRunning:
+        elif numAcquirersRunning > 0 and numAcquiresAcquiring > 0 and numWritersRunning == 0 and self.previewMode:
+            self.metaState = 'previewing'
+        elif numAcquirersRunning > 0 and numAcquiresAcquiring == numAcquirersRunning and not self.previewMode:
             self.metaState = 'acquiring'
-        elif numStopped == numProcesses:
+        elif numStopped == numProcesses and not self.previewMode:
             self.metaState = 'halted'
         else:
             self.metaState = 'indeterminate'
@@ -2475,6 +2440,7 @@ him know. Otherwise, I had nothing to do with it.
         if self.metaState is None:
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.DISABLED)
+            self.previewButton.config(state=tk.DISABLED)
             self.haltAcquisitionButton.config(state=tk.DISABLED)
             self.restartAcquisitionButton.config(state=tk.DISABLED)
             self.shutDownAcquisitionButton.config(state=tk.DISABLED)
@@ -2484,6 +2450,7 @@ him know. Otherwise, I had nothing to do with it.
         elif self.metaState == 'initialized':
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.DISABLED)
+            self.previewButton.config(state=tk.DISABLED)
             self.haltAcquisitionButton.config(state=tk.NORMAL)
             self.restartAcquisitionButton.config(state=tk.NORMAL)
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
@@ -2494,6 +2461,7 @@ him know. Otherwise, I had nothing to do with it.
             # Child processes are either in initialized state, or are actively acquiring
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.DISABLED)
+            self.previewButton.config(state=tk.DISABLED)
             self.haltAcquisitionButton.config(state=tk.NORMAL)
             self.restartAcquisitionButton.config(state=tk.NORMAL)
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
@@ -2504,6 +2472,7 @@ him know. Otherwise, I had nothing to do with it.
             # Child processes are running, but in stopped state
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.NORMAL)
+            self.previewButton.config(state=tk.NORMAL)
             self.haltAcquisitionButton.config(state=tk.NORMAL)
             self.restartAcquisitionButton.config(state=tk.DISABLED)
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
@@ -2514,6 +2483,7 @@ him know. Otherwise, I had nothing to do with it.
             # Child processes are not running, or do not exist
             self.selectAcquisitionHardwareButton.config(state=tk.NORMAL)
             self.initializeAcquisitionButton.config(state=tk.NORMAL)
+            self.previewButton.config(state=tk.NORMAL)
             self.haltAcquisitionButton.config(state=tk.DISABLED)
             self.restartAcquisitionButton.config(state=tk.DISABLED)
             self.shutDownAcquisitionButton.config(state=tk.DISABLED)
@@ -2523,6 +2493,7 @@ him know. Otherwise, I had nothing to do with it.
         elif self.metaState == 'error':
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.DISABLED)
+            self.previewButton.config(state=tk.DISABLED)
             self.haltAcquisitionButton.config(state=tk.NORMAL)
             self.restartAcquisitionButton.config(state=tk.NORMAL)
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
@@ -2532,15 +2503,28 @@ him know. Otherwise, I had nothing to do with it.
         elif self.metaState == 'indeterminate':
             self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
             self.initializeAcquisitionButton.config(state=tk.DISABLED)
+            self.previewButton.config(state=tk.DISABLED)
             self.haltAcquisitionButton.config(state=tk.DISABLED)
             self.restartAcquisitionButton.config(state=tk.DISABLED)
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
             for mode in self.triggerModeRadioButtons:
                 self.triggerModeRadioButtons[mode].config(state=tk.DISABLED)
             self.acquisitionParametersFrame.disable()
+        elif self.metaState == 'previewing':
+            # Child processes are actively acquiring in preview mode
+            self.selectAcquisitionHardwareButton.config(state=tk.DISABLED)
+            self.initializeAcquisitionButton.config(state=tk.DISABLED)
+            self.previewButton.config(state=tk.DISABLED)
+            self.haltAcquisitionButton.config(state=tk.NORMAL)
+            self.restartAcquisitionButton.config(state=tk.NORMAL)
+            self.shutDownAcquisitionButton.config(state=tk.NORMAL)
+            for mode in self.triggerModeRadioButtons:
+                self.triggerModeRadioButtons[mode].config(state=tk.NORMAL)
+            self.acquisitionParametersFrame.disable()
         else:
             self.selectAcquisitionHardwareButton.config(state=tk.NORMAL)
             self.initializeAcquisitionButton.config(state=tk.NORMAL)
+            self.previewButton.config(state=tk.NORMAL)
             self.haltAcquisitionButton.config(state=tk.NORMAL)
             self.restartAcquisitionButton.config(state=tk.NORMAL)
             self.shutDownAcquisitionButton.config(state=tk.NORMAL)
@@ -2561,9 +2545,10 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
+        self.previewMode = False
         if self.metaState != 'halted':
             # If state is halted, we can just reinit the processes
-            self.setupInputMonitoringWidgets()
+            self.setupInputMonitoringWidgets(showWriteWidgets=not self.previewMode)
             self.createChildProcesses()
         self.initializeChildProcesses()
         # Schedule button update after 100 ms to give child processes a chance to react
@@ -2586,7 +2571,7 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         self.haltChildProcesses()
-        self.setupInputMonitoringWidgets()
+        self.setupInputMonitoringWidgets(showWriteWidgets=not self.previewMode)
         self.initializeChildProcesses()
     def shutDownAcquisition(self):
         """Shut down child processes.
@@ -2598,9 +2583,27 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
+        self.previewMode = False
         self.haltChildProcesses()
         self.destroyChildProcesses()
         self.destroyInputMonitoringWidgets()
+    def previewAcquisition(self):
+        """Set up and start child processes in preview mode.
+
+        This will run the cameras with monitoring only - no writing
+        Normally, the user should be prevented from calling this method unless
+            the application meta state is "stopped"
+
+        Returns:
+            None
+
+        """
+        self.previewMode = True
+        self.setupInputMonitoringWidgets(showWriteWidgets=False)
+        self.createChildProcesses(createWriters=False)
+        self.initializeChildProcesses()
+        self.startSyncProcess()
+        self.startMonitors()
 
     def writeButtonClickHandler(self):
         """Send a manual trigger to write processes to trigger recording.
@@ -3030,14 +3033,15 @@ him know. Otherwise, I had nothing to do with it.
         """Get # of processes subject to synchronization in current config"""
         audioDAQChannels = self.getParams('audioDAQChannels')
         camSerials = self.getParams('camSerials')
-        return (len(audioDAQChannels)>0) + len(camSerials) + 1  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
+        synchronizer = 1
+        return (len(audioDAQChannels)>0) + len(camSerials) + synchronizer  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
     def getCameraSettings(self):
         """Get the current set of camera settings.
 
         These are settings for FLIR USB3 Vision cameras, such as the Flea3
         and Blackfly S series of cameras.
 
-        See also: StateMachineProcesses.VideoAcquirer.setCameraAttributes
+        See also: PySpinUtilities.setCameraAttributes
 
         Returns:
             list of tuples: A list of camera settings, formatted as a list of
@@ -3045,27 +3049,56 @@ him know. Otherwise, I had nothing to do with it.
                     ([[setting name]], [[setting value]], [[setting type]])
 
         """
-        gain = self.getParams('gain')
-        return [
-            ('AcquisitionMode', 'Continuous', 'enum'),
-            ('TriggerMode', 'Off', 'enum'),
-            ('TriggerSelector', 'FrameStart', 'enum'),
-            ('TriggerSource', 'Line0', 'enum'),
-            ('TriggerActivation', 'RisingEdge', 'enum'),
-            ('PixelFormat', 'BayerRG8', 'enum'),
-            # ('ExposureMode', 'TriggerWidth'),
-            # ('Width', 800, 'integer'),
-            # ('Height', 800, 'integer'),
-            ('TriggerMode', 'On', 'enum'),
-            ('GainAuto', 'Off', 'enum'),
-            ('Gain', gain, 'float'),
-            ('ExposureAuto', 'Off', 'enum'),
-            ('ExposureMode', 'TriggerWidth', 'enum')]
-#            ('ExposureTime', exposureTime, 'float')]
 
-    def setAcquireSettings(self, *args):
-        """Placeholder param setter indicating this property is not settable"""
-        raise NotImplementedError()
+        configuration = self.cameraConfigurationPanel.getCurrentConfiguration()
+        return configuration
+
+#         gain = self.getParams('gain')
+#         return [
+#             ('AcquisitionMode', 'Continuous', 'enum'),
+#             ('TriggerMode', 'Off', 'enum'),
+#             ('TriggerSelector', 'FrameStart', 'enum'),
+#             ('TriggerSource', 'Line0', 'enum'),
+#             ('TriggerActivation', 'RisingEdge', 'enum'),
+#             ('PixelFormat', 'BayerRG8', 'enum'),
+#             # ('ExposureMode', 'TriggerWidth'),
+#             # ('Width', 800, 'integer'),
+#             # ('Height', 800, 'integer'),
+#             ('TriggerMode', 'On', 'enum'),
+#             ('GainAuto', 'Off', 'enum'),
+#             ('Gain', gain, 'float'),
+#             ('ExposureAuto', 'Off', 'enum'),
+#             ('ExposureMode', 'TriggerWidth', 'enum')]
+# #            ('ExposureTime', exposureTime, 'float')]
+
+    def setCameraSettings(self, configuration):
+        # Handle legacy format:
+        if type(configuration) == list:
+            # Once upon a time, there were no per-camera settings, so the
+            #   acquisition settings were stored as a simple list of attribute
+            #   tuples. Now we have to convert that to a dictionary with camera
+            #   serials as keys
+            try:
+                newConfiguration = {}
+                camSerials = psu.discoverCameras()
+                for camSerial in camSerials:
+                    newConfiguration[camSerial] = odict()
+                    for attributeName, attributeValue, attributeType in configuration:
+                            newConfiguration[camSerial][attributeName] = dict(
+                                name=attributeName,
+                                value=attributeValue,
+                                type=attributeType
+                            )
+                configuration = newConfiguration
+            except:
+                # Well, we tried.
+                self.log('Failed to import legacy camera configuration from settings file')
+                configuration = {}
+
+        # Send updated configuration to camera config panel
+        self.cameraConfigurationPanel.setCurrentConfiguration(configuration)
+
+        self.endLog(inspect.currentframe().f_code.co_name)
 
     def waitForChildProcessesToStop(self, attempts=10, timeout=5):
         """Wait for all state machine child processes to stop.
@@ -3115,7 +3148,7 @@ him know. Otherwise, I had nothing to do with it.
 
         return False
 
-    def createChildProcesses(self):
+    def createChildProcesses(self, createWriters=True):
         """Instantiate all child processes.
 
         This method instantiates all child processes, but does not start them.
@@ -3123,6 +3156,10 @@ him know. Otherwise, I had nothing to do with it.
 
         In some cases, the type and number of child processes to start is
             dictated by various parameters.
+
+        Args:
+            createWriters (bool): boolean flag indicating whether writer child
+                processes should be created. Default is True.
 
         Returns:
             None
@@ -3145,7 +3182,11 @@ him know. Otherwise, I had nothing to do with it.
         self.actualVideoFrequency = mp.Value('d', -1)
         self.actualAudioFrequency = mp.Value('d', -1)
 
+        synchronizerRequired = p["audioSyncTerminal"] is not None or p["videoSyncTerminal"] is not None
+
         startTime = mp.Value('d', -1)
+        if not synchronizerRequired:
+            startTime.value = time.time_ns()
 
         if p["mergeFiles"] and p["numStreams"] >= 2:
             # Create merge process
@@ -3165,7 +3206,7 @@ him know. Otherwise, I had nothing to do with it.
             mergeMsgQueue = None
 
 
-        if p["audioSyncTerminal"] is not None or p["videoSyncTerminal"] is not None:
+        if synchronizerRequired:
             # Create sync process
             self.syncProcess = Synchronizer(
                 actualVideoFrequency=self.actualVideoFrequency,
@@ -3182,12 +3223,19 @@ him know. Otherwise, I had nothing to do with it.
                 verbose=self.syncVerbose,
                 ready=ready,
                 stdoutQueue=self.StdoutManager.queue)
+        else:
+            # We're not creating a synchronizer object, so we'll just manually set the actualVideo/AudioFrequency variable
+            self.actualAudioFrequency.value = p["audioFrequency"]
+            self.actualVideoFrequency.value = p["videoFrequency"]
 
         copyToMonitoringQueue = True
         copyToAnalysisQueue = p["triggerMode"] != "SimpleContinuous"
 
         if len(p["audioDAQChannels"]) > 0:
-            audioQueue = mp.Queue()
+            if createWriters:
+                audioQueue = mp.Queue()
+            else:
+                audioQueue = None
             self.audioAcquireProcess = AudioAcquirer(
                 startTime=startTime,
                 audioQueue=audioQueue,
@@ -3198,43 +3246,49 @@ him know. Otherwise, I had nothing to do with it.
                 channelConfig=p["audioChannelConfiguration"],
                 syncChannel=p["audioSyncSource"],
                 verbose=self.audioAcquireVerbose,
+                sendToWriter=createWriters,
+                sendToMonitor=True,
                 ready=ready,
                 copyToMonitoringQueue=copyToMonitoringQueue,
                 copyToAnalysisQueue=copyToAnalysisQueue,
                 stdoutQueue=self.StdoutManager.queue)
-            if p["triggerMode"] == "SimpleContinuous":
-                if mergeMsgQueue is not None:
-                    self.log('Warning: SimpleAudioWriter does not support A/V merging yet.')
-                self.audioWriteProcess = SimpleAudioWriter(
-                    audioDirectory=p["audioDirectory"],
-                    audioBaseFileName=p["audioBaseFileName"],
-                    channelNames=p["audioDAQChannels"],
-                    audioQueue=audioQueue,
-                    audioFrequency=self.actualAudioFrequency,
-                    frameRate=self.actualVideoFrequency,
-                    numChannels=len(p["audioDAQChannels"]),
-                    videoLength=p["recordTime"],
-                    mergeMessageQueue=mergeMsgQueue,
-                    daySubfolders=p['daySubfolders'],
-                    verbose=self.audioWriteVerbose,
-                    scheduleEnabled=p['scheduleEnabled'],
-                    scheduleStartTime=p['scheduleStartTime'],
-                    scheduleStopTime=p['scheduleStopTime'],
-                    stdoutQueue=self.StdoutManager.queue)
-            elif p["triggerMode"] != 'None':
-                self.audioWriteProcess = AudioWriter(
-                    audioDirectory=p["audioDirectory"],
-                    audioBaseFileName=p["audioBaseFileName"],
-                    channelNames=p["audioDAQChannels"],
-                    audioQueue=audioQueue,
-                    mergeMessageQueue=mergeMsgQueue,
-                    chunkSize=p["chunkSize"],
-                    bufferSizeSeconds=p["bufferSizeSeconds"],
-                    audioFrequency=self.actualAudioFrequency,
-                    numChannels=len(p["audioDAQChannels"]),
-                    daySubfolders=p['daySubfolders'],
-                    verbose=self.audioWriteVerbose,
-                    stdoutQueue=self.StdoutManager.queue)
+
+            if not createWriters:
+                self.audioWriteProcess = None
+            else:
+                if p["triggerMode"] == "SimpleContinuous":
+                    if mergeMsgQueue is not None:
+                        self.log('Warning: SimpleAudioWriter does not support A/V merging yet.')
+                    self.audioWriteProcess = SimpleAudioWriter(
+                        audioDirectory=p["audioDirectory"],
+                        audioBaseFileName=p["audioBaseFileName"],
+                        channelNames=p["audioDAQChannels"],
+                        audioQueue=audioQueue,
+                        audioFrequency=self.actualAudioFrequency,
+                        frameRate=self.actualVideoFrequency,
+                        numChannels=len(p["audioDAQChannels"]),
+                        videoLength=p["recordTime"],
+                        mergeMessageQueue=mergeMsgQueue,
+                        daySubfolders=p['daySubfolders'],
+                        verbose=self.audioWriteVerbose,
+                        scheduleEnabled=p['scheduleEnabled'],
+                        scheduleStartTime=p['scheduleStartTime'],
+                        scheduleStopTime=p['scheduleStopTime'],
+                        stdoutQueue=self.StdoutManager.queue)
+                elif p["triggerMode"] != 'None':
+                    self.audioWriteProcess = AudioWriter(
+                        audioDirectory=p["audioDirectory"],
+                        audioBaseFileName=p["audioBaseFileName"],
+                        channelNames=p["audioDAQChannels"],
+                        audioQueue=audioQueue,
+                        mergeMessageQueue=mergeMsgQueue,
+                        chunkSize=p["chunkSize"],
+                        bufferSizeSeconds=p["bufferSizeSeconds"],
+                        audioFrequency=self.actualAudioFrequency,
+                        numChannels=len(p["audioDAQChannels"]),
+                        daySubfolders=p['daySubfolders'],
+                        verbose=self.audioWriteVerbose,
+                        stdoutQueue=self.StdoutManager.queue)
 
         gpuCount = 0
         for camSerial in p["camSerials"]:
@@ -3252,12 +3306,14 @@ him know. Otherwise, I had nothing to do with it.
             videoAcquireProcess = VideoAcquirer(
                 startTime=startTime,
                 camSerial=camSerial,
-                acquireSettings=p["acquireSettings"],
+                acquireSettings=p["acquireSettings"][camSerial],
                 frameRate = self.actualVideoFrequency,
                 requestedFrameRate=p["videoFrequency"],
                 monitorFrameRate=self.monitorMasterFrameRate,
                 verbose=self.videoAcquireVerbose,
                 bufferSizeSeconds=p["acquisitionBufferSize"],
+                sendToWriter=createWriters,
+                sendToMonitor=True,
                 ready=ready,
                 stdoutQueue=self.StdoutManager.queue)
 
@@ -3266,46 +3322,61 @@ him know. Otherwise, I had nothing to do with it.
             else:
                 videoWriteEnable = True
 
-            if p["triggerMode"] == "SimpleContinuous":
-                gpuOk = (gpuCount < p['maxGPUVEnc'])
-                if p['maxGPUVEnc'] > 0 and not gpuOk:
-                    # Some GPU video encoder sessions requested, but not enough for all cameras.
-                    self.log('Warning: Cannot use GPU acceleration for all cameras - not enough GPU VEnc sessions allowed.')
-                videoWriteProcess = SimpleVideoWriter(
-                    camSerial=camSerial,
-                    videoDirectory=videoDirectory,
-                    videoBaseFileName=videoBaseFileName,
-                    imageQueue=videoAcquireProcess.imageQueueReceiver,
-                    frameRate=self.actualVideoFrequency,
-                    requestedFrameRate=p["videoFrequency"],
-                    mergeMessageQueue=mergeMsgQueue,
-                    videoLength=p["recordTime"],
-                    daySubfolders=p['daySubfolders'],
-                    verbose=self.videoWriteVerbose,
-                    stdoutQueue=self.StdoutManager.queue,
-                    gpuVEnc=gpuOk,
-                    scheduleEnabled=p['scheduleEnabled'],
-                    scheduleStartTime=p['scheduleStartTime'],
-                    scheduleStopTime=p['scheduleStopTime'],
-                    enableWrite=videoWriteEnable
-                    )
-                gpuCount += 1
-            elif p["triggerMode"] == 'None':
+            if not createWriters:
                 videoWriteProcess = None
             else:
-                videoWriteProcess = VideoWriter(
-                    camSerial=camSerial,
-                    videoDirectory=videoDirectory,
-                    videoBaseFileName=videoBaseFileName,
-                    imageQueue=videoAcquireProcess.imageQueueReceiver,
-                    frameRate=self.actualVideoFrequency,
-                    requestedFrameRate=p["videoFrequency"],
-                    mergeMessageQueue=mergeMsgQueue,
-                    bufferSizeSeconds=p["bufferSizeSeconds"],
-                    daySubfolders=p['daySubfolders'],
-                    verbose=self.videoWriteVerbose,
-                    stdoutQueue=self.StdoutManager.queue
-                    )
+                if p["triggerMode"] == "SimpleContinuous":
+                    gpuOk = (gpuCount < p['maxGPUVEnc'])
+
+                    if camSerial in p['gpuVideoCompressionArgs']:
+                        gpuCompressionArgs = p['gpuVideoCompressionArgs']
+                    else:
+                        gpuCompressionArgs = None
+                    if camSerial in p['cpuVideoCompressionArgs']:
+                        cpuCompressionArgs = p['cpuVideoCompressionArgs']
+                    else:
+                        cpuCompressionArgs = None
+
+                    if p['maxGPUVEnc'] > 0 and not gpuOk:
+                        # Some GPU video encoder sessions requested, but not enough for all cameras.
+                        self.log('Warning: Cannot use GPU acceleration for all cameras - not enough GPU VEnc sessions allowed.')
+                    videoWriteProcess = SimpleVideoWriter(
+                        camSerial=camSerial,
+                        videoDirectory=videoDirectory,
+                        videoBaseFileName=videoBaseFileName,
+                        imageQueue=videoAcquireProcess.imageQueueReceiver,
+                        frameRate=self.actualVideoFrequency,
+                        requestedFrameRate=p["videoFrequency"],
+                        mergeMessageQueue=mergeMsgQueue,
+                        videoLength=p["recordTime"],
+                        daySubfolders=p['daySubfolders'],
+                        verbose=self.videoWriteVerbose,
+                        stdoutQueue=self.StdoutManager.queue,
+                        gpuVEnc=gpuOk,
+                        scheduleEnabled=p['scheduleEnabled'],
+                        scheduleStartTime=p['scheduleStartTime'],
+                        scheduleStopTime=p['scheduleStopTime'],
+                        enableWrite=videoWriteEnable,
+                        gpuCompressionArgs=gpuCompressionArgs,
+                        cpuCompressionArgs=cpuCompressionArgs,
+                        )
+                    gpuCount += 1
+                elif p["triggerMode"] == 'None':
+                    videoWriteProcess = None
+                else:
+                    videoWriteProcess = VideoWriter(
+                        camSerial=camSerial,
+                        videoDirectory=videoDirectory,
+                        videoBaseFileName=videoBaseFileName,
+                        imageQueue=videoAcquireProcess.imageQueueReceiver,
+                        frameRate=self.actualVideoFrequency,
+                        requestedFrameRate=p["videoFrequency"],
+                        mergeMessageQueue=mergeMsgQueue,
+                        bufferSizeSeconds=p["bufferSizeSeconds"],
+                        daySubfolders=p['daySubfolders'],
+                        verbose=self.videoWriteVerbose,
+                        stdoutQueue=self.StdoutManager.queue
+                        )
             self.videoAcquireProcesses[camSerial] = videoAcquireProcess
             self.videoWriteProcesses[camSerial] = videoWriteProcess
 
@@ -3361,7 +3432,8 @@ him know. Otherwise, I had nothing to do with it.
                 sendMessage(self.audioTriggerProcess, (Messages.STARTANALYZE, None))
 
         if len(p["audioDAQChannels"]) > 0:
-            self.audioWriteProcess.start()
+            if self.audioWriteProcess is not None:
+                self.audioWriteProcess.start()
             self.audioAcquireProcess.start()
 
         # Start all video-related processes
@@ -3369,6 +3441,7 @@ him know. Otherwise, I had nothing to do with it.
             if self.videoWriteProcesses[camSerial] is not None:
                 self.videoWriteProcesses[camSerial].start()
             self.videoAcquireProcesses[camSerial].start()
+            print('starting video acquire', camSerial)
 
         # Start other processes
         if self.syncProcess is not None: self.syncProcess.start()
@@ -3571,7 +3644,8 @@ him know. Otherwise, I had nothing to do with it.
         camSerials = p["camSerials"]
         audioDAQChannels = p["audioDAQChannels"]
 
-        if (self.audioMonitorDocker.isDocked() and
+        if (self.audioMonitorDocker is not None and
+            self.audioMonitorDocker.isDocked() and
             len(audioDAQChannels) > 0 and
             self.audioMonitor is not None) or \
             (self.videoMonitorDocker.isDocked() and
@@ -3589,7 +3663,7 @@ him know. Otherwise, I had nothing to do with it.
         if self.videoMonitorDocker.isDocked():
             self.videoMonitorMasterFrame.grid(row=0, column=0, sticky=tk.NSEW)
 
-        if self.audioMonitorDocker.isDocked():
+        if self.audioMonitorDocker is not None and self.audioMonitorDocker.isDocked():
             self.audioMonitorDocker.docker.grid(row=1, column=0, sticky=tk.NSEW)
 #        self.audioMonitor.grid(row=1, column=0, sticky=tk.NSEW)
 
@@ -3603,10 +3677,11 @@ him know. Otherwise, I had nothing to do with it.
         self.acquisitionControlFrame.grid(   row=0, column=0, sticky=tk.NSEW)
         self.statusFrame.grid(               row=1, column=0, sticky=tk.NSEW)
         self.acquisitionParametersFrame.grid(row=2, column=0, sticky=tk.NSEW)
-        self.mergeFrame.grid(                row=3, column=0, sticky=tk.NSEW)
-        self.fileSettingsFrame.grid(         row=4, column=0, sticky=tk.NSEW)
-        self.scheduleFrame.grid(             row=5, column=0, sticky=tk.NSEW)
-        self.triggerFrame.grid(              row=6, column=0, sticky=tk.NSEW)
+        self.cameraConfigurationFrame.grid(       row=3, column=0, sticky=tk.NSEW)
+        self.mergeFrame.grid(                row=4, column=0, sticky=tk.NSEW)
+        self.fileSettingsFrame.grid(         row=5, column=0, sticky=tk.NSEW)
+        self.scheduleFrame.grid(             row=6, column=0, sticky=tk.NSEW)
+        self.triggerFrame.grid(              row=7, column=0, sticky=tk.NSEW)
 
         #### Children of self.statusFrame
         self.childStatusText.grid()
@@ -3621,6 +3696,7 @@ him know. Otherwise, I had nothing to do with it.
         self.haltAcquisitionButton.grid(      row=0, column=1, sticky=tk.NSEW)
         self.restartAcquisitionButton.grid(   row=0, column=2, sticky=tk.NSEW)
         self.shutDownAcquisitionButton.grid(  row=0, column=3, sticky=tk.NSEW)
+        self.previewButton.grid(              row=0, column=4, sticky=tk.NSEW)
 
         #### Children of self.acquisitionParametersFrame
         self.audioFrequencyFrame.grid(              row=1, column=0, sticky=tk.EW)
@@ -3644,6 +3720,9 @@ him know. Otherwise, I had nothing to do with it.
         self.writeEnableOnHWSignalCheckbutton.grid(row=0, column=1)
         self.selectAcquisitionHardwareButton.grid(  row=4, column=0, columnspan=4, sticky=tk.NSEW)
         self.acquisitionHardwareText.grid(          row=5, column=0, columnspan=4)
+
+        #### Children of self.acquisitionParametersFrame
+        self.cameraConfigurationPanel.grid(row=1, column=0)
 
         #### Children of self.mergeFrame
         self.mergeFilesCheckbutton.grid(            row=1, column=0, sticky=tk.NW)

@@ -372,7 +372,10 @@ class Camera:
         self.lastImageID = None
         self.startTime = None
         self.TLDeviceNodeMap = None
+        self.TLStreamNodeMap = None
+        self.TLNodeMap = None
         self.NodeMap = None
+
     def IsInitialized(self):
         return self.images is not None
     def IsAcquisitionStarted(self):
@@ -381,6 +384,7 @@ class Camera:
         # Not sure exactly what the difference is,
         #   but this is probably good enough.
         return self.IsAcquisitionStarted()
+
     def GetTLDeviceNodeMap(self):
         if not self.IsInitialized():
             raise RuntimeError('You must call Init and BeginAcquistion on camera before getting images.')
@@ -388,6 +392,28 @@ class Camera:
             self.TLDeviceNodeMap = NodeMap()
             self.TLDeviceNodeMap.AddNode('DeviceSerialNumber', self.serial, 'string')
         return self.TLDeviceNodeMap
+    def GetTLStreamNodeMap(self):
+        if not self.IsInitialized():
+            raise RuntimeError('You must call Init and BeginAcquistion on camera before getting images.')
+        if self.TLStreamNodeMap is None:
+            self.TLStreamNodeMap = NodeMap()
+            # self.TLStreamNodeMap.AddNode('DeviceSerialNumber', self.serial, 'string')
+        return self.TLStreamNodeMap
+    def GetTLNodeMap(self):
+        if not self.IsInitialized():
+            raise RuntimeError('You must call Init and BeginAcquistion on camera before getting images.')
+        if self.TLNodeMap is None:
+            self.TLNodeMap = NodeMap()
+            # self.TLNodeMap.AddNode('DeviceSerialNumber', self.serial, 'string')
+        return self.TLNodeMap
+    def GetNodeMap(self):
+        if not self.IsInitialized():
+            raise RuntimeError('You must call Init and BeginAcquistion on camera before getting images.')
+        if self.NodeMap is None:
+            self.NodeMap = NodeMap()
+            # self.NodeMap.AddNode('DeviceSerialNumber', self.serial, 'string')
+        return self.NodeMap
+
     def GetNodeMap(self):
         if not self.IsInitialized():
             raise RuntimeError('You must call Init and BeginAcquistion on camera before getting images.')
@@ -564,6 +590,15 @@ def CEnumerationPtr(node):
     return node.attribute
 def CCategoryPtr(node):
     return node.attribute
+def CValuePtr(node):
+    return node.attribute
+def CBasePtr(node):
+    return node.attribute
+def CRegisterPtr(node):
+    return node.attribute
+def CEnumEntryPtr(node):
+    return node.attribute
+
 
 intfIString = 'intfIString'
 intfIInteger = 'intfIInteger'
@@ -572,6 +607,10 @@ intfIBoolean = 'intfIBoolean'
 intfICommand = 'intfICommand'
 intfIEnumeration = 'intfIEnumeration'
 intfICategory = 'intfICategory'
+intfIValue = 'value',
+intfIBase = 'base',
+intfIRegister = 'register',
+intfIEnumEntry = 'enumEntry',
 
 def IsAvailable(nodeAttribute):
     return True

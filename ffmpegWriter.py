@@ -4,8 +4,18 @@ import warnings
 
 FFMPEG_EXE = shutil.which('ffmpeg')
 
+DEFAULT_CPU_COMPRESSION_ARGS = [
+    '-c:v', 'libx264', '-preset', 'fast', '-crf', '23'
+    ]
+DEFAULT_GPU_COMPRESSION_ARGS = [
+    '-c:v', 'h264_nvenc', '-preset', 'fast', '-cq', '32'
+    ]
+
 class ffmpegWriter():
-    def __init__(self, filename, frameType, verbose=1, fps=30, shape=None, input_pixel_format="bayer_rggb8", output_pixel_format="rgb0", gpuVEnc=False):
+    def __init__(self, filename, frameType, verbose=1, fps=30, shape=None,
+                input_pixel_format="bayer_rggb8", output_pixel_format="rgb0",
+                gpuVEnc=False, gpuCompressionArgs=DEFAULT_GPU_COMPRESSION_ARGS,
+                cpuCompressionArgs=DEFAULT_CPU_COMPRESSION_ARGS):
         # You can specify the image shape at initialization, or when you write
         #   the first frame (the shape parameter is ignored for subsequent
         #   frames), or not at all, and hope we can figure it out.
@@ -19,12 +29,16 @@ class ffmpegWriter():
         self.input_pixel_format = input_pixel_format
         self.output_pixel_format = output_pixel_format
         self.gpuVEnc = gpuVEnc
+        self.gpuCompressionArgs = gpuCompressionArgs
+        self.cpuCompressionArgs = cpuCompressionArgs
 
     def write(self, frame, shape=None):
         # frame should be an RGB PIL image
-        # or a numpy array (of the format returned by calling np.asarray(image) on a RGB PIL image
+        #   or a numpy array (of the format returned by calling
+        #   np.asarray(image) on a RGB PIL image
         # All frames should be the same size and format
-        # If shape is given (as a (width, height) tuple), it will be used. If not, we will try to figure out the image shape.
+        # If shape is given (as a (width, height) tuple), it will be used. If
+        #   not, we will try to figure out the image shape.
         if self.ffmpegProc is None:
             if self.verbose >= 3:
                 print("STARTING NEW FFMPEG PROCESS!")
@@ -45,7 +59,6 @@ class ffmpegWriter():
                     shape = self.shape
                 w, h = shape
             shapeArg = '{w}x{h}'.format(w=w, h=h)
-#            self.ffmpegProc = subprocess.Popen([FFMPEG_EXE, '-hide_banner', '-y', '-v', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb8', '-s', shapeArg, '-r', str(self.fps), '-i', 'pipe:', '-c:v', 'libx264', '-tune', 'zerolatency', '-preset', 'ultrafast', '-an', self.filename], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
 
             if self.verbose <= 0:
                 ffmpegVerbosity = 'quiet'
@@ -61,30 +74,24 @@ class ffmpegWriter():
                 ffmpegCommand = [FFMPEG_EXE, '-y',
                     '-vsync', 'passthrough', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
                     '-v', ffmpegVerbosity, '-f', 'rawvideo', '-c:v', 'rawvideo',
-                    '-pix_fmt', self.input_pixel_format, '-s', shapeArg, '-thread_queue_size', '1024',
-                    '-r', str(self.fps), '-i', '-', '-c:v', 'h264_nvenc', '-preset', 'fast',
-                    '-cq', '32',
-                    '-pix_fmt', self.output_pixel_format, '-an', self.filename]
+                    '-pix_fmt', self.input_pixel_format, '-s', shapeArg, '-thread_queue_size', '128',
+                    '-r', str(self.fps), '-i', '-', *self.gpuCompressionArgs, '-pix_fmt', self.output_pixel_format, '-an',
+                    self.filename]
             else:
                 # Without GPU acceleration
                 ffmpegCommand = [FFMPEG_EXE, '-y',
                     '-vsync', 'passthrough', '-v', ffmpegVerbosity, '-f', 'rawvideo',
                     '-c:v', 'rawvideo', '-pix_fmt', self.input_pixel_format,
-                    '-s', shapeArg, '-r', str(self.fps), '-thread_queue_size', '1024',
-                     '-i', '-',
-                    '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
-                    '-pix_fmt', self.output_pixel_format, '-an', self.filename]
-            # print('Command:')
-            # print(ffmpegCommand)
+                    '-s', shapeArg, '-r', str(self.fps), '-thread_queue_size', '128',
+                     '-i', '-', *self.cpuCompressionArgs,
+                    '-pix_fmt', self.output_pixel_format, '-an',
+                    self.filename]
+
             if self.verbose >= 2:
                 print('ffmpeg command:')
                 print(ffmpegCommand)
             self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
-            # self.ffmpegProc = subprocess.Popen([FFMPEG_EXE, '-hide_banner', '-y',
-            #     '-v', 'error', '-f', 'rawvideo', '-vcodec', 'rawvideo',
-            #     '-pix_fmt', self.input_pixel_format, '-s', shapeArg,
-            #     '-r', str(self.fps), '-i', '-', '-vcodec', 'mpeg4',
-            #     '-pix_fmt', self.output_pixel_format, '-an', self.filename], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
+
         if self.frameType == 'image':
             bytes = frame.tobytes()
         elif self.frameType == 'numpy':

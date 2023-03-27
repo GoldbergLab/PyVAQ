@@ -2176,6 +2176,9 @@ class AudioAcquirer(StateMachineProcess):
                 channelNames = [],                  # Channel name for analog input (microphone signal)
                 channelConfig = "DEFAULT",
                 syncChannel = None,                 # Channel name for synchronization source
+                sendToWriter=True,
+                sendToMonitor=True,
+                sendToAnalysis=True,
                 ready=None,                         # Synchronization barrier to ensure everyone's ready before beginning
                 copyToMonitoringQueue=True,         # Should images be also sent to the monitoring queue?
                 copyToAnalysisQueue=True,           # Should images be also sent to the analysis queue?
@@ -2190,10 +2193,14 @@ class AudioAcquirer(StateMachineProcess):
         self.audioFrequency = None
         self.acquireTimeout = 1 #2*chunkSize / self.audioFrequency
         self.audioQueue = audioQueue
+        self.sendToWriter = sendToWriter
+        self.sendToMonitor = sendToMonitor
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
-        self.monitorQueue = mp.Queue()      # A multiprocessing queue to send data to the UI to monitor the audio
-        self.analysisQueue = mp.Queue()    # A multiprocessing queue to send data to the audio triggerer process for analysis
+        if sendToMonitor:
+            self.monitorQueue = mp.Queue()      # A multiprocessing queue to send data to the UI to monitor the audio
+        if sendToAnalysis:
+            self.analysisQueue = mp.Queue()    # A multiprocessing queue to send data to the audio triggerer process for analysis
         # if len(self.monitorQueue) > 0:
         #     self.monitorQueue.cancel_join_thread()
         self.chunkSize = chunkSize
@@ -2249,6 +2256,17 @@ class AudioAcquirer(StateMachineProcess):
                 elif self.state == States.INITIALIZING:
                     # DO STUFF
                     self.audioFrequency = None
+                    if self.startTimeSharedValue is None:
+                        # no need to get start time
+                        gotStartTime = True
+                    else:
+                        gotStartTime = False
+                        startTime = -1
+                    if self.ready is None:
+                        # No barrier to pass
+                        passedBarrier = True
+                    else:
+                        passedBarrier = False
 
                     # Read actual audio frequency from the Synchronizer process
                     if self.audioFrequencyVar.value == -1:
@@ -2274,7 +2292,6 @@ class AudioAcquirer(StateMachineProcess):
                             active_edge=nidaqmx.constants.Edge.RISING,
                             sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
                             samps_per_chan=self.chunkSize)
-                        startTime = None
                         sampleCount = 0
 
                     # CHECK FOR MESSAGES
@@ -2298,23 +2315,36 @@ class AudioAcquirer(StateMachineProcess):
 # AudioAcquirer: ****************** READY *********************************
                 elif self.state == States.READY:
                     # DO STUFF
-                    try:
-                        if self.ready is not None:
-                            self.ready.wait()
-                        passedBarrier = True
-                    except BrokenBarrierError:
-                        passedBarrier = False
-                        if self.verbose >= 2: self.log("No simultaneous start - retrying")
-                        time.sleep(0.1)
 
-                    if self.verbose >= 3: self.log('Passed barrier.')
+                    # Check if other processes are synced by waiting for barrier
+                    if not passedBarrier:
+                        try:
+                            if self.ready is not None:
+                                self.ready.wait()
+                            passedBarrier = True
+                            if self.verbose >= 2: self.log('Passed barrier.')
+                        except BrokenBarrierError:
+                            passedBarrier = False
+                            if self.verbose >= 2: self.log("No simultaneous start - retrying")
+                            time.sleep(0.1)
+
+                    # Get timestamp of first audio chunk acquisition
+                    if not gotStartTime:
+                        if self.verbose >= 2: self.log("Getting start time from sync process...")
+                        startTime = self.startTimeSharedValue.value
+                        if startTime == -1:
+                            gotStartTime = False
+                            if self.verbose >= 2: self.log('No start time from sync process yet.')
+                        else:
+                            gotStartTime = True
+                            if self.verbose >= 2: self.log("Got start time from sync process: "+str(startTime))
 
                     # CHECK FOR MESSAGES
-                    msg, arg = self.checkMessages(block=False)
+                    msg, arg = self.checkMessages(block=True, timeout=0.1)
 
                     # CHOOSE NEXT STATE
                     if msg in ['', Messages.START]:
-                        if not passedBarrier:
+                        if not passedBarrier or not gotStartTime:
                             self.nextState = States.READY
                         else:
                             self.nextState = States.ACQUIRING
@@ -2334,20 +2364,12 @@ class AudioAcquirer(StateMachineProcess):
                             number_of_samples_per_channel=self.chunkSize,
                             timeout=self.acquireTimeout)
 
-                        # Get timestamp of first audio chunk acquisition
-                        if startTime is None:
-                            if self.verbose >= 1: self.log("Getting start time from sync process...")
-                            while startTime == -1 or startTime is None:
-                                startTime = self.startTimeSharedValue.value
-                            if self.verbose >= 1: self.log("Got start time from sync process: "+str(startTime))
-#                            startTime = time.time_ns() / 1000000000 - self.chunkSize / self.audioFrequency
-
                         chunkStartTime = startTime + sampleCount / self.audioFrequency
                         sampleCount += self.chunkSize
                         if self.verbose >= 3: self.log('# samples:'+str(sampleCount))
                         processedData = AudioAcquirer.rescaleAudio(data)
                         audioChunk = AudioChunk(chunkStartTime = chunkStartTime, audioFrequency = self.audioFrequency, data = processedData, idspace=self.ID)
-                        if self.audioQueue is not None:
+                        if self.sendToWriter and self.audioQueue is not None:
                             self.audioQueue.put(audioChunk)              # If a data queue is provided, queue up the new data
                         else:
                             if self.verbose >= 2: self.log('' + processedData)
@@ -2361,10 +2383,23 @@ class AudioAcquirer(StateMachineProcess):
                             self.analysisQueue.put((chunkStartTime, monitorDataCopy))
 
                         if self.verbose >= 3:
+                            if self.audioQueue is None:
+                                audioQueueSize = None
+                            else:
+                                audioQueueSize = self.audioQueue.qsize()
+                            if self.monitorQueue is None:
+                                monitorQueueSize = None
+                            else:
+                                monitorQueueSize = self.monitorQueue.qsize()
+                            if self.analysisQueue is None:
+                                analysisQueueSize = None
+                            else:
+                                analysisQueueSize = self.analysisQueue.qsize()
                             self.log('Queue sizes:')
-                            self.log('        Main:', self.audioQueue.qsize())
-                            self.log('  Monitoring:', self.monitorQueue.qsize())
-                            self.log('    Analysis:', self.analysisQueue.qsize())
+                            self.log('        Main:', audioQueueSize)
+                            self.log('  Monitoring:', monitorQueueSize)
+                            self.log('    Analysis:', analysisQueueSize)
+
                     except nidaqmx.errors.DaqError as error:
                         if self.verbose >= 0:
                             if error.error_type == nidaqmx.error_codes.DAQmxErrors.OPERATION_TIMED_OUT:
@@ -3261,6 +3296,8 @@ class VideoAcquirer(StateMachineProcess):
                 requestedFrameRate=None,
                 # acquisitionBufferSize=100,
                 bufferSizeSeconds=2.2,
+                sendToWriter=True,
+                sendToMonitor=True,
                 monitorFrameRate=15,
                 ready=None,                        # Synchronization barrier to ensure everyone's ready before beginning
                 **kwargs):
@@ -3285,36 +3322,44 @@ class VideoAcquirer(StateMachineProcess):
         self.pixelFormat = psu.getPixelFormat(camSerial=self.camSerial)
         if self.verbose >= 2: print('Camera pixel format is:', self.pixelFormat)
 
-        self.imageQueue = SharedImageSender(
-            width=videoWidth,
-            height=videoHeight,
-            verbose=self.verbose,
-            pixelFormat=self.pixelFormat,
-            outputType='bytes',
-            outputCopy=False,
-            lockForOutput=False,
-            maxBufferSize=self.bufferSize,
-            channels=self.nChannels,
-            name=self.camSerial+'____main',
-            allowOverflow=False
-        )
-        if self.verbose >= 2: self.log("Creating shared image sender with max buffer size:", self.bufferSize)
-        self.imageQueueReceiver = self.imageQueue.getReceiver()
+        if sendToWriter:
+            self.imageQueue = SharedImageSender(
+                width=videoWidth,
+                height=videoHeight,
+                verbose=self.verbose,
+                pixelFormat=self.pixelFormat,
+                outputType='bytes',
+                outputCopy=False,
+                lockForOutput=False,
+                maxBufferSize=self.bufferSize,
+                channels=self.nChannels,
+                name=self.camSerial+'____main',
+                allowOverflow=False
+            )
+            if self.verbose >= 2: self.log("Creating shared image sender with max buffer size:", self.bufferSize)
+            self.imageQueueReceiver = self.imageQueue.getReceiver()
+        else:
+            self.imageQueue = None
+            self.imageQueueReceiver = None
 
-        self.monitorImageSender = SharedImageSender(
-            width=videoWidth,
-            height=videoHeight,
-            verbose=self.verbose,
-            outputType='PIL',
-            outputCopy=False,
-            lockForOutput=False,
-            maxBufferSize=1,
-            channels=self.nChannels,
-            name=self.camSerial+'_monitor',
-            allowOverflow=True
-        )
-        self.monitorImageReceiver = self.monitorImageSender.getReceiver()
-#        self.monitorImageQueue.cancel_join_thread()
+        if sendToMonitor:
+            self.monitorImageSender = SharedImageSender(
+                width=videoWidth,
+                height=videoHeight,
+                verbose=self.verbose,
+                outputType='PIL',
+                outputCopy=False,
+                lockForOutput=False,
+                maxBufferSize=1,
+                channels=self.nChannels,
+                name=self.camSerial+'_monitor',
+                allowOverflow=True
+            )
+            self.monitorImageReceiver = self.monitorImageSender.getReceiver()
+    #        self.monitorImageQueue.cancel_join_thread()
+        else:
+            self.monitorImageSender = None
+            self.monitorImageReceiver = None
         self.monitorMasterFrameRate = monitorFrameRate
         self.ready = ready
         self.frameStopwatch = Stopwatch()
@@ -3325,8 +3370,10 @@ class VideoAcquirer(StateMachineProcess):
     def run(self):
         super().run()
 
-        self.imageQueue.setupBuffers()
-        self.monitorImageSender.setupBuffers()
+        if self.imageQueue is not None:
+            self.imageQueue.setupBuffers()
+        if self.monitorImageSender is not None:
+            self.monitorImageSender.setupBuffers()
 
         msg = ''; arg = None
 
@@ -3359,7 +3406,28 @@ class VideoAcquirer(StateMachineProcess):
 # VideoAcquirer: ****************** INITIALIZING *********************************
                 elif self.state == States.INITIALIZING:
                     # DO STUFF
+                    cam = None
+                    camList = None
+                    system = None
+                    if self.startTimeSharedValue is None:
+                        # no need to get start time
+                        gotStartTime = True
+                    else:
+                        gotStartTime = False
+                    if self.ready is None:
+                        # No barrier to pass
+                        passedBarrier = True
+                    else:
+                        passedBarrier = False
+
                     self.frameRate = None
+                    imageCount = 0
+                    im = imp = imageResult = None
+                    startTime = -1
+                    frameTime = None
+                    imageID = None
+                    lastImageID = None
+                    droppedFrameCount = 0
 
                     # Read actual frame rate from the Synchronizer process
                     if self.frameRateVar.value == -1:
@@ -3367,27 +3435,19 @@ class VideoAcquirer(StateMachineProcess):
                         time.sleep(0.1)
                     else:
                         self.frameRate = self.frameRateVar.value
-                        if self.verbose > 2: self.log("Initializing camera...")
+                        if self.verbose >= 2: self.log("Initializing camera...")
                         system = PySpin.System.GetInstance()
                         camList = system.GetCameras()
                         cam = camList.GetBySerial(self.camSerial)
                         cam.Init()
 
-                        nodemap = cam.GetNodeMap()
-                        self.setCameraAttributes(nodemap, self.acquireSettings)
-                        if self.verbose > 2: self.log("...camera initialization complete")
+                        psu.applyCameraConfiguration(self.acquireSettings, cam=cam)
+                        if self.verbose >= 2: self.log("...camera initialization complete")
 
                         monitorFramePeriod = 1.0/self.monitorMasterFrameRate
                         if self.verbose >= 1: self.log("Monitoring with period", monitorFramePeriod)
                         thisTime = 0
                         lastTime = time.time()
-                        imageCount = 0
-                        im = imp = imageResult = None
-                        startTime = None
-                        frameTime = None
-                        imageID = None
-                        lastImageID = None
-                        droppedFrameCount = 0
 
                     # CHECK FOR MESSAGES
                     msg, arg = self.checkMessages(block=False)
@@ -3413,23 +3473,35 @@ class VideoAcquirer(StateMachineProcess):
                     if not cam.IsStreaming():
                         cam.BeginAcquisition()
 
-                    try:
-                        if self.ready is not None:
-                            self.ready.wait()
-                        passedBarrier = True
-                    except BrokenBarrierError:
-                        passedBarrier = False
-                        if self.verbose >= 2: self.log("No simultaneous start - retrying")
-                        time.sleep(0.1)
+                    # Check if other processes are synced by waiting for barrier
+                    if not passedBarrier:
+                        try:
+                            if self.ready is not None:
+                                self.ready.wait()
+                            passedBarrier = True
+                            if self.verbose >= 2: self.log('Passed barrier')
+                        except BrokenBarrierError:
+                            passedBarrier = False
+                            if self.verbose >= 2: self.log("No simultaneous start - retrying")
+                            time.sleep(0.1)
 
-                    if self.verbose >= 3: self.log('Passed barrier')
+                    # Get timestamp of first image acquisition
+                    if not gotStartTime:
+                        if self.verbose >= 2: self.log("Getting start time from sync process...")
+                        startTime = self.startTimeSharedValue.value
+                        if startTime == -1:
+                            gotStartTime = False
+                            if self.verbose >= 2: self.log('No start time from sync process yet.')
+                        else:
+                            gotStartTime = True
+                            if self.verbose >= 2: self.log("Got start time from sync process: "+str(startTime))
 
                     # CHECK FOR MESSAGES
-                    msg, arg = self.checkMessages(block=False)
+                    msg, arg = self.checkMessages(block=True, timeout=0.1)
 
                     # CHOOSE NEXT STATE
                     if msg in ['', Messages.START]:
-                        if not passedBarrier:
+                        if not passedBarrier or not gotStartTime:
                             self.nextState = States.READY
                         else:
                             self.nextState = States.ACQUIRING
@@ -3454,14 +3526,6 @@ class VideoAcquirer(StateMachineProcess):
                             if self.verbose >= 3:
                                 self.acquireStopwatch.click()
                                 self.log("Get image from camera time: {t}".format(t=self.acquireStopwatch.period()))
-
-                            # Get timestamp of first image acquisition
-                            if startTime is None:
-                                if self.verbose >= 1: self.log("Getting start time from sync process...")
-                                while startTime == -1 or startTime is None:
-                                    startTime = self.startTimeSharedValue.value
-                                if self.verbose >= 1: self.log("Got start time from sync process: "+str(startTime))
-    #                            startTime = time.time_ns() / 1000000000
 
                             if self.verbose >= 3:
                                 # Time frames, as an extra check
@@ -3496,10 +3560,12 @@ class VideoAcquirer(StateMachineProcess):
 
                             # Put image into image queue
                             if self.verbose >= 3: self.log("bytes = "+str(imageResult.GetNDArray()[0:10, 0]))
-                            self.imageQueue.put(imarray=imageResult.GetNDArray(), metadata={'frameTime':frameTime, 'imageID':imageID})
-                            if self.verbose >= 3:
-                                self.log("Pushed image into buffer")
-                                self.log('Queue size={qsize}, maxsize={maxsize}'.format(qsize=self.imageQueue.qsize(), maxsize=self.imageQueue.maxBufferSize))
+
+                            if self.imageQueue is not None:
+                                self.imageQueue.put(imarray=imageResult.GetNDArray(), metadata={'frameTime':frameTime, 'imageID':imageID})
+                                if self.verbose >= 3:
+                                    self.log("Pushed image into buffer")
+                                    self.log('Queue size={qsize}, maxsize={maxsize}'.format(qsize=self.imageQueue.qsize(), maxsize=self.imageQueue.maxBufferSize))
 
                             if self.monitorImageSender is not None:
                                 # Put the occasional image in the monitor queue for the UI
@@ -3604,34 +3670,6 @@ class VideoAcquirer(StateMachineProcess):
         self.flushStdout()
         self.updatePublishedState(States.DEAD)
 
-    def setCameraAttribute(self, nodemap, attributeName, attributeValue, type='enum'):
-        # Set camera attribute. Return True if successful, False otherwise.
-        if self.verbose >= 1: self.log('Setting', attributeName, 'to', attributeValue, 'as', type)
-        nodeAttribute = psu.nodeAccessorTypes[type](nodemap.GetNode(attributeName))
-        if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsWritable(nodeAttribute):
-            if self.verbose >= 0: self.log('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (enum retrieval). Aborting...')
-            return False
-
-        if type == 'enum':
-            # Retrieve entry node from enumeration node
-            nodeAttributeValue = nodeAttribute.GetEntryByName(attributeValue)
-            if not PySpin.IsAvailable(nodeAttributeValue) or not PySpin.IsReadable(nodeAttributeValue):
-                if self.verbose >= 0: self.log('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (entry retrieval). Aborting...')
-                return False
-
-            # Set value
-            attributeValue = nodeAttributeValue.GetValue()
-            nodeAttribute.SetIntValue(attributeValue)
-        else:
-            nodeAttribute.SetValue(attributeValue)
-        return True
-
-    def setCameraAttributes(self, nodemap, attributeValueTriplets):
-        for attribute, value, type in attributeValueTriplets:
-            result = self.setCameraAttribute(nodemap, attribute, value, type=type)
-            if not result:
-                self.log("Failed to set", str(attribute), " to ", str(value))
-
 class SimpleVideoWriter(StateMachineProcess):
     # Human-readable states
     stateList = {
@@ -3652,7 +3690,9 @@ class SimpleVideoWriter(StateMachineProcess):
         'enableWrite',
         'scheduleEnabled',
         'scheduleStartTime',
-        'scheduleStopTime'
+        'scheduleStopTime',
+        'gpuCompressionArgs',
+        'cpuCompressionArgs'
         ]
 
     def __init__(self,
@@ -3670,6 +3710,8 @@ class SimpleVideoWriter(StateMachineProcess):
                 scheduleEnabled=False,
                 scheduleStartTime=None,
                 scheduleStopTime=None,
+                gpuCompressionArgs=None,
+                cpuCompressionArgs=None,
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
         self.camSerial = camSerial
@@ -3692,6 +3734,8 @@ class SimpleVideoWriter(StateMachineProcess):
         self.scheduleEnabled = scheduleEnabled
         self.scheduleStartTime = scheduleStartTime
         self.scheduleStopTime = scheduleStopTime
+        self.gpuCompressionArgs = gpuCompressionArgs
+        self.cpuCompressionArgs = cpuCompressionArgs
 
     def run(self):
         super().run()
@@ -4594,11 +4638,11 @@ class ContinuousTriggerer(StateMachineProcess):
                     startTime = None
                     lastTriggerTime = None
 
-                    if self.verbose >= 1: self.log("Getting start time from sync process...")
+                    if self.verbose >= 2: self.log("Getting start time from sync process...")
                     while startTime == -1 or startTime is None:
                         # Wait until Synchronizer process has a start time
                         startTime = self.startTimeSharedValue.value
-                    if self.verbose >= 1: self.log("Got start time from sync process: "+str(startTime))
+                    if self.verbose >= 2: self.log("Got start time from sync process: "+str(startTime))
 
                     # CHECK FOR MESSAGES
                     msg, arg = self.checkMessages(block=False)
