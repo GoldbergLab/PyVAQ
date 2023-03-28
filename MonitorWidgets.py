@@ -141,7 +141,7 @@ class DigitalMonitor(BaseMonitor):
             self.updateDataImage()
 
     def updateDataImage(self):
-        dataImageArray = np.repeat(np.expand_dims(self.data, 2), 3, axis=2)
+        dataImageArray = (np.repeat(np.expand_dims(self.data, 2), 3, axis=2) * 200).astype('uint8')
 
         if self.viewerChannelCount is None or self.viewerChannelCount != self.data.shape[0]:
             self.viewerChannelCount = self.data.shape[0]
@@ -150,12 +150,12 @@ class DigitalMonitor(BaseMonitor):
 
             stripeIntensity = 50
             self.stripes = np.expand_dims(((np.array(range(self.viewerChannelCount)) % 2) * stripeIntensity).astype('uint8'), [1, 2])
-            self.stripes = np.concatenate((stripes*0, stripes*0, stripes), axis=2)
+            self.stripes = np.concatenate((self.stripes*0, self.stripes*0, self.stripes), axis=2)
 
             font = ImageFont.truetype('.\Resources\segoeuib.ttf', int(self.channelHeight * 0.7))
 
             self.labelImage = Image.new('RGBA', (self.viewWidth, self.viewerChannelCount * self.channelHeight))
-            labelDraw = ImageDraw.Draw(labelImage)
+            labelDraw = ImageDraw.Draw(self.labelImage)
             for k in range(self.viewerChannelCount):
                 labelDraw.text((int(self.channelHeight/4), k*self.channelHeight), str(k), font=font, fill='#ff0000')
 
