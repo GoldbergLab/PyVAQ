@@ -107,6 +107,8 @@ class DigitalMonitor(BaseMonitor):
         self.viewerChannelCount = None
         self.channelHeight = 20
         self.viewWidth = 600
+        self.stripes = None
+        self.labelImage = None
 
         self.updateWidgets()
 
@@ -147,20 +149,20 @@ class DigitalMonitor(BaseMonitor):
             # (Re)create the striping pattern and the channel numbers
 
             stripeIntensity = 50
-            stripes = np.expand_dims(((np.array(range(self.viewerChannelCount)) % 2) * stripeIntensity).astype('uint8'), [1, 2])
-            stripes = np.concatenate((stripes*0, stripes*0, stripes), axis=2)
+            self.stripes = np.expand_dims(((np.array(range(self.viewerChannelCount)) % 2) * stripeIntensity).astype('uint8'), [1, 2])
+            self.stripes = np.concatenate((stripes*0, stripes*0, stripes), axis=2)
 
             font = ImageFont.truetype('.\Resources\segoeuib.ttf', int(self.channelHeight * 0.7))
 
-            labelImage = Image.new('RGBA', (self.viewWidth, self.viewerChannelCount * self.channelHeight))
+            self.labelImage = Image.new('RGBA', (self.viewWidth, self.viewerChannelCount * self.channelHeight))
             labelDraw = ImageDraw.Draw(labelImage)
             for k in range(self.viewerChannelCount):
                 labelDraw.text((int(self.channelHeight/4), k*self.channelHeight), str(k), font=font, fill='#ff0000')
 
-        dataImageArray = dataImageArray + stripes
+        dataImageArray = dataImageArray + self.stripes
 
         dataImage = Image.fromarray(dataImageArray, mode='RGB').resize((self.viewWidth, self.viewerChannelCount*self.channelHeight), resample=Image.NEAREST)
-        dataImage.paste(labelImage, mask=labelImage)
+        dataImage.paste(self.labelImage, mask=self.labelImage)
 
         self.currentImage = ImageTk.PhotoImage(dataImage)
         if self.imageID is None:
