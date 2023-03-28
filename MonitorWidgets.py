@@ -1,7 +1,7 @@
 import tkinter as tk
 import tkinter.ttk as ttk
 import numpy as np
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageDraw, ImageFont
 #from SharedImageQueue import SharedImageSender
 from scipy.signal import butter, lfilter
 from matplotlib.backends.backend_tkagg import (
@@ -104,6 +104,10 @@ class DigitalMonitor(BaseMonitor):
 
         self.data = None
 
+        self.viewerChannelCount = None
+        self.channelHeight = 20
+        self.viewWidth = 600
+
         self.updateWidgets()
 
     def addDigitalData(self, newData):
@@ -132,12 +136,37 @@ class DigitalMonitor(BaseMonitor):
             self.data = np.roll(self.data, -newData.shape[1], axis=1)
             self.data[:, -newData.shape[1]:] = newData
 
-            image = Image.fromarray(self.data).resize((600, 200), resample=Image.NEAREST)
-            self.currentImage = ImageTk.PhotoImage(image)
-            if self.imageID is None:
-                self.imageID = self.canvas.create_image((0, 0), image=self.currentImage, anchor=tk.NW)
-            else:
-                self.canvas.itemconfig(self.imageID, image=self.currentImage)
+            self.updateDataImage()
+
+    def updateDataImage(self):
+        dataImageArray = np.repeat(np.expand_dims(self.data, 2), 3, axis=2)
+
+        if self.viewerChannelCount is None or self.viewerChannelCount != self.data.shape[0]:
+            self.viewerChannelCount = self.data.shape[0]
+
+            # (Re)create the striping pattern and the channel numbers
+
+            stripeIntensity = 50
+            stripes = np.expand_dims(((np.array(range(self.viewerChannelCount)) % 2) * stripeIntensity).astype('uint8'), [1, 2])
+            stripes = np.concatenate((stripes*0, stripes*0, stripes), axis=2)
+
+            font = ImageFont.truetype('.\Resources\segoeuib.ttf', int(self.channelHeight * 0.7))
+
+            labelImage = Image.new('RGBA', (self.viewWidth, self.viewerChannelCount * self.channelHeight))
+            labelDraw = ImageDraw.Draw(labelImage)
+            for k in range(self.viewerChannelCount):
+                labelDraw.text((int(self.channelHeight/4), k*self.channelHeight), str(k), font=font, fill='#ff0000')
+
+        dataImageArray = dataImageArray + stripes
+
+        dataImage = Image.fromarray(dataImageArray, mode='RGB').resize((self.viewWidth, self.viewerChannelCount*self.channelHeight), resample=Image.NEAREST)
+        dataImage.paste(labelImage, mask=labelImage)
+
+        self.currentImage = ImageTk.PhotoImage(dataImage)
+        if self.imageID is None:
+            self.imageID = self.canvas.create_image((0, 0), image=self.currentImage, anchor=tk.NW)
+        else:
+            self.canvas.itemconfig(self.imageID, image=self.currentImage)
 
     def updateChannels(self, channels):
         self.channels = channels
