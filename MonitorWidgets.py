@@ -146,6 +146,8 @@ class DigitalMonitor(BaseMonitor):
         if self.viewerChannelCount is None or self.viewerChannelCount != self.data.shape[0]:
             self.viewerChannelCount = self.data.shape[0]
 
+            self.canvas.config(height=self.viewerChannelCount * self.channelHeight)
+
             # (Re)create the striping pattern and the channel numbers
 
             stripeIntensity = 50
