@@ -27,13 +27,44 @@ with Image.open(r'Resources\NoImages_000.png') as NO_IMAGES_IMAGE:
     NO_IMAGES_IMAGE.load()
 
 class BaseMonitor(CollapsableFrame):
+    """A base class that other monitor classes inherit from.
+
+    This defines a GUI widget for viewing a data stream. It has subwidgets for
+        specifying where/how to write data files, for enabling/disabling the
+        viewer
+
+    Args:
+        *args (*): Arguments to pass to the CollapsableFrame parent class.
+        initialDirectory (str): Path to a directory to save data files to.
+            Defaults to ''.
+        initialBaseFileName (str): Base file name to save data files to.
+            Defaults to ''.
+        showFileWidgets (bool): A boolean flag indicating whether or not the
+            file widgets should be displayed. Defaults to True.
+        filePurposeText (str): A string that will be displayed to the user when
+            they open a window to select a new directory to save data files to.
+            Defaults to 'file writing'.
+        fileText (type): A string that will be displayed to the user as the
+            title of a window which they can open to select a new directory to
+            save data files to.
+        **kwargs (**): Keyword arguments to pass to the CollapsableFrame parent
+            class.
+
+    Attributes:
+        fileWidget (FileWritingEntry): A sub-widget to allow the user to specify
+            a base filename and directory for saving data files.
+        showFileWidgets
+
+    """
     def __init__(self, *args, initialDirectory='', initialBaseFileName='',
         showFileWidgets=True, filePurposeText='file writing',
         fileText='File Writing', **kwargs):
+        # Initialize parent class
         CollapsableFrame.__init__(self, *args, **kwargs)
 
         self.showFileWidgets = showFileWidgets
 
+        # Create file writing widget
         self.fileWidget = FileWritingEntry(
             self,
             defaultDirectory=initialDirectory,
@@ -42,19 +73,37 @@ class BaseMonitor(CollapsableFrame):
             text=fileText
             )
 
+        # Set up the tkinter variable to track whether the viewer is enabled or not
         self.enableViewerVar = tk.BooleanVar(); self.enableViewerVar.set(True); self.enableViewerVar.trace('w', self.updateEnableViewerCheckButton)
         self.enableViewerCheckButton = tk.Checkbutton(self, text="Enable viewer", variable=self.enableViewerVar, offvalue=False, onvalue=True)
         self.updateEnableViewerCheckButton()
 
+        # Set up the tkinter variable to track whether file writing is enabled or not
         self.enableWriteChangeHandler = lambda:None
         self.enableWriteVar = tk.BooleanVar(); self.enableWriteVar.set(True); self.enableWriteVar.trace('w', self.updateEnableWriteCheckButton)
         self.enableWriteCheckButton = tk.Checkbutton(self, text="Enable write", variable=self.enableWriteVar, offvalue=False, onvalue=True)
         self.updateEnableWriteCheckButton()
 
+        # Create the main inner container for data monitor widgets
         self.mainDisplayFrame = ttk.Frame(self)
 
+        self.collapseFunction = self.disableViewer
+        self.expandFunction = self.enableViewer
+
     def updateEnableWriteCheckButton(self, *args):
+        """Update the appearance of the enable write checkbox.
+
+        Args:
+            *args (*): Unused
+
+        Returns:
+            None
+
+        """
+
+        # Run any callbacks the user has requested when the state changes
         self.enableWriteChangeHandler()
+        # Set the checkbox color based on the enable write state
         if self.getEnableWrite():
             self.enableWriteCheckButton["fg"] = 'green'
         else:
@@ -62,6 +111,15 @@ class BaseMonitor(CollapsableFrame):
 
     def viewerEnabled(self):
         return self.enableViewerVar.get()
+
+    def enableViewer(self):
+        self.enableViewerVar.set(True)
+
+    def disableViewer(self):
+        self.enableViewerVar.set(False)
+
+    def toggleViewerEnable(self):
+        self.enableViewerVar.set(not self.enableViewerVar.get())
 
     def updateEnableViewerCheckButton(self, *args):
         if self.viewerEnabled():
