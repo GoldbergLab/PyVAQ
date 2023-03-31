@@ -4,13 +4,14 @@ import shutil
 import subprocess
 import NCFileUtilities as ncfu
 from StateMachineProcesses import extractBooleanDataFromDigitalArray
+from PostProcessingUtilities import loadChannelConfiguration
 
 FFMPEG_EXE = shutil.which('ffmpeg')
 
 # A script to split mutli-channel audio files into separate single-channel audio
 #   files, plus one file that has both stereo tracks mixed into one mono track
 
-def splitDigitalFilesInFolder(folderPaths, lineNumbers=[], lineNames=[], lineFolders=[], overwrite=False, dryRun=False, requireNumericalEndTag=True):
+def splitDigitalFilesInFolder(folderPaths, lineNumbers=[], lineNames=[], lineFolders=[], overwrite=False, dryRun=False, requireNumericalEndTag=True, signalPresentTag='P'):
     '''Loop through files in a folder and split multichannel digital .nc files
         into single channel .nc files
 
@@ -34,6 +35,8 @@ def splitDigitalFilesInFolder(folderPaths, lineNumbers=[], lineNames=[], lineFol
             a numerical end-tag to the filename is required. This will restrict
             the action of the script to audio files with the filename format
             produced by PyVAQ running SimpleDigitalWriter.
+        signalPresentTag - a string to tag the filename with if at least one
+            digital high detected in the file.
     '''
 
     if type(folderPaths) != type([]):
@@ -66,7 +69,7 @@ def splitDigitalFilesInFolder(folderPaths, lineNumbers=[], lineNames=[], lineFol
 
         try:
             index = int(index)
-            outNamePattern = '{baseName}_{{lineName}}_{index}.nc'.format(baseName=baseName, index=index)
+            outNamePattern = '{baseName}_{index}_{{lineName}}{{signalPresentTag}}.nc'.format(baseName=baseName, index=index)
         except ValueError:
             # No numerical end tag found
             if requireNumericalEndTag:
@@ -75,7 +78,7 @@ def splitDigitalFilesInFolder(folderPaths, lineNumbers=[], lineNames=[], lineFol
             else:
                 index = None
                 baseName = name
-                outNamePattern = '{baseName}_{{lineName}}.nc'.format(baseName=baseName, index=index)
+                outNamePattern = '{baseName}_{{lineName}}{{signalPresentTag}}.nc'.format(baseName=baseName, index=index)
 
         print('Splitting data file {f}'.format(f=dataFile))
 
@@ -92,12 +95,20 @@ def splitDigitalFilesInFolder(folderPaths, lineNumbers=[], lineNames=[], lineFol
         # Increment input file counter
         fileCount += 1
 
-
         if dryRun:
             print('This would have split {p}:'.format(p=str(dataFile)))
+
         for lineIndex, (lineNumber, lineName, lineFolder) in enumerate(zip(lineNumbers, lineNames, lineFolders)):
+            booleanChannelData = booleanData[:, lineIndex]
+
+            if signalPresentTag is not None and len(signalPresentTag) > 0:
+                if booleanChannelData.sum() > 0:
+                    spt = '_' + signalPresentTag
+                else:
+                    spt = ''
+
             # Create the output file name
-            outName = outNamePattern.format(baseName=baseName, lineName=lineName, index=index)
+            outName = outNamePattern.format(baseName=baseName, lineName=lineName, index=index, signalPresentTag=spt)
 
             # Determine the full output directory
             if lineFolder.is_absolute():
@@ -115,9 +126,8 @@ def splitDigitalFilesInFolder(folderPaths, lineNumbers=[], lineNames=[], lineFol
                 print('  {idx}: Line {num} - {name} ==> {path}'.format(idx=lineIndex, num=lineNumber, name=lineName, path=outPath))
             else:
                 # Write the single channel of data to the output file
-                breakpoint()
-                ncfu.writeNCFile(outPath, data['time'], data['dt'], lineNumber,
-                    data['metaData'], booleanData[lineIndex, :], dataType='i1')
+                metaData = "Digital input channel {ln} ({name} perch sensor)".format(ln=lineNumber, name=lineName)
+                ncfu.writeNCFile(outPath, data['time'], data['dt'], lineNumber, metaData, booleanChannelData, dataType='i1')
 
         # Increment split file counter
         splitCount += nChannels
@@ -126,22 +136,20 @@ def splitDigitalFilesInFolder(folderPaths, lineNumbers=[], lineNames=[], lineFol
     print('Result:')
     print('Split {n} multi-channel wav files into {m} mono wav files.'.format(n=fileCount, m=splitCount))
 
-def loadChannelConfiguration(configFile):
-    lineNumbers = []
-    lineNames = []
-    lineFolders = []
-    with open(configFile, 'r') as f:
-        for line in f:
-            lineNumber, lineName, lineFolder = line.strip().split(' ', maxsplit=2)
-            lineNumbers.append(int(lineNumber))
-            lineNames.append(lineName)
-            lineFolders.append(Path(lineFolder))
-    return lineNumbers, lineNames, lineFolders
-
 if __name__ == "__main__":
     # A utility to split multi-channel audio wav files within a folder into individual wav files
-    configPath = Path(sys.argv[1])
-    folderPaths = [Path(p) for p in sys.argv[2:]]
-    lineNumbers, lineNames, lineFolders = loadChannelConfiguration(configPath)
+    sys.argv.pop(0)
+    try:
+        # Find where '-c' is in the argument list
+        configIndex = sys.argv.index('-c')
+        # Pop off the '-c'.
+        sys.argv.pop(configIndex)
+        # Now the config path should be in that index
+        configPath = Path(sys.argv.pop(configIndex))
+        lineNumbers, lineNames, lineFolders = loadChannelConfiguration(configPath)
+    except ValueError:
+        lineNumbers, lineNames, lineFolders = ([], [], [])
+    folderPaths = [Path(p) for p in sys.argv]
+
     splitDigitalFilesInFolder(folderPaths, lineNumbers=lineNumbers,
         lineNames=lineNames, lineFolders=lineFolders, dryRun=False)

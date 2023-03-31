@@ -2705,7 +2705,7 @@ class SimpleAudioWriter(StateMachineProcess):
 
                     if writeEnabled:
                         # Generate new audio file path
-                        audioFileNameTags = [','.join(self.channelNames), generateTimeString(timestamp=seriesStartTime), '{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
+                        audioFileNameTags = [','.join(self.channelNames), generateTimeString(timestamp=seriesStartTime), '{audioFileCount:04d}'.format(audioFileCount=audioFileCount)]
                         if self.daySubfolders:
                             audioDirectory = getDaySubfolder(self.audioDirectory, timestamp=audioFileStartTime)
                         else:
@@ -2719,7 +2719,7 @@ class SimpleAudioWriter(StateMachineProcess):
                         # setParams: (nchannels, sampwidth, frameRate, nframes, comptype, compname)
                         audioFile.setparams((self.numChannels, self.audioDepthBytes, self.audioFrequency, 0, 'NONE', 'not compressed'))
 
-                        newFileInfo = 'Opened audio file #{num:03d}: {n} channels, {b} bytes, {f:.2f} Hz'.format(num=audioFileCount, n=self.numChannels, b=self.audioDepthBytes, f=self.audioFrequency);
+                        newFileInfo = 'Opened audio file #{num:04d}: {n} channels, {b} bytes, {f:.2f} Hz'.format(num=audioFileCount, n=self.numChannels, b=self.audioDepthBytes, f=self.audioFrequency);
                         self.updatePublishedInfo(newFileInfo)
 
                         if self.verbose >= 2:
@@ -2823,7 +2823,7 @@ class SimpleAudioWriter(StateMachineProcess):
                                         id=audioFileCount, idspace='SimpleAVFiles'), #triggers[0],
                                     streamID='audio',
                                     startTime=audioFileStartTime,
-                                    tags=['{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
+                                    tags=['{audioFileCount:04d}'.format(audioFileCount=audioFileCount)]
                                     )
                                 if self.verbose >= 1: self.log("Sending audio filename to merger")
                                 self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
@@ -2855,7 +2855,7 @@ class SimpleAudioWriter(StateMachineProcess):
                                     id=audioFileCount, idspace='SimpleAVFiles'), #triggers[0],
                                 streamID='audio',
                                 startTime=audioFileStartTime,
-                                tags=['{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
+                                tags=['{audioFileCount:04d}'.format(audioFileCount=audioFileCount)]
                             )
                             self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
                         audioFile = None
@@ -3904,7 +3904,7 @@ class SimpleVideoWriter(StateMachineProcess):
                             videoFileInterface = None
 
                         # Generate new video file path
-                        videoFileNameTags = [self.camSerial, generateTimeString(timestamp=seriesStartTime), '{videoCount:03d}'.format(videoCount=videoCount)]
+                        videoFileNameTags = [self.camSerial, generateTimeString(timestamp=seriesStartTime), '{videoCount:04d}'.format(videoCount=videoCount)]
                         if self.daySubfolders:
                             videoDirectory = getDaySubfolder(self.videoDirectory, timestamp=videoFileStartTime)
                         else:
@@ -3941,7 +3941,7 @@ class SimpleVideoWriter(StateMachineProcess):
 
                             videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", verbose=self.verbose, input_pixel_format=ffmpegPixelFormats[0], fps=self.frameRate, gpuVEnc=self.gpuVEnc)
 
-                        newFileInfo = 'Opened video file #{num:03d}: {f:.2f} fps, gpu encoding={gpu}'.format(num=videoCount, f=self.frameRate, gpu=self.gpuVEnc);
+                        newFileInfo = 'Opened video file #{num:04d}: {f:.2f} fps, gpu encoding={gpu}'.format(num=videoCount, f=self.frameRate, gpu=self.gpuVEnc);
                         self.updatePublishedInfo(newFileInfo)
 
                         if self.verbose >= 3: self.log('...opened new file writing interface')
@@ -4043,7 +4043,7 @@ class SimpleVideoWriter(StateMachineProcess):
                                         trigger=None, #triggers[0],
                                         streamID=self.camSerial,
                                         startTime=videoFileStartTime,
-                                        tags=['{videoCount:03d}'.format(videoCount=videoCount)]
+                                        tags=['{videoCount:04d}'.format(videoCount=videoCount)]
                                     )
                                 else:
                                     fileEvent = dict(
@@ -4055,7 +4055,7 @@ class SimpleVideoWriter(StateMachineProcess):
                                             id=videoCount, idspace='SimpleAVFiles'), #triggers[0],
                                         streamID=self.camSerial,
                                         startTime=videoFileStartTime,
-                                        tags=['{videoCount:03d}'.format(videoCount=videoCount)]
+                                        tags=['{videoCount:04d}'.format(videoCount=videoCount)]
                                     )
                                 if self.verbose >= 2: self.log("Sending video filename to merger")
                                 self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
@@ -4088,7 +4088,7 @@ class SimpleVideoWriter(StateMachineProcess):
                                     trigger=None, #triggers[0],
                                     streamID=self.camSerial,
                                     startTime=videoFileStartTime,
-                                    tags=['{videoCount:03d}'.format(videoCount=videoCount)]
+                                    tags=['{videoCount:04d}'.format(videoCount=videoCount)]
                                 )
                             else:
                                 fileEvent = dict(
@@ -4100,7 +4100,7 @@ class SimpleVideoWriter(StateMachineProcess):
                                         id=videoCount, idspace='SimpleAVFiles'), #triggers[0],
                                     streamID=self.camSerial,
                                     startTime=videoFileStartTime,
-                                    tags=['{videoCount:03d}'.format(videoCount=videoCount)]
+                                    tags=['{videoCount:04d}'.format(videoCount=videoCount)]
                                 )
                             self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
                         videoFileInterface = None
@@ -5375,7 +5375,7 @@ class SimpleDigitalWriter(StateMachineProcess):
 
                     if writeEnabled:
                         # Generate new digital file path
-                        digitalFileNameTags = ['digital', generateTimeString(timestamp=seriesStartTime), '{digitalFileCount:03d}'.format(digitalFileCount=digitalFileCount)]
+                        digitalFileNameTags = ['digital', generateTimeString(timestamp=seriesStartTime), '{digitalFileCount:04d}'.format(digitalFileCount=digitalFileCount)]
                         if self.daySubfolders:
                             digitalDirectory = getDaySubfolder(self.digitalDirectory, timestamp=digitalFileStartTime)
                         else:
@@ -5388,7 +5388,7 @@ class SimpleDigitalWriter(StateMachineProcess):
                         metaData = 'Digital input channels: ' + ','.join(self.channelNames)
                         digitalFile = NCFile(digitalFileName, timeVector, 1/self.sampleRate, 0, metaData, dataType='i4')
 
-                        newFileInfo = 'Opened digital file #{num:03d}: {n} channels, {f:.2f} Hz'.format(num=digitalFileCount, n=self.numChannels, f=self.sampleRate);
+                        newFileInfo = 'Opened digital file #{num:04d}: {n} channels, {f:.2f} Hz'.format(num=digitalFileCount, n=self.numChannels, f=self.sampleRate);
                         self.updatePublishedInfo(newFileInfo)
 
                         if self.verbose >= 2:
