@@ -3,7 +3,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import NCFileUtilities as ncfu
-from StateMachineProcesses import extractBooleanDataFromDigitalArray
+from NCFileUtilities import extractBooleanDataFromDigitalArray
 from PostProcessingUtilities import loadChannelConfiguration
 
 FFMPEG_EXE = shutil.which('ffmpeg')

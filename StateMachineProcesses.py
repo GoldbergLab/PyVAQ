@@ -20,7 +20,7 @@ from ctypes import c_wchar
 import PySpinUtilities as psu
 import sys
 from math import floor
-from NCFileUtilities import NCFile
+from NCFileUtilities import NCFile, extractBooleanDataFromDigitalArray
 
 simulatedHardware = False
 for arg in sys.argv[1:]:
@@ -756,26 +756,6 @@ def getLineNumberFromChannelString(channelString):
     except (IndexError, AttributeError, ValueError):
         raise NameError('Not a properly formatted NI channel string: ' + channelString)
     return lineNumber
-
-def extractBooleanDataFromDigitalArray(digitalArray, lineNumbers):
-    """Extract boolean data from a digital array of integers.
-
-    NI DAQmx returns digital reads as integers, where the nth bit of the integer
-        corresponds to the read value of the nth line in the port. This function
-        converts an integer array of reads and extracts a simple boolean array
-        where the (m, n) element is the nth line value on the mth sample
-
-    Args:
-        digitalArray (1D array of int): An integer array of digital values
-        lineNumbers (1D array of int): An integer array of line numbers to
-            extract
-
-    Returns:
-        2D boolean array: The extracted digital values.
-
-    """
-
-    return (np.right_shift.outer(digitalArray, lineNumbers) & 1).astype('bool')
 
 class StdoutManager(mp.Process):
     # A process for printing output to stdout from other processes.
