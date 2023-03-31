@@ -5,7 +5,6 @@ import subprocess
 import NCFileUtilities as ncfu
 from NCFileUtilities import extractBooleanDataFromDigitalArray
 from PostProcessingUtilities import loadChannelConfiguration
-import numpy as np
 
 FFMPEG_EXE = shutil.which('ffmpeg')
 

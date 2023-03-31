@@ -1,4 +1,5 @@
 from netCDF4 import Dataset
+import numpy as np
 
 def readNCFile(path):
     """Read a netCDF file formatted for electro_gui.
