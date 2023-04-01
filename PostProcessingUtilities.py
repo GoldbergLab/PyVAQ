@@ -9,7 +9,8 @@ def loadChannelConfiguration(configFile):
             if k == 0:
                 # Skip header line
                 continue
-            lineNumber, lineName, lineFolder = line.strip().split(maxsplit=2)
+            configItems = line.strip().split()
+            lineNumber, lineName, lineFolder = configItems[0:3]
             lineNumbers.append(int(lineNumber))
             lineNames.append(lineName)
             lineFolders.append(Path(lineFolder))
