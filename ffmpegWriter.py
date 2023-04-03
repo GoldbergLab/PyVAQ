@@ -113,7 +113,9 @@ class ffmpegVideoWriter():
                 print('Closed pipe to ffmpeg')
 
 class ffmpegAudioWriter():
-    def __init__(self, filename, verbose=1, sampleRate=30):
+    # Thanks to https://github.com/Zulko/moviepy/blob/master/moviepy/audio/io/ffmpeg_audiowriter.py
+    # for the FFMPEG recipe
+    def __init__(self, filename, verbose=1, sampleRate=40000):
         # You can specify the image shape at initialization, or when you write
         #   the first frame (the shape parameter is ignored for subsequent
         #   frames), or not at all, and hope we can figure it out.
@@ -126,7 +128,7 @@ class ffmpegAudioWriter():
         self.nBytes = None
         self.nChannels = None
 
-    def write(self, data, numChannels=None):
+    def write(self, data):
         # data should be a N x C numpy array, where N is the # of samples, and C is the # of channels
         # All data chunks should have the same number of channels
         if self.ffmpegProc is None:
@@ -157,7 +159,8 @@ class ffmpegAudioWriter():
                 '-ar', '{r}'.format(r=self.sampleRate),
                 '-ac', '{c}'.format(c=self.nChannels),
                 '-thread_queue_size', '128',
-                 '-i', '-',
+                '-i', '-',
+                '-thread_queue_size', '128',
                 self.filename
                 ]
 
@@ -172,7 +175,7 @@ class ffmpegAudioWriter():
             print('Sending frame to ffmpeg!')
 
         # Pipe data to ffmpeg
-        self.ffmpegProc.stdin.write(bytes)    #'raw', 'RGB'))
+        self.ffmpegProc.stdin.write(bytes)
         self.ffmpegProc.stdin.flush()
 
     def close(self):
