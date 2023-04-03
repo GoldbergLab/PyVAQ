@@ -79,7 +79,7 @@ class ImageProcessor(mp.Process):
             frameCount = 0
             videoPath = r"videoWriteTest_{s}_{k:03d}.avi".format(s=self.camSerial, k=videoCount)
             print("\t\t\t\tRECEIVE: Starting new video")
-            videoFileInterface = fw.ffmpegWriter(videoPath, "bytes", fps=30)
+            videoFileInterface = fw.ffmpegVideoWriter(videoPath, "bytes", fps=30)
 #            videoFileInterface = rw.rawWriter(videoPath, "bytes", fps=30)
             while True:
                 if frameCount >= maxFrames:

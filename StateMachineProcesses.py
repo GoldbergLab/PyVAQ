@@ -3919,7 +3919,7 @@ class SimpleVideoWriter(StateMachineProcess):
                             if ffmpegPixelFormats is None or len(ffmpegPixelFormats) == 0:
                                 raise TypeError('No ffmpeg format is known for PySpin format {f}'.format(f=self.imageQueue.pixelFormat))
 
-                            videoFileInterface = fw.ffmpegWriter(videoFileName, "bytes", verbose=self.verbose, input_pixel_format=ffmpegPixelFormats[0], fps=self.frameRate, gpuVEnc=self.gpuVEnc)
+                            videoFileInterface = fw.ffmpegVideoWriter(videoFileName, "bytes", verbose=self.verbose, input_pixel_format=ffmpegPixelFormats[0], fps=self.frameRate, gpuVEnc=self.gpuVEnc)
 
                         newFileInfo = 'Opened video file #{num:04d}: {f:.2f} fps, gpu encoding={gpu}'.format(num=videoCount, f=self.frameRate, gpu=self.gpuVEnc);
                         self.updatePublishedInfo(newFileInfo)
@@ -4343,7 +4343,7 @@ class VideoWriter(StateMachineProcess):
                                 stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
                                 videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
                             elif self.videoWriteMethod == "ffmpeg":
-                                videoFileInterface = fw.ffmpegWriter(videoFileName+'.avi', verbose=self.verbose, fps=self.frameRate)
+                                videoFileInterface = fw.ffmpegVideoWriter(videoFileName+'.avi', verbose=self.verbose, fps=self.frameRate)
 
                         # Write video frame to file that was previously retrieved from the buffer
                         if self.verbose >= 3:

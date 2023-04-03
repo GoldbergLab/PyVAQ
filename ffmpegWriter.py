@@ -11,7 +11,7 @@ DEFAULT_GPU_COMPRESSION_ARGS = [
     '-c:v', 'h264_nvenc', '-preset', 'fast', '-cq', '32'
     ]
 
-class ffmpegWriter():
+class ffmpegVideoWriter():
     def __init__(self, filename, frameType, verbose=1, fps=30, shape=None,
                 input_pixel_format="bayer_rggb8", output_pixel_format="rgb0",
                 gpuVEnc=False, gpuCompressionArgs=DEFAULT_GPU_COMPRESSION_ARGS,
@@ -41,7 +41,7 @@ class ffmpegWriter():
         #   not, we will try to figure out the image shape.
         if self.ffmpegProc is None:
             if self.verbose >= 3:
-                print("STARTING NEW FFMPEG PROCESS!")
+                print("STARTING NEW FFMPEG VIDEO PROCESS!")
             if shape is None and self.shape is None:
                 if self.frameType == 'image':
                     w, h = frame.size
@@ -111,8 +111,79 @@ class ffmpegWriter():
             self.ffmpegProc = None
             if self.verbose >= 2:
                 print('Closed pipe to ffmpeg')
-#            self.ffmpegProc.communicate()
 
+class ffmpegAudioWriter():
+    def __init__(self, filename, verbose=1, sampleRate=30):
+        # You can specify the image shape at initialization, or when you write
+        #   the first frame (the shape parameter is ignored for subsequent
+        #   frames), or not at all, and hope we can figure it out.
+        # dataType should be one of 'numpy', 'image', or 'bytes'
+        self.ffmpegProc = None
+        self.verbose = verbose
+        self.sampleRate = sampleRate
+        self.filename = filename
+        # nBytes and nChannels will be determined by the first audio chunk provided.
+        self.nBytes = None
+        self.nChannels = None
+
+    def write(self, data, numChannels=None):
+        # data should be a N x C numpy array, where N is the # of samples, and C is the # of channels
+        # All data chunks should have the same number of channels
+        if self.ffmpegProc is None:
+            if self.verbose >= 3:
+                print("STARTING NEW FFMPEG AUDIO PROCESS!")
+
+            # Determine FFMPEG verbosity level
+            if self.verbose <= 0:
+                ffmpegVerbosity = 'quiet'
+            elif self.verbose == 1:
+                ffmpegVerbosity = 'error'
+            elif self.verbose == 2:
+                ffmpegVerbosity = 'warning'
+            elif self.verbose >= 3:
+                ffmpegVerbosity = 'verbose'
+
+            # Gather info about data type
+            self.nBytes = data.itemsize
+            self.nChannels = data.shape[-1]
+
+            # Generate FFMPEG command
+            ffmpegCommand = [
+                FFMPEG_EXE,
+                '-y',
+                '-v', ffmpegVerbosity,
+                '-f', 's{b}le'.format(b=8*self.nBytes),
+                '-c:a', 'pcm_s{b}le'.format(b=8*self.nBytes),
+                '-ar', '{r}'.format(r=self.sampleRate),
+                '-ac', '{c}'.format(c=self.nChannels),
+                '-thread_queue_size', '128',
+                 '-i', '-',
+                self.filename
+                ]
+
+            if self.verbose >= 2:
+                print('ffmpeg command:')
+                print(ffmpegCommand)
+            self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
+
+        # Convert array to bytes
+        bytes = data.tobytes()
+        if self.verbose >= 3:
+            print('Sending frame to ffmpeg!')
+
+        # Pipe data to ffmpeg
+        self.ffmpegProc.stdin.write(bytes)    #'raw', 'RGB'))
+        self.ffmpegProc.stdin.flush()
+
+    def close(self):
+        if self.ffmpegProc is not None:
+            self.ffmpegProc.stdin.close()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.ffmpegProc = None
+            if self.verbose >= 2:
+                print('Closed pipe to ffmpeg')
+#            self.ffmpegProc.communicate()
 
 
 # nvenc lossless (~2.5 sec / 100 frames)
