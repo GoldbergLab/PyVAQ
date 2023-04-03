@@ -10,7 +10,7 @@ FFMPEG_EXE = shutil.which('ffmpeg')
 # A script to split mutli-channel audio files into separate single-channel audio
 #   files, plus one file that has both stereo tracks mixed into one mono track
 
-def splitAudioTracksInFolder(folderPaths, channelNumbers=[], channelNames=[], channelFolders=[], overwrite=False, dryRun=False, requireNumericalEndTag=True, signalPresentTag='A'):
+def splitAudioTracksInFolder(folderPaths, channelNumbers=[], channelNames=[], channelFolders=[], overwrite=False, dryRun=False, requireNumericalEndTag=False, signalPresentTag='A'):
     '''Loop through files in a folder and split audio files into track files
 
     Arguments:
