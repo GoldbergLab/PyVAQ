@@ -2417,17 +2417,18 @@ class AudioAcquirer(StateMachineProcess):
                             else:
                                 audioQueueSize = self.audioQueue.qsize()
                             if self.monitorQueue is None:
-                                audioQueueSize = None
+                                monitorQueueSize = None
                             else:
-                                audioQueueSize = self.monitorQueue.qsize()
+                                monitorQueueSize = self.monitorQueue.qsize()
                             if self.analysisQueue is None:
-                                audioQueueSize = None
+                                analysisQueueSize = None
                             else:
-                                audioQueueSize = self.analysisQueue.qsize()
+                                analysisQueueSize = self.analysisQueue.qsize()
                             self.log('Queue sizes:')
                             self.log('        Main:', audioQueueSize)
                             self.log('  Monitoring:', monitorQueueSize)
                             self.log('    Analysis:', analysisQueueSize)
+
                     except nidaqmx.errors.DaqError as error:
                         if self.verbose >= 0:
                             if error.error_type == nidaqmx.error_codes.DAQmxErrors.OPERATION_TIMED_OUT:
