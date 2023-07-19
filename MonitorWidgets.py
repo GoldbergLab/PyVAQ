@@ -112,10 +112,10 @@ class BaseMonitor(CollapsableFrame):
     def viewerEnabled(self):
         return self.enableViewerVar.get()
 
-    def enableViewer(self):
+    def enableViewer(self, *args, **kwargs):
         self.enableViewerVar.set(True)
 
-    def disableViewer(self):
+    def disableViewer(self, *args, **kwargs):
         self.enableViewerVar.set(False)
 
     def toggleViewerEnable(self):
