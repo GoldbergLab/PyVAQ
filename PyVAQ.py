@@ -2943,6 +2943,17 @@ him know. Otherwise, I had nothing to do with it.
                 params['scheduleStartTime'] = serializableToTime(params['scheduleStartTime'])
             if 'scheduleStopTime' in params:
                 params['scheduleStopTime'] = serializableToTime(params['scheduleStopTime'])
+
+            # Handle legacy settings values
+            if 'audioSyncTerminal' in params:
+                # Name changed when digital channels were introduced
+                params['dataSyncTerminal'] = params['audioSyncTerminal']
+            if 'audioSyncSource' in params:
+                # Name changed when digital channels were introduced
+                params['dataSyncSource'] = params['audioSyncSource']
+            if 'chunkSize' in params:
+                self.log('Warning, \'chunkSize\' is a legacy setting and will be ignored. Please use \'dataChunkSizeSeconds\' instead')
+
             self.log("Loaded settings:")
             self.log(params)
             self.setParams(**params)
