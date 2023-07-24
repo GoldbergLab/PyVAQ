@@ -1551,7 +1551,7 @@ class Synchronizer(StateMachineProcess):
                             freq=self.dataFrequency,
                             duty_cycle=self.dataDutyCycle)     # Prepare a counter output channel for the audio sync signal
                         if self.verbose >= 2:
-                            self.log('Added audio sync channel to task')
+                            self.log('Added data sync channel to task')
                     # if (self.signalChannel is not None) and ((self.videoSyncChannel is not None) or (self.dataSyncChannel is not None)):
                     #     # Configure task to wait for a digital pulse on the specified channel.
                     #     trigTask.triggers.arm_start_trigger.dig_edge_src=self.signalChannel
@@ -1638,8 +1638,11 @@ class Synchronizer(StateMachineProcess):
                             self.ready.wait()
                         passedBarrier = True
 
+                        gracePeriod = 1.0
+                        self.startTime.value = time.time_ns() / 1000000000 + gracePeriod
+
                         # To give audio and video processes a chance to get totally set up for acquiring, wait a second.
-                        time.sleep(1)
+                        time.sleep(gracePeriod)
 
                         if signalTask is not None:
                             signalTask.start()
@@ -1652,8 +1655,7 @@ class Synchronizer(StateMachineProcess):
                         preTime = time.time_ns()
                         trigTask.start()
                         postTime = time.time_ns()
-                        self.startTime.value = (preTime + postTime) / 2000000000
-                        if self.verbose >= 1: self.log("Sync task started at {time} s".format(time=self.startTime.value))
+                        if self.verbose >= 1: self.log("Sync task started at {time} s".format(time=(preTime + postTime) / 2000000000))
                         if self.verbose >= 1: self.log("Sync task startup took {time} s".format(time=(postTime - preTime)/1000000000))
                     except BrokenBarrierError:
                         passedBarrier = False
@@ -2225,7 +2227,7 @@ class AudioAcquirer(StateMachineProcess):
         self.startTimeSharedValue = startTime
         self.audioFrequencyVar = audioFrequency
         self.audioFrequency = None
-        self.acquireTimeout = 1 #2*chunkSize / self.audioFrequency
+        self.acquireTimeout = 2 #2*chunkSize / self.audioFrequency
         self.audioQueue = audioQueue
         self.monitorQueue = None
         self.analysisQueue = None
@@ -2293,6 +2295,7 @@ class AudioAcquirer(StateMachineProcess):
                     # DO STUFF
                     self.audioFrequency = None
                     readTask = None
+                    taskStarted = False
 
                     if self.startTimeSharedValue is None:
                         # no need to get start time
@@ -2315,8 +2318,12 @@ class AudioAcquirer(StateMachineProcess):
 
                         data = np.zeros((len(self.inputChannels), self.chunkSize), dtype='float')   # A pre-allocated array to receive audio data
 
+                        if self.verbose >= 2:
+                            self.log('Created data buffer with size {c} x {n}'.format(c=len(self.inputChannels), n=self.chunkSize))
+
                         processedData = data.copy()
                         readTask = nidaqmx.Task(new_task_name="audioTask")                            # Create task
+
                         reader = AnalogMultiChannelReader(readTask.in_stream)  # Set up an analog stream reader
                         for inputChannel in self.inputChannels:
                             readTask.ai_channels.add_ai_voltage_chan(               # Set up analog input channel
@@ -2329,7 +2336,27 @@ class AudioAcquirer(StateMachineProcess):
                             source=self.syncChannel,                            # Specify a timing source!
                             active_edge=nidaqmx.constants.Edge.RISING,
                             sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
-                            samps_per_chan=self.chunkSize)
+                            samps_per_chan=8*self.chunkSize)
+
+                        try:
+                            # Set DAQ buffer overwrite mode to "do not overwrite"
+                            readTask.in_stream.overwrite = nidaqmx.constants.OverwriteMode.DO_NOT_OVERWRITE_UNREAD_SAMPLES
+                        except:
+                            try:
+                                # For nidaqmx library backwards compatibility
+                                # over_write property deprecated in 0.7.0
+                                readTask.in_stream.over_write = nidaqmx.constants.OverwriteMode.DO_NOT_OVERWRITE_UNREAD_SAMPLES
+                            except:
+                                self.log('Warning, could not set read task overwrite mode to "do not overwrite"')
+
+                        self.log('Chunks size: {c}'.format(c=self.chunkSize))
+                        self.log('Analog reader in_stream properties')
+                        self.log('over_write: ' + str(readTask.in_stream.over_write))
+                        self.log('overwrite: ' + str(readTask.in_stream.overwrite))
+                        self.log('    ' + str(dict(nidaqmx.constants.OverwriteMode.__members__)))
+                        self.log('input_buf_size: ' + str(readTask.in_stream.input_buf_size))
+                        self.log('input_onbrd_buf_size: ' + str(readTask.in_stream.input_onbrd_buf_size))
+
                         sampleCount = 0
 
                     # CHECK FOR MESSAGES
@@ -2341,6 +2368,8 @@ class AudioAcquirer(StateMachineProcess):
                     elif msg in ['', Messages.START]:
                         if self.audioFrequency is None:
                             self.nextState = States.INITIALIZING
+                            if self.verbose >= 3:
+                                self.log('No audio frequency yet.')
                         else:
                             self.nextState = States.READY
                     elif msg == Messages.STOP:
@@ -2353,6 +2382,10 @@ class AudioAcquirer(StateMachineProcess):
 # AudioAcquirer: ****************** READY *********************************
                 elif self.state == States.READY:
                     # DO STUFF
+
+                    if not taskStarted:
+                        readTask.start()
+                        taskStarted = True;
 
                     # Check if other processes are synced by waiting for barrier
                     if not passedBarrier:
@@ -4918,7 +4951,7 @@ class DigitalAcquirer(StateMachineProcess):
         self.startTimeSharedValue = startTime
         self.sampleRateVar = sampleRate
         self.sampleRate = None
-        self.acquireTimeout = 1 #2*chunkSize / self.sampleRate
+        self.acquireTimeout = 2 #2*chunkSize / self.sampleRate
         self.dataQueue = dataQueue
         self.monitorQueue = None
         self.analysisQueue = None
@@ -5006,6 +5039,18 @@ class DigitalAcquirer(StateMachineProcess):
                             active_edge=nidaqmx.constants.Edge.RISING,
                             sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
                             samps_per_chan=self.chunkSize)
+
+                        try:
+                            # Set DAQ buffer overwrite mode to "do not overwrite"
+                            readTask.in_stream.overwrite = nidaqmx.constants.OverwriteMode.DO_NOT_OVERWRITE_UNREAD_SAMPLES
+                        except:
+                            try:
+                                # For nidaqmx library backwards compatibility
+                                # over_write property deprecated in 0.7.0
+                                readTask.in_stream.over_write = nidaqmx.constants.OverwriteMode.DO_NOT_OVERWRITE_UNREAD_SAMPLES
+                            except:
+                                self.log('Warning, could not set read task overwrite mode to "do not overwrite"')
+
                         sampleCount = 0
 
                     # CHECK FOR MESSAGES
