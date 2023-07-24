@@ -951,6 +951,14 @@ class StateMachineProcess(mp.Process):
         timestamp = dt.datetime.now().strftime(TIME_FORMAT)
         self.log('| {timestamp} | '.format(timestamp=timestamp), *args, **kwargs)
 
+    def logError(self):
+        self.errorMessages.append("Error in "+self.stateList[self.state]+" state")
+        self.errorMessages.append('\n')
+        for line in traceback.format_exc().split('\n'):
+            self.errorMessages.append(line)
+        self.errorMessages.append('\n')
+        self.errorMessages.append('\n')
+
     def logEnd(self):
         timestamp = dt.datetime.now().strftime(TIME_FORMAT)
         self.log(r'*** {timestamp} *** lastState={lastState}, state={state}, nextState={nextState} *** exitFlag={exitFlag}'.format(timestamp=timestamp, exitFlag=self.exitFlag, lastState=self.stateList[self.lastState], state=self.stateList[self.state], nextState=self.stateList[self.nextState]))
@@ -970,7 +978,8 @@ class StateMachineProcess(mp.Process):
         # DO STUFF
         if self.verbose >= 0:
             self.log("ERROR STATE. Error messages:\n\n")
-            self.log("\n\n".join(self.errorMessages))
+            for line in self.errorMessages:
+                self.log(line)
 
         self.updatePublishedInfo("\n".join(self.errorMessages))
 
@@ -1387,7 +1396,7 @@ class AVMerger(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -1742,7 +1751,7 @@ class Synchronizer(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -2136,7 +2145,7 @@ class AudioTriggerer(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -2496,7 +2505,7 @@ class AudioAcquirer(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -2876,7 +2885,7 @@ class SimpleAudioWriter(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -3266,7 +3275,7 @@ class AudioWriter(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -3683,7 +3692,7 @@ class VideoAcquirer(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -4118,7 +4127,7 @@ class SimpleVideoWriter(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -4492,7 +4501,7 @@ class VideoWriter(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -4795,7 +4804,7 @@ class ContinuousTriggerer(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -5171,7 +5180,7 @@ class DigitalAcquirer(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -5511,7 +5520,7 @@ class SimpleDigitalWriter(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
