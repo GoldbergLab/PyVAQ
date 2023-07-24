@@ -437,7 +437,9 @@ class PyVAQ:
         self.selectAcquisitionHardwareButton =  ttk.Button(self.acquisitionParametersFrame, text="Select audio/video inputs", command=self.selectAcquisitionHardware)
         self.acquisitionHardwareText = tk.Text(self.acquisitionParametersFrame)
 
-        self.chunkSizeVar =         tk.StringVar(); self.chunkSizeVar.set(1000)
+        self.dataChunkSizeSecondsFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Data chunk size (s)", style='SingleContainer.TLabelframe')
+        self.dataChunkSizeSecondsVar =    tk.StringVar(); self.dataChunkSizeSecondsVar.set("1.0")
+        self.dataChunkSizeSecondsEntry =  ttk.Entry(self.dataChunkSizeSecondsFrame, width=16, textvariable=self.dataChunkSizeSecondsVar)
 
         self.cameraConfigurationFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Camera Configuration", **COLLAPSABLE_FRAME_STYLE); self.cameraConfigurationFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         self.cameraConfigurationPanel = CameraConfigPanel(self.cameraConfigurationFrame)
@@ -636,7 +638,8 @@ class PyVAQ:
         self.paramInfo = {
             'dataFrequency':                    dict(get=MakeVarGetter(self.audioFrequencyVar),                 set=self.audioFrequencyVar.set),
             'videoFrequency':                   dict(get=MakeVarGetter(self.videoFrequencyVar),                 set=self.videoFrequencyVar.set),
-            'chunkSize':                        dict(get=MakeVarGetter(self.chunkSizeVar),                      set=self.chunkSizeVar.set),
+            'dataChunkSizeSeconds':             dict(get=MakeVarGetter(self.dataChunkSizeSecondsVar, conversion=float),           set=self.dataChunkSizeSecondsVar.set),
+            'dataChunkSizeSamples':             dict(get=self.getDataChunkSizeSamples,                          set=self.setDataChunkSizeSamples),
             "maxGPUVEnc":                       dict(get=MakeVarGetter(self.maxGPUVEncVar),                     set=self.maxGPUVEncVar.set),
             # 'exposureTime':                     dict(get=MakeVarGetter(self.exposureTimeVar),               set=self.exposureTimeVar.set),
             'gain':                             dict(get=MakeVarGetter(self.gainVar, conversion=float),                      set=self.gainVar.set),
@@ -674,7 +677,6 @@ class PyVAQ:
             'multiChannelStopBehavior':         dict(get=self.multiChannelStopBehaviorVar.get,                  set=self.multiChannelStopBehaviorVar.set),
             'multiChannelStartBehavior':        dict(get=self.multiChannelStartBehaviorVar.get,                 set=self.multiChannelStartBehaviorVar.set),
             "bufferSizeSeconds":                dict(get=self.getBufferSizeSeconds,                             set=self.setBufferSizeSeconds),
-            "bufferSizeAudioChunks":            dict(get=self.getBufferSizeAudioChunks,                         set=self.setBufferSizeAudioChunks),
             "numStreams":                       dict(get=self.getNumStreams,                                    set=self.setNumStreams),
             "numProcesses":                     dict(get=self.getNumProcesses,                                  set=self.setNumProcesses),
             "numSyncedProcesses":               dict(get=self.getNumSyncedProcesses,                            set=self.setNumSyncedProcesses),
@@ -1778,7 +1780,7 @@ him know. Otherwise, I had nothing to do with it.
         gs = gridspec.GridSpec(1, 2, width_ratios=[6, 1])
 
         # Create plot for volume vs time trace
-        chunkSize = self.getParams('chunkSize')
+        chunkSize = self.getParams('dataChunkSizeSamples');
         t = np.arange(int(self.analysisSummaryHistoryChunkLength))
         self.audioAnalysisWidgets['volumeTraceAxes'] = vtaxes = fig.add_subplot(gs[0])  # Axes to display
         vtaxes.autoscale(enable=True)
@@ -2939,6 +2941,8 @@ him know. Otherwise, I had nothing to do with it.
                 params = json.loads(f.read())
             self.log('Loading settings from:')
             self.log('    ', path)
+
+            # Convert serializable time string back to datetime object
             if 'scheduleStartTime' in params:
                 params['scheduleStartTime'] = serializableToTime(params['scheduleStartTime'])
             if 'scheduleStopTime' in params:
@@ -3317,6 +3321,15 @@ him know. Otherwise, I had nothing to do with it.
     def setNumSyncedProcesses(self, *args):
         """Placeholder param setter indicating this property is not settable"""
         raise AttributeError('This attribute is a derived property, and is not directly settable')
+    def setDataChunkSizeSamples(self, *args):
+        """Placeholder param setter indicating this property is not settable"""
+        raise AttributeError('This attribute is a derived property, and is not directly settable')
+
+    def getDataChunkSizeSamples(self):
+        dataChunkSizeSeconds = self.getParams('dataChunkSizeSeconds');
+        dataFrequency = self.getParams('dataFrequency');
+        chunkSizeSamples = round(dataChunkSizeSeconds * dataFrequency)
+        return chunkSizeSamples
 
     def getBufferSizeSeconds(self):
         """Set bufferSizeSeconds parameter.
@@ -3333,10 +3346,6 @@ him know. Otherwise, I had nothing to do with it.
         """
         preTriggerTime = self.getParams('preTriggerTime')
         return preTriggerTime * 2 + 1    # Twice the pretrigger time to make sure we don't miss stuff, plus one second for good measure
-    def getBufferSizeAudioChunks(self):
-        """Calculate the number of chunks in the audio buffer - not in use"""
-        p = self.getParams('bufferSizeSeconds', 'dataFrequency', 'chunkSize')
-        return p['bufferSizeSeconds'] * p['dataFrequency'] / p['chunkSize']   # Will be rounded up to nearest integer
     def getNumStreams(self):
         """Get # of audio/video streams in the current configuration."""
         audioDAQChannels = self.getParams('audioDAQChannels')
@@ -3524,7 +3533,6 @@ him know. Otherwise, I had nothing to do with it.
         else:
             mergeMsgQueue = None
 
-
         if synchronizerRequired:
             # Create sync process
             self.syncProcess = Synchronizer(
@@ -3555,10 +3563,11 @@ him know. Otherwise, I had nothing to do with it.
                 audioQueue = mp.Queue()
             else:
                 audioQueue = None
+
             self.audioAcquireProcess = AudioAcquirer(
                 startTime=startTime,
                 audioQueue=audioQueue,
-                chunkSize=p["chunkSize"],
+                chunkSize=p['dataChunkSizeSamples'],
                 audioFrequency=self.actualDataFrequency,
                 bufferSize=None,
                 channelNames=p["audioDAQChannels"],
@@ -3601,7 +3610,7 @@ him know. Otherwise, I had nothing to do with it.
                         channelNames=p["audioDAQChannels"],
                         audioQueue=audioQueue,
                         mergeMessageQueue=mergeMsgQueue,
-                        chunkSize=p["chunkSize"],
+                        chunkSize=p['dataChunkSizeSamples'],
                         bufferSizeSeconds=p["bufferSizeSeconds"],
                         audioFrequency=self.actualDataFrequency,
                         numChannels=len(p["audioDAQChannels"]),
@@ -3617,7 +3626,7 @@ him know. Otherwise, I had nothing to do with it.
             self.digitalAcquireProcess = DigitalAcquirer(
                 startTime=startTime,
                 dataQueue=digitalQueue,
-                chunkSize=p["chunkSize"],
+                chunkSize=p['dataChunkSizeSamples'],
                 sampleRate=self.actualDataFrequency,
                 bufferSize=None,
                 channelNames=p["digitalDAQChannels"],
@@ -3781,7 +3790,7 @@ him know. Otherwise, I had nothing to do with it.
             self.audioTriggerProcess = AudioTriggerer(
                 audioQueue=self.audioAcquireProcess.analysisQueue,
                 audioFrequency=self.actualDataFrequency,
-                chunkSize=p["chunkSize"],
+                chunkSize=p['dataChunkSizeSamples'],
                 triggerHighLevel=p["triggerHighLevel"],
                 triggerLowLevel=p["triggerLowLevel"],
                 triggerHighTime=p["triggerHighTime"],
@@ -4111,11 +4120,13 @@ him know. Otherwise, I had nothing to do with it.
         self.recordTimeEntry.grid()
         self.maxGPUVencFrame.grid(                  row=2, column=3, sticky=tk.NSEW)
         self.maxGPUVEncEntry.grid()
-        self.acquisitionSignalParametersFrame.grid( row=3, column=0, columnspan=4, sticky=tk.NSEW)
+        self.dataChunkSizeSecondsFrame.grid(        row=3, column=0, sticky=tk.EW)
+        self.dataChunkSizeSecondsEntry.grid()
+        self.acquisitionSignalParametersFrame.grid( row=4, column=0, columnspan=4, sticky=tk.NSEW)
         self.startOnHWSignalCheckbutton.grid(row=0, column=0)
         self.writeEnableOnHWSignalCheckbutton.grid(row=0, column=1)
-        self.selectAcquisitionHardwareButton.grid(  row=4, column=0, columnspan=4, sticky=tk.NSEW)
-        self.acquisitionHardwareText.grid(          row=5, column=0, columnspan=4)
+        self.selectAcquisitionHardwareButton.grid(  row=5, column=0, columnspan=4, sticky=tk.NSEW)
+        self.acquisitionHardwareText.grid(          row=6, column=0, columnspan=4)
 
         #### Children of self.acquisitionParametersFrame
         self.cameraConfigurationPanel.grid(row=1, column=0)
