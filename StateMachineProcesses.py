@@ -1430,21 +1430,21 @@ class Synchronizer(StateMachineProcess):
     settableParams = [
         'verbose',
         'dataFrequency',  # Will only take effect when INITIALIZING
-        'videoFrequency'   # Will only take effect when INITIALIZING
+        ''   # Will only take effect when INITIALIZING
     ]
 
     def __init__(self,
         actualVideoFrequency=None,          # A shared value for publishing the actual video frequencies obtained from DAQ
-        actualDataFrequency=None,          # A shared value for publishing the actual audio frequencies obtained from DAQ
+        actualDataFrequency=None,           # A shared value for publishing the actual audio frequencies obtained from DAQ
         requestedVideoFrequency=120,        # The frequency in Hz of the video sync signal
-        requestedDataFrequency=44100,      # The frequency in Hz of the audio sync signal
+        requestedDataFrequency=44100,       # The frequency in Hz of the audio sync signal
         videoSyncChannel=None,              # The counter channel on which to generate the video sync signal Dev3/ctr0
-        videoDutyCycle=0.5,
-        dataSyncChannel=None,              # The counter channel on which to generate the audio sync signal Dev3/ctr1
-        dataDutyCycle=0.5,
-        signalChannel=None,                 # A digital channel which can be used for various purposes, including hardware triggering sync pulse train start, and enabling/disabling writing.
-        startOnHWSignal=False,              # Should synchronizer pulses wait for a rising edge on the signal channel to start?
-        writeEnableOnHWSignal=False,        # Should Synchronizer signal Audio/Video writers to only write when signal channel is high?
+        videoDutyCycle=0.5,                 # Duty cycle of video sync signal
+        dataSyncChannel=None,               # The counter channel on which to generate the audio sync signal Dev3/ctr1
+        dataDutyCycle=0.5,                  # Duty cycle of data sync signal
+        startTriggerTerminal=None,          # A digital channel which can be used for various purposes, including hardware triggering sync pulse train start, and enabling/disabling writing.
+#        startOnHWSignal=False,              # Should synchronizer pulses wait for a rising edge on the start trigger channel to start?
+        writeEnableOnHWSignal=False,        # Should Synchronizer signal Audio/Video writers to only write when start trigger channel is high?
         writerMsgQueues=[],                 # List of writer queues to send write enable/disable messages if writeEnableOnHWSignal is True
         startTime=None,                     # Shared value that is set when sync starts, used as start time by all processes (relevant for manual triggers)
         ready=None,                         # Synchronization barrier to ensure everyone's ready before beginning
@@ -1461,15 +1461,15 @@ class Synchronizer(StateMachineProcess):
         self.dataSyncChannel = dataSyncChannel
         self.videoDutyCycle = videoDutyCycle
         self.dataDutyCycle = dataDutyCycle
-        self.signalChannel = signalChannel
-        self.startOnHWSignal = startOnHWSignal
+        self.startTriggerTerminal = startTriggerTerminal
+#        self.startOnHWSignal = startOnHWSignal
         self.writeEnableOnHWSignal = writeEnableOnHWSignal
         self.writerMsgQueues = writerMsgQueues
         self.ready = ready
 
     def setParams(self, **params):
         super().setParams(**params)
-        if "requestedDataFrequency" in params or "requestedVideoFrequency" in params:
+        if "dataFrequency" in params or "videoFrequency" in params:
             self.log('Warning: requested frequency won\'t take ' + \
                      'effect until Synchronizer passes through the ' + \
                      'INITIALIZING state.')
@@ -1515,6 +1515,10 @@ class Synchronizer(StateMachineProcess):
                     # DO STUFF
                     writeEnable = None
                     lastWriteEnable = None
+                    trigTask = None
+                    startTriggerTask = None
+                    if self.writeEnableOnHWSignal is True:
+                        raise IOError('writeEnableOnHWSignal is not currently implemented.')
 
                     if self.ready.broken:
                         # Someone has already tried and failed to pass through the Barrier - reset it for everyone.
@@ -1522,42 +1526,71 @@ class Synchronizer(StateMachineProcess):
 
                     # Configure and generate synchronization signal
                     if self.dataSyncChannel is None and self.videoSyncChannel is None:
-                        trigTask = None
-                        signalTask = None
                         raise IOError("At least one audio or video sync channel must be specified.")
                     else:
-                        trigTask = nidaqmx.Task()                       # Create task
-                        if self.signalChannel is not None:
-                            signalTask = nidaqmx.Task()
+                        # Create task
+                        trigTask = nidaqmx.Task()
+
+                    if self.startTriggerTerminal is None:
+                        # No digital start trigger terminal given, so we'll
+                        #   trigger the counters to start using the internal
+                        #   "FrequencyOutput" signal
+
+                        startTriggerTask = nidaqmx.Task()
+
+                        # Get the device name from one of the counters
+                        if self.videoSyncChannel is not None:
+                            exampleChannel = self.videoSyncChannel
                         else:
-                            signalTask = None
+                            exampleChannel = self.dataSyncChannel
+
+                        try:
+                            parts = [x for x in exampleChannel.split('/') if len(x) > 0]
+                            deviceName = parts[0]
+                            startTriggerSource = deviceName+'/freqout'
+                            self.startTriggerTerminal = '/'+deviceName+'/FrequencyOutput'
+                            if self.verbose >= 2:
+                                self.log('Determined FrequencyOut source and terminals for start triggering: {cs}, {ct}'.format(cs=startTriggerSource, ct=startTriggerTerminal))
+                        except:
+                            raise IOError('Something went wrong getting the FrequencyOut channel name for start triggering purposes from this example channel: {c}'.format(c=exampleChannel))
+
+                        startTriggerTask.co_channels.add_co_pulse_chan_freq(
+                            counter=startTriggerSource,
+                            name_to_assign_to_channel="startTrigger",
+                            units=nidaqmx.constants.FrequencyUnits.HZ,
+                            freq=10000
+                            )
+                        if self.verbose >= 2:
+                            self.log('Set up internal FrequencyOutput signal as trigger for sync signals')
 
                     if self.videoSyncChannel is not None:
+                        # Prepare a counter output channel for the video sync signal
                         trigTask.co_channels.add_co_pulse_chan_freq(
                             counter=self.videoSyncChannel,
                             name_to_assign_to_channel="videoFrequency",
                             units=nidaqmx.constants.FrequencyUnits.HZ,
                             initial_delay=0.0,
                             freq=self.videoFrequency,
-                            duty_cycle=self.videoDutyCycle)     # Prepare a counter output channel for the video sync signal
+                            duty_cycle=self.videoDutyCycle)
                         if self.verbose >= 2:
                             self.log('Added video sync channel to task')
                     if self.dataSyncChannel is not None:
+                        # Prepare a counter output channel for the data sync signal
                         trigTask.co_channels.add_co_pulse_chan_freq(
                             counter=self.dataSyncChannel,
                             name_to_assign_to_channel="dataFrequency",
                             units=nidaqmx.constants.FrequencyUnits.HZ,
                             initial_delay=0.0,
                             freq=self.dataFrequency,
-                            duty_cycle=self.dataDutyCycle)     # Prepare a counter output channel for the audio sync signal
+                            duty_cycle=self.dataDutyCycle)
                         if self.verbose >= 2:
                             self.log('Added data sync channel to task')
-                    # if (self.signalChannel is not None) and ((self.videoSyncChannel is not None) or (self.dataSyncChannel is not None)):
-                    #     # Configure task to wait for a digital pulse on the specified channel.
-                    #     trigTask.triggers.arm_start_trigger.dig_edge_src=self.signalChannel
-                    #     trigTask.triggers.arm_start_trigger.trig_type=TriggerType.DIGITAL_EDGE
-                    #     trigTask.triggers.arm_start_trigger.dig_edge_edge=Edge.RISING
+
                     trigTask.timing.cfg_implicit_timing(sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS)
+                    trigTask.triggers.start_trigger.cfg_dig_edge_start_trig(
+                        trigger_source=self.startTriggerTerminal,
+                        trigger_edge=nidaqmx.constants.Edge.RISING
+                    )
 
                     # Set shared values so other processes can get actual a/v frequencies
                     if self.dataSyncChannel is not None and self.actualDataFrequency is not None:
@@ -1566,25 +1599,6 @@ class Synchronizer(StateMachineProcess):
                     if self.videoSyncChannel is not None and self.actualVideoFrequency is not None:
                         self.actualVideoFrequency.value = trigTask.co_channels['videoFrequency'].co_pulse_freq
                         if self.verbose > 0: self.log('Requested video frequency: ', self.videoFrequency, ' | actual video frequency: ', self.actualVideoFrequency.value);
-
-                    if signalTask is not None:
-                        # Add dummy write channel to force execute to block until task gets start trigger
-#                        signalTask.do_channels.add_do_chan(lines=self.signalChannel)
-                        # signalTask.timing.cfg_samp_clk_timing(rate=10000, sample_mode=nidaqmx.constants.AcquisitionType.FINITE, samps_per_chan=1)
-                        # # Configure task to wait for a digital pulse on the specified channel.
-                        # signalTask.triggers.arm_start_trigger.dig_edge_src=self.signalChannel
-                        # signalTask.triggers.arm_start_trigger.trig_type=TriggerType.DIGITAL_EDGE
-                        # signalTask.triggers.arm_start_trigger.dig_edge_edge=Edge.RISING
-                        signalReader = DigitalSingleChannelReader(signalTask.in_stream)  # Set up an analog stream reader
-                        signalTask.di_channels.add_di_chan(self.signalChannel)
-                        if self.verbose >= 2:
-                            self.log('Added digital trigger channel to start task')
-
-                        # signalTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
-                        #     rate=1000,
-                        #     active_edge=nidaqmx.constants.Edge.RISING,
-                        #     sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
-                        #     samps_per_chan=1)
 
                     # CHECK FOR MESSAGES
                     msg, arg = self.checkMessages(block=False)
@@ -1607,10 +1621,9 @@ class Synchronizer(StateMachineProcess):
 # Synchronizer: ******************* WAITING *********************************
                 elif self.state == States.WAITING:
                     # DO STUFF
-                    time.sleep(0.1)
 
                     # CHECK FOR MESSAGES
-                    msg, arg = self.checkMessages(block=False)
+                    msg, arg = self.checkMessages(block=True, timeout=0.1)
 
                     # CHOOSE NEXT STATE
                     if msg in ['', Messages.START]:
@@ -1634,8 +1647,13 @@ class Synchronizer(StateMachineProcess):
                         if self.ready is not None:
                             if self.verbose >= 2: self.log('Barrier: {n} others waiting, broken={b}'.format(n=self.ready.n_waiting, b=self.ready.broken))
                             if self.ready.broken:
+                                # Reset the barrier for all processes
                                 self.ready.reset()
+                            # Wait for other processes to pass barrier.
+                            #   If other processes timeout and break the
+                            #   barrier, jump to except block below.
                             self.ready.wait()
+                            if self.verbose >= 2: self.log('Passed barrier!')
                         passedBarrier = True
 
                         gracePeriod = 1.0
@@ -1644,19 +1662,14 @@ class Synchronizer(StateMachineProcess):
                         # To give audio and video processes a chance to get totally set up for acquiring, wait a second.
                         time.sleep(gracePeriod)
 
-                        if signalTask is not None:
-                            signalTask.start()
-                            if self.startOnHWSignal:
-                                while not signalReader.read_one_sample_one_line():
-                                    time.sleep(0.1)
-                                if self.verbose >= 2:
-                                    self.log("Got sync start trigger!")
-
-                        preTime = time.time_ns()
+                        if self.verbose >= 1: preTime = time.time_ns()
                         trigTask.start()
-                        postTime = time.time_ns()
-                        if self.verbose >= 1: self.log("Sync task started at {time} s".format(time=(preTime + postTime) / 2000000000))
-                        if self.verbose >= 1: self.log("Sync task startup took {time} s".format(time=(postTime - preTime)/1000000000))
+                        if startTriggerTask is not None:
+                            startTriggerTask.start()
+                        if self.verbose >= 1:
+                            postTime = time.time_ns()
+                            self.log("Sync task started at {time} s".format(time=(preTime + postTime) / 2000000000))
+                            self.log("Sync task startup took {time} s".format(time=(postTime - preTime)/1000000000))
                     except BrokenBarrierError:
                         passedBarrier = False
                         if self.verbose >= 2: self.log("No simultaneous start - retrying")
@@ -1684,13 +1697,13 @@ class Synchronizer(StateMachineProcess):
                     if trigTask.is_task_done():
                         raise RuntimeError('Warning, synchronizer trigger task stopped unexpectedly.')
 
-                    if self.writeEnableOnHWSignal and signalTask is not None:
-                        lastWriteEnable = writeEnable
-                        writeEnable = signalReader.read_one_sample_one_line()
-                        if writeEnable != lastWriteEnable:
-                            # Digital input has changed - notify writers to start/stop writing.
-                            for writerMsgQueue in writerMsgQueues:
-                                writerMsgQueue.put((Messages.SETPARAMS, {'enableWrite', writeEnable}))
+                    # if self.writeEnableOnHWSignal and startTriggerTask is not None:
+                    #     lastWriteEnable = writeEnable
+                    #     writeEnable = signalReader.read_one_sample_one_line()
+                    #     if writeEnable != lastWriteEnable:
+                    #         # Digital input has changed - notify writers to start/stop writing.
+                    #         for writerMsgQueue in writerMsgQueues:
+                    #             writerMsgQueue.put((Messages.SETPARAMS, {'enableWrite', writeEnable}))
 
                     # CHECK FOR MESSAGES
                     msg, arg = self.checkMessages(block=True, timeout=0.1)
@@ -1713,9 +1726,9 @@ class Synchronizer(StateMachineProcess):
                     if trigTask is not None:
                         trigTask.stop()
                         trigTask.close()
-                    if signalTask is not None:
-                        signalTask.stop()
-                        signalTask.close()
+                    if startTriggerTask is not None:
+                        startTriggerTask.stop()
+                        startTriggerTask.close()
                     if self.actualDataFrequency is not None:
                         self.actualDataFrequency.value = -1
                     if self.actualVideoFrequency is not None:
@@ -2303,6 +2316,7 @@ class AudioAcquirer(StateMachineProcess):
                     else:
                         gotStartTime = False
                         startTime = -1
+
                     if self.ready is None:
                         # No barrier to pass
                         passedBarrier = True
@@ -2314,38 +2328,48 @@ class AudioAcquirer(StateMachineProcess):
                         # Wait for shared value audioFrequency to be set by the Synchronizer process
                         time.sleep(0.1)
                     else:
+                        # audioFrequency shared value has been set by Synchronizer process
                         self.audioFrequency = self.audioFrequencyVar.value
 
-                        data = np.zeros((len(self.inputChannels), self.chunkSize), dtype='float')   # A pre-allocated array to receive audio data
+                        # A pre-allocated array to receive audio data
+                        data = np.zeros((len(self.inputChannels), self.chunkSize), dtype='float')
 
                         if self.verbose >= 2:
                             self.log('Created data buffer with size {c} x {n}'.format(c=len(self.inputChannels), n=self.chunkSize))
 
                         processedData = data.copy()
-                        readTask = nidaqmx.Task(new_task_name="audioTask")                            # Create task
 
-                        reader = AnalogMultiChannelReader(readTask.in_stream)  # Set up an analog stream reader
+                        # Create task
+                        readTask = nidaqmx.Task(new_task_name="audioTask")
+
+                        # Set up an analog stream reader
+                        reader = AnalogMultiChannelReader(readTask.in_stream)
                         for inputChannel in self.inputChannels:
-                            readTask.ai_channels.add_ai_voltage_chan(               # Set up analog input channel
+                            # Set up analog input channel
+                            readTask.ai_channels.add_ai_voltage_chan(
                                 inputChannel,
                                 terminal_config=self.channelConfig,
                                 max_val=10,
                                 min_val=-10)
-                        readTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
+
+                        # Configure clock source for triggering each analog read
+                        readTask.timing.cfg_samp_clk_timing(
                             rate=self.audioFrequency,
-                            source=self.syncChannel,                            # Specify a timing source!
+                            source=self.syncChannel,                     # Specify a timing source!
                             active_edge=nidaqmx.constants.Edge.RISING,
                             sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
                             samps_per_chan=8*self.chunkSize)
 
                         try:
                             # Set DAQ buffer overwrite mode to "do not overwrite"
-                            readTask.in_stream.overwrite = nidaqmx.constants.OverwriteMode.DO_NOT_OVERWRITE_UNREAD_SAMPLES
+                            readTask.in_stream.overwrite =  nidaqmx.constants.OverwriteMode.DO_NOT_OVERWRITE_UNREAD_SAMPLES
+                            readTask.in_stream.over_write = nidaqmx.constants.OverwriteMode.DO_NOT_OVERWRITE_UNREAD_SAMPLES
                         except:
                             try:
                                 # For nidaqmx library backwards compatibility
                                 # over_write property deprecated in 0.7.0
                                 readTask.in_stream.over_write = nidaqmx.constants.OverwriteMode.DO_NOT_OVERWRITE_UNREAD_SAMPLES
+                                readTask.in_stream.overwrite =  nidaqmx.constants.OverwriteMode.DO_NOT_OVERWRITE_UNREAD_SAMPLES
                             except:
                                 self.log('Warning, could not set read task overwrite mode to "do not overwrite"')
 
@@ -2384,6 +2408,7 @@ class AudioAcquirer(StateMachineProcess):
                     # DO STUFF
 
                     if not taskStarted:
+                        if self.verbose >= 2: self.log('Passed barrier!')
                         readTask.start()
                         taskStarted = True;
 
@@ -2393,7 +2418,7 @@ class AudioAcquirer(StateMachineProcess):
                             if self.ready is not None:
                                 self.ready.wait()
                             passedBarrier = True
-                            if self.verbose >= 2: self.log('Passed barrier.')
+                            if self.verbose >= 2: self.log('Passed barrier!')
                         except BrokenBarrierError:
                             passedBarrier = False
                             if self.verbose >= 2: self.log("No simultaneous start - retrying")
