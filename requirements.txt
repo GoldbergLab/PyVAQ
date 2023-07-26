@@ -15,5 +15,5 @@ pycparser==2.21
 pyparsing==2.4.7
 python-dateutil==2.8.1
 pywin32-ctypes==0.2.0
-scipy==1.6.3
+scipy==1.10.0
 six==1.16.0
