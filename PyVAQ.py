@@ -429,11 +429,6 @@ class PyVAQ:
         self.writeEnableOnHWSignalVar = tk.BooleanVar(); self.writeEnableOnHWSignalVar.set(False)
         self.writeEnableOnHWSignalCheckbutton = ttk.Checkbutton(self.acquisitionSignalParametersFrame, text="Write enable based on HW signal", variable=self.writeEnableOnHWSignalVar, offvalue=False, onvalue=True)
 
-        DEFAULT_NUM_GPU_VENC_SESSIONS = 3
-        self.maxGPUVencFrame = ttk.LabelFrame(self.acquisitionParametersFrame, text="Max GPU VEnc sessions", style='SingleContainer.TLabelframe')
-        self.maxGPUVEncVar = tk.StringVar(); self.maxGPUVEncVar.set(str(DEFAULT_NUM_GPU_VENC_SESSIONS))
-        self.maxGPUVEncEntry = ttk.Entry(self.maxGPUVencFrame, width=16, textvariable=self.maxGPUVEncVar)
-
         self.selectAcquisitionHardwareButton =  ttk.Button(self.acquisitionParametersFrame, text="Select audio/video inputs", command=self.selectAcquisitionHardware)
         self.acquisitionHardwareText = tk.Text(self.acquisitionParametersFrame)
 
@@ -481,6 +476,19 @@ class PyVAQ:
         self.mergeCompressionVar.trace('w', lambda *args: self.changeAVMergerParams(compression=self.mergeCompressionVar.get()))
 
         self.fileSettingsFrame = cf.CollapsableFrame(self.controlFrame, collapseText="File writing settings", **COLLAPSABLE_FRAME_STYLE); self.fileSettingsFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
+
+        DEFAULT_NUM_GPU_VENC_SESSIONS = 3
+        self.maxGPUVEncFrame = ttk.LabelFrame(self.fileSettingsFrame, text="Max GPU VEnc sessions", style='SingleContainer.TLabelframe')
+        self.maxGPUVEncVar = tk.StringVar(); self.maxGPUVEncVar.set(str(DEFAULT_NUM_GPU_VENC_SESSIONS))
+        self.maxGPUVEncEntry = ttk.Entry(self.maxGPUVEncFrame, width=16, textvariable=self.maxGPUVEncVar)
+
+        self.gpuCompressionArgsFrame = ttk.LabelFrame(self.fileSettingsFrame, text="GPU comrpession ffmpeg args", style='SingleContainer.TLabelframe')
+        self.gpuCompressionArgsVar = tk.StringVar(); self.gpuCompressionArgsVar.set(DEFAULT_GPU_COMPRESSION_ARGS)
+        self.gpuCompressionArgsEntry = ttk.Entry(self.gpuCompressionArgsFrame, width=50, textvariable=self.gpuCompressionArgsVar)
+
+        self.cpuCompressionArgsFrame = ttk.LabelFrame(self.fileSettingsFrame, text="CPU comrpession ffmpeg args", style='SingleContainer.TLabelframe')
+        self.cpuCompressionArgsVar = tk.StringVar(); self.cpuCompressionArgsVar.set(DEFAULT_CPU_COMPRESSION_ARGS)
+        self.cpuCompressionArgsEntry = ttk.Entry(self.cpuCompressionArgsFrame, width=50, textvariable=self.cpuCompressionArgsVar)
 
         self.daySubfoldersVar = tk.BooleanVar(); self.daySubfoldersVar.set(True)
         self.daySubfoldersCheckbutton = ttk.Checkbutton(self.fileSettingsFrame, text="File in day subfolders", variable=self.daySubfoldersVar)
@@ -4118,8 +4126,6 @@ him know. Otherwise, I had nothing to do with it.
         self.preTriggerTimeEntry.grid()
         self.recordTimeFrame.grid(                  row=2, column=2, sticky=tk.EW)
         self.recordTimeEntry.grid()
-        self.maxGPUVencFrame.grid(                  row=2, column=3, sticky=tk.NSEW)
-        self.maxGPUVEncEntry.grid()
         self.dataChunkSizeSecondsFrame.grid(        row=3, column=0, sticky=tk.EW)
         self.dataChunkSizeSecondsEntry.grid()
         self.acquisitionSignalParametersFrame.grid( row=4, column=0, columnspan=4, sticky=tk.NSEW)
@@ -4143,7 +4149,13 @@ him know. Otherwise, I had nothing to do with it.
         self.mergeFileWidget.grid(                  row=4, column=0, columnspan=2)
 
         #### Children of self.fileSettingsFrame
-        self.daySubfoldersCheckbutton.grid( row=0, column=0)
+        self.maxGPUVEncFrame.grid(                  row=0, column=0, sticky=tk.NSEW)
+        self.maxGPUVEncEntry.grid()
+        self.daySubfoldersCheckbutton.grid(         row=0, column=1)
+        self.gpuCompressionArgsFrame.grid(          row=2, column=0, columnspan=2, sticky=tk.NSEW)
+        self.gpuCompressionArgsEntry.grid()
+        self.cpuCompressionArgsFrame.grid(          row=3, column=0, columnspan=2, sticky=tk.NSEW)
+        self.cpuCompressionArgsEntry.grid()
 
         #### Children of self.scheduleFrame
         self.scheduleEnabledCheckbutton.grid(   row=0, column=0, sticky=tk.NW)
