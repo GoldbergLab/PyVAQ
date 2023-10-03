@@ -56,12 +56,13 @@ Recording scheduling function does not yet work.
 	b) cd C:\path\to\where\PyVAQ\is
 	c) pip install -r requirements.txt
 6. Install Spinnaker SDK (version 2.4.0.144 for x64 Windows)
-7. Install Spinnaker python library (version 2.4.0.144 for CPython 3.8.10, x64 Windows):
+	a) Select the "Application Development" installation profile when prompted
+8. Install Spinnaker python library (version 2.4.0.144 for CPython 3.8.10, x64 Windows):
 	a) Unzip spinnaker-python
 	b) Open command prompt
 	c) cd C:\path\to\where\unzipped\spinnaker-python\is
 	d) pip install spinnaker_python-2.4.0.144-cp38-cp38-win_amd64.whl
-8. Install ffmpeg with GPU support
+9. Install ffmpeg with GPU support
 	a) Unzip ffmpeg
 	b) Move to C:\ProgramFiles
 	c) Add ffmpeg path to system Path (environment variable)
