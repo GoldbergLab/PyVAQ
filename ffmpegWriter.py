@@ -90,7 +90,10 @@ class ffmpegVideoWriter():
             if self.verbose >= 2:
                 print('ffmpeg command:')
                 print(ffmpegCommand)
-            self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
+            try:
+                self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
+            except TypeError:
+                raise OSError('Error starting ffmpeg process - check that ffmpeg is present on this system and included in the system PATH variable')
 
         if self.frameType == 'image':
             bytes = frame.tobytes()
@@ -167,7 +170,11 @@ class ffmpegAudioWriter():
             if self.verbose >= 2:
                 print('ffmpeg command:')
                 print(ffmpegCommand)
-            self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
+
+            try:
+                self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
+            except TypeError:
+                raise OSError('Error starting ffmpeg process - check that ffmpeg is present on this system and included in the system PATH variable')
 
         # Convert array to bytes
         bytes = data.tobytes()
