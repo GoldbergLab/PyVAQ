@@ -3003,12 +3003,12 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
-        self.digitalWriteEnable.set(newAudioWriteEnable)
+        self.digitalWriteEnable.set(newDigitalWriteEnable)
         if updateGUI:
             # Update text field
             self.digitalMonitors.setWriteEnable(newDigitalWriteEnable)
         # Notify AudioWriter child process of new write enable state
-        sendMessage(self.digitalWriteProcess, (Messages.SETPARAMS, dict(enableWrite=newAudioWriteEnable)))
+        sendMessage(self.digitalWriteProcess, (Messages.SETPARAMS, dict(enableWrite=newDigitalWriteEnable)))
 
     def setVideoWriteEnable(self, newVideoWriteEnables, *args, updateGUI=True):
         """Send messages to video writer processes to enable/disable file writing
