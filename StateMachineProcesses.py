@@ -3466,10 +3466,10 @@ class VideoAcquirer(StateMachineProcess):
     def run(self):
         super().run()
 
-        if self.imageQueue is not None:
-            self.imageQueue.setupBuffers()
-        if self.monitorImageSender is not None:
-            self.monitorImageSender.setupBuffers()
+        # if self.imageQueue is not None:
+        #     self.imageQueue.setupBuffers()
+        # if self.monitorImageSender is not None:
+        #     self.monitorImageSender.setupBuffers()
 
         msg = ''; arg = None
 
