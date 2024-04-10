@@ -214,10 +214,16 @@ class SharedImageReceiver():
                 time.sleep(0.5)
         if not success:
             raise IOError("broken pipe, bye bye")
+        else:
+            self.pipeConnected = True
 
     def get(self, includeMetadata=False):
         # Returns a PySpin image, if one is available in the buffer, otherwise
         #   raise queue.Empty
+
+        if not self.pipeConnected or self.pipeHandle is None:
+            # Pipe not set up - do it now
+            self.connectPipe()
 
         print('getting from queue')
         try:
