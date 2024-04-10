@@ -33,11 +33,16 @@ class SharedImageSender():
                 fileWriter=None,                    # fileWriter must be either None or a function that takes the specified output type and writes it to a file.
                 lockForOutput=True,                 # Should the shared memory buffer be locked during fileWriter call? If outputCopy=False and fileWriter is not None, it is recommended that lockForOutput=True
                 maxBufferSize=1,                    # Maximum number of images to allocate. Attempting to allocate more than that will raise an index error
-                name='unnamed_fifo',                # Name for named pipe
+                pipeName=None 'unnamed_fifo',                # Name for named pipe
                 allowOverflow=False,                # Should an error be raised if the queue is filled up, or should old entries be overwritten?
                 ):
 
-        self.pipeName = name
+        if pipeName is None:
+            pipeName = 'PyVAQ_fifo_{t}'.format(t=int(time.time()*10))
+        else:
+            # Add timestamp to ensure the name is not in use
+            pipeName = pipeName + '_' + str(int(time.time()*10))
+        self.pipeName = pipeName
         self.pipePath = getPipePath(self.pipeName)
         self.verbose = verbose
         self.maxBufferSize = maxBufferSize
@@ -54,6 +59,7 @@ class SharedImageSender():
         self.pipeConnected = False
 
         self.receiver = SharedImageReceiver(
+            pipeName=self.pipeName,
             width=self.width,
             height=self.height,
             channels=self.channels,
@@ -67,8 +73,7 @@ class SharedImageSender():
             imageDataType=imageDataType,
             lockForOutput=lockForOutput,
             maxBufferSize = self.maxBufferSize,
-            metadataQueue=self.metadataQueue,
-            name=self.pipeName)
+            metadataQueue=self.metadataQueue)
 
     def qsize(self):
         return (0, 0) # (main queue, metadata queue)
@@ -122,6 +127,7 @@ class SharedImageSender():
 
 class SharedImageReceiver():
     def __init__(self,
+                pipeName
                 width,
                 height,
                 channels,
@@ -136,7 +142,6 @@ class SharedImageReceiver():
                 lockForOutput=True,
                 maxBufferSize=1,
                 metadataQueue=None,
-                name=None
                 ):
         self.width = width
         self.height = height
@@ -153,7 +158,7 @@ class SharedImageReceiver():
         self.metadataQueue = metadataQueue
         self.verbose = verbose
         self.nextID = 0
-        self.pipeName = name
+        self.pipeName = pipeName
         self.pipePath = getPipePath(self.pipeName)
         self.pipeHandle = None
         self.pipeConnected = False

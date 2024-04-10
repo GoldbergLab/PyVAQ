@@ -3430,7 +3430,7 @@ class VideoAcquirer(StateMachineProcess):
                 lockForOutput=False,
                 maxBufferSize=self.bufferSize,
                 channels=self.nChannels,
-                name=self.camSerial+'____main',
+                pipeName=self.camSerial+'_main',
                 allowOverflow=False
             )
             if self.verbose >= 2: self.log("Creating shared image sender with max buffer size:", self.bufferSize)
@@ -3441,6 +3441,7 @@ class VideoAcquirer(StateMachineProcess):
 
         if sendToMonitor:
             self.monitorImageSender = SharedImageSender(
+                pipeName=self.camSerial+'_monitor',
                 width=videoWidth,
                 height=videoHeight,
                 verbose=self.verbose,
@@ -3448,7 +3449,6 @@ class VideoAcquirer(StateMachineProcess):
                 lockForOutput=False,
                 maxBufferSize=1,
                 channels=self.nChannels,
-                name=self.camSerial+'_monitor',
                 allowOverflow=True
             )
             self.monitorImageReceiver = self.monitorImageSender.getReceiver()
