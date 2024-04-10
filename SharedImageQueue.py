@@ -33,7 +33,7 @@ class SharedImageSender():
                 fileWriter=None,                    # fileWriter must be either None or a function that takes the specified output type and writes it to a file.
                 lockForOutput=True,                 # Should the shared memory buffer be locked during fileWriter call? If outputCopy=False and fileWriter is not None, it is recommended that lockForOutput=True
                 maxBufferSize=1,                    # Maximum number of images to allocate. Attempting to allocate more than that will raise an index error
-                pipeName=None 'unnamed_fifo',                # Name for named pipe
+                pipeName=None,                       # Name for named pipe
                 allowOverflow=False,                # Should an error be raised if the queue is filled up, or should old entries be overwritten?
                 ):
 
@@ -127,7 +127,7 @@ class SharedImageSender():
 
 class SharedImageReceiver():
     def __init__(self,
-                pipeName
+                pipeName,
                 width,
                 height,
                 channels,
