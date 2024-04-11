@@ -32,7 +32,79 @@ class ffmpegVideoWriter():
         self.gpuCompressionArgs = gpuCompressionArgs
         self.cpuCompressionArgs = cpuCompressionArgs
 
+    def initializeFFMPEG(self, shape):
+        # Initialize a new ffmpeg process
+
+        w, h = shape
+        shapeArg = '{w}x{h}'.format(w=w, h=h)
+
+        if self.verbose >= 3:
+            print("STARTING NEW FFMPEG VIDEO PROCESS!")
+
+
+        if self.verbose <= 0:
+            ffmpegVerbosity = 'quiet'
+        elif self.verbose == 1:
+            ffmpegVerbosity = 'error'
+        elif self.verbose == 2:
+            ffmpegVerbosity = 'warning'
+        elif self.verbose >= 3:
+            ffmpegVerbosity = 'verbose'
+
+        if self.gpuVEnc:
+            # With GPU acceleration
+            ffmpegCommand = [FFMPEG_EXE, '-y', '-probesize', '32', '-flush_packets', '1',
+                '-vsync', 'passthrough', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
+                '-v', ffmpegVerbosity, '-f', 'rawvideo', '-c:v', 'rawvideo',
+                '-pix_fmt', self.input_pixel_format, '-s', shapeArg, '-thread_queue_size', '128',
+                '-r', str(self.fps), '-i', '-', *self.gpuCompressionArgs, '-pix_fmt', self.output_pixel_format, '-an',
+                self.filename]
+        else:
+            # Without GPU acceleration
+            ffmpegCommand = [FFMPEG_EXE, '-y', '-probesize', '32', '-flush_packets', '1',
+                '-vsync', 'passthrough', '-v', ffmpegVerbosity, '-f', 'rawvideo',
+                '-c:v', 'rawvideo', '-pix_fmt', self.input_pixel_format,
+                '-s', shapeArg, '-r', str(self.fps), '-thread_queue_size', '128',
+                 '-i', '-', *self.cpuCompressionArgs,
+                '-pix_fmt', self.output_pixel_format, '-an',
+                self.filename]
+
+        if self.verbose >= 2:
+            print('ffmpeg command:')
+            print(ffmpegCommand)
+        try:
+            self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
+        except TypeError:
+            raise OSError('Error starting ffmpeg process - check that ffmpeg is present on this system and included in the system PATH variable')
+
+    def getFrameShape(self, frame, shape=None):
+        # Ensure we know the shape of the frame
+        if shape is None:
+            # No shape given
+            if self.shape is None:
+                # Shape not set in constructor
+                if self.frameType == 'image':
+                    # Determine shape from PySpin object
+                    shape = frame.size
+                elif self.frameType == 'numpy':
+                    if len(frame.shape) == 1:
+                        # Ok, this is flattened, can't really deduce the resolution
+                        raise TypeError("For flattened arrays, the shape parameter must be passed in")
+                    else:
+                        # Determine shape from numpy array
+                        shape = [frame.shape[1], frame.shape[0]]
+                else:
+                    raise TypeError("You must provide width and height for a bytearray frame format")
+            else:
+                # Use shape passed in at constructor
+                shape = self.shape
+        if self.verbose >= 2: print('Frame shape: {s}'.format(s=str(shape)))
+        return shape
+
     def write(self, frame, shape=None):
+        # Send a video frame to an ffmpeg process. If a ffmpeg process does not
+        #   currently exist, start a new one
+        #
         # frame should be an RGB PIL image
         #   or a numpy array (of the format returned by calling
         #   np.asarray(image) on a RGB PIL image
@@ -50,61 +122,11 @@ class ffmpegVideoWriter():
             print('Sending frame to ffmpeg!')
 
         if self.ffmpegProc is None:
-            if self.verbose >= 3:
-                print("STARTING NEW FFMPEG VIDEO PROCESS!")
-            if shape is None and self.shape is None:
-                if self.frameType == 'image':
-                    w, h = frame.size
-                elif self.frameType == 'numpy':
-                    if len(frame.shape) == 1:
-                        # Ok, this is flattened, can't really deduce the resolution
-                        raise TypeError("For flattened arrays, the shape parameter must be passed in")
-                    else:
-                        w = frame.shape[1]
-                        h = frame.shape[0]
-                else:
-                    raise TypeError("You must provide width and height for a bytearray frame format")
-            else:
-                if shape is None:
-                    shape = self.shape
-                w, h = shape
-            shapeArg = '{w}x{h}'.format(w=w, h=h)
+            # Time to initialize a new ffmpeg process
+            shape = self.getFrameShape(frame, shape=shape)
+            self.initializeFFMPEG(shape)
 
-            if self.verbose <= 0:
-                ffmpegVerbosity = 'quiet'
-            elif self.verbose == 1:
-                ffmpegVerbosity = 'error'
-            elif self.verbose == 2:
-                ffmpegVerbosity = 'warning'
-            elif self.verbose >= 3:
-                ffmpegVerbosity = 'verbose'
-
-            if self.gpuVEnc:
-                # With GPU acceleration
-                ffmpegCommand = [FFMPEG_EXE, '-y', '-probesize', '32', '-flush_packets', '1',
-                    '-vsync', 'passthrough', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
-                    '-v', ffmpegVerbosity, '-f', 'rawvideo', '-c:v', 'rawvideo',
-                    '-pix_fmt', self.input_pixel_format, '-s', shapeArg, '-thread_queue_size', '128',
-                    '-r', str(self.fps), '-i', '-', *self.gpuCompressionArgs, '-pix_fmt', self.output_pixel_format, '-an',
-                    self.filename]
-            else:
-                # Without GPU acceleration
-                ffmpegCommand = [FFMPEG_EXE, '-y', '-probesize', str(len(bytes)), '-flush_packets', '1',
-                    '-vsync', 'passthrough', '-v', ffmpegVerbosity, '-f', 'rawvideo',
-                    '-c:v', 'rawvideo', '-pix_fmt', self.input_pixel_format,
-                    '-s', shapeArg, '-r', str(self.fps), '-thread_queue_size', '128',
-                     '-i', '-', *self.cpuCompressionArgs,
-                    '-pix_fmt', self.output_pixel_format, '-an',
-                    self.filename]
-
-            if self.verbose >= 2:
-                print('ffmpeg command:')
-                print(ffmpegCommand)
-            try:
-                self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
-            except TypeError:
-                raise OSError('Error starting ffmpeg process - check that ffmpeg is present on this system and included in the system PATH variable')
-
+        # Write this frame
         self.ffmpegProc.stdin.write(bytes)    #'raw', 'RGB'))
         self.ffmpegProc.stdin.flush()
 
