@@ -1,8 +1,10 @@
 import subprocess
 import shutil
 import warnings
+from numpy import frombuffer, reshape
 
 FFMPEG_EXE = shutil.which('ffmpeg')
+FFPROBE_EXE = shutil.which('ffprobe')
 
 DEFAULT_CPU_COMPRESSION_ARGS = [
     '-c:v', 'libx264', '-preset', 'fast', '-crf', '23'
@@ -10,6 +12,59 @@ DEFAULT_CPU_COMPRESSION_ARGS = [
 DEFAULT_GPU_COMPRESSION_ARGS = [
     '-c:v', 'h264_nvenc', '-preset', 'fast', '-cq', '32'
     ]
+
+class ffmpegReader():
+    def __init__(self, filename, verbose=1):
+        self.filename = filename
+
+        if verbose <= 0:
+            self.ffmpegVerbosity = 'quiet'
+        elif verbose == 1:
+            self.ffmpegVerbosity = 'error'
+        elif verbose == 2:
+            self.ffmpegVerbosity = 'warning'
+        elif verbose >= 3:
+            self.ffmpegVerbosity = 'verbose'
+
+        self.ffmpegProc = None
+
+    def getVideoInfo(self):
+        ffprobeCommand = [FFPROBE_EXE,
+            '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream',
+            '-of', 'default=nokey=0:noprint_wrappers=1',
+            self.filename]
+        with subprocess.Popen(ffprobeCommand, stdout=subprocess.PIPE) as p:
+            rawVideoInfo, err = p.communicate()
+        rawVideoInfo = rawVideoInfo.decode('utf-8').strip().split('\r\n')
+        videoInfo = dict([keyValue.split('=') for keyValue in rawVideoInfo])
+        return videoInfo
+
+    def getVideoSize(self):
+        videoInfo = self.getVideoInfo()
+        numFrames = int(videoInfo['nb_frames'])
+        width = int(videoInfo['width'])
+        height = int(videoInfo['height'])
+        return [numFrames, height, width]
+
+    def read(self, outputType='numpy'):
+        # outputType must be 'bytes' or 'numpy'
+
+        ffmpegCommand = [FFMPEG_EXE, '-y', '-v', self.ffmpegVerbosity,
+            '-i', '"'+self.filename+'"', '-f', 'rawvideo', '-c:v', 'rawvideo', '-pix_fmt', 'rgb0', '-an', '-']
+        print(' '.join(ffmpegCommand))
+        with subprocess.Popen(ffmpegCommand, stdout=subprocess.PIPE, text=False) as self.ffmpegProc:
+            frameBytes, err = self.ffmpegProc.communicate()
+
+        print('Stderr:', err)
+        if outputType == 'bytes':
+            return frameBytes
+        else:
+            frame = frombuffer(frameBytes)
+            videoSize = self.getVideoSize()
+            breakpoint()
+            return reshape(frame, videoSize)
 
 class ffmpegVideoWriter():
     def __init__(self, filename, frameType, verbose=1, fps=30, shape=None,
@@ -40,7 +95,6 @@ class ffmpegVideoWriter():
 
         if self.verbose >= 3:
             print("STARTING NEW FFMPEG VIDEO PROCESS!")
-
 
         if self.verbose <= 0:
             ffmpegVerbosity = 'quiet'

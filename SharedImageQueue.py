@@ -32,8 +32,8 @@ class SharedImageSender():
                 outputType='PySpin',                # Specify how to return data at receiver endpoint. Options are PySpin, numpy, PIL, bytes
                 fileWriter=None,                    # fileWriter must be either None or a function that takes the specified output type and writes it to a file.
                 lockForOutput=True,                 # Should the shared memory buffer be locked during fileWriter call? If outputCopy=False and fileWriter is not None, it is recommended that lockForOutput=True
-                maxBufferSize=1,                    # Maximum number of images to allocate. Attempting to allocate more than that will raise an index error
-                pipeName=None,                       # Name for named pipe
+                maxBufferSize=100,                  # Maximum size for metadata queue
+                pipeName=None,                      # Name for named pipe
                 allowOverflow=False,                # Should an error be raised if the queue is filled up, or should old entries be overwritten?
                 ):
 
@@ -64,7 +64,7 @@ class SharedImageSender():
             height=self.height,
             channels=self.channels,
             pixelFormat=pixelFormat,
-            frameSize=self.width*self.height*self.channels*imageBitsPerPixel,
+            frameSize=self.width*self.height*self.channels*(imageBitsPerPixel//8),
             verbose=self.verbose,
             offsetX=offsetX,
             offsetY=offsetY,
@@ -99,6 +99,8 @@ class SharedImageSender():
         # Either pass a PySpin Image in the "image" argument
         #   or pass a numpy array in the "imarray" argument
 
+        if self.pipe is None:
+            self.setupNamedPipe()
         if not self.pipeConnected:
             # wait for pipe to be connected
             self.connectPipe()
@@ -107,9 +109,6 @@ class SharedImageSender():
         #   image = cam.GetNextImage()
         if image is not None:
             imarray = image.GetNDArray()
-
-        # Write the numpy array data buffer to the pipe
-        win32file.WriteFile(self.pipe, imarray.data)
 
         try:
             self.metadataQueue.put(metadata, block=False)
@@ -120,7 +119,8 @@ class SharedImageSender():
                 print('{name}: Warning, metadata queue full. Overflow allowed - continuing...'.format(name=self.pipeName))
 
         # Write the numpy array data buffer to the pipe
-        win32file.WriteFile(self.pipe, imarray.data)
+        print('Writing data: len=', len(bytes(imarray.data)), 'shape=', imarray.shape)
+        win32file.WriteFile(self.pipe, bytes(imarray.data))
 
     def close(self):
         win32file.CloseHandle(self.pipe)
@@ -207,8 +207,8 @@ class SharedImageReceiver():
 
     def connectPipe(self):
         success = False
-        for k in range(5):
-            print("attempt to connect to sender #", k+1)
+        numAttempts = 10
+        for k in range(numAttempts):
             try:
                 self.pipeHandle = open(self.pipePath, 'rb')
                 success = True
@@ -216,7 +216,7 @@ class SharedImageReceiver():
             except:
                 success = False
                 print('Failed to connect to pipe...')
-                time.sleep(0.5)
+                time.sleep(1)
         if not success:
             raise IOError("broken pipe, bye bye")
         else:
@@ -230,9 +230,9 @@ class SharedImageReceiver():
             # Pipe not set up - do it now
             self.connectPipe()
 
-        print('getting from queue')
         try:
-            output = self.pipeHandle.read(size=self.frameSize)
+            print('framesize=', self.frameSize)
+            output = self.pipeHandle.read(self.frameSize)
         except:
             raise IOError('pipe read failed')
 

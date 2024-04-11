@@ -11,7 +11,7 @@ from PIL import Image
 from collections import defaultdict, deque
 from threading import BrokenBarrierError
 import itertools
-import ffmpegWriter as fw
+import ffmpegIO as fw
 from SharedImageQueue import SharedImageSender
 import traceback
 import unicodedata

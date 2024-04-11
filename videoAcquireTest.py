@@ -4,7 +4,7 @@ import numpy as np
 import traceback
 from SharedImageQueue import SharedImageSender
 from queue import Empty as qEmpty
-import ffmpegWriter as fw
+import ffmpegIO as fw
 import rawWriter as rw
 import time
 import sys

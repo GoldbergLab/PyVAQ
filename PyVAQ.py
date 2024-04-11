@@ -46,7 +46,7 @@ import inspect
 import CollapsableFrame as cf
 import PySpinUtilities as psu
 import ctypes
-from ffmpegWriter import DEFAULT_CPU_COMPRESSION_ARGS, DEFAULT_GPU_COMPRESSION_ARGS
+from ffmpegIO import DEFAULT_CPU_COMPRESSION_ARGS, DEFAULT_GPU_COMPRESSION_ARGS
 from CameraConfig import CameraConfigPanel
 import copy
 from collections import OrderedDict as odict
