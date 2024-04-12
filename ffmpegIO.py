@@ -13,7 +13,7 @@ DEFAULT_GPU_COMPRESSION_ARGS = [
     '-c:v', 'h264_nvenc', '-preset', 'fast', '-cq', '32'
     ]
 
-class ffmpegReader():
+class ffmpegVideoReader():
     def __init__(self, filename, verbose=1):
         self.filename = filename
 
@@ -48,26 +48,39 @@ class ffmpegReader():
         height = int(videoInfo['height'])
         return [numFrames, height, width]
 
-    def read(self, outputType='numpy'):
+    def read(self, outputType='numpy', startFrame=None, endFrame=None):
         # outputType must be 'bytes' or 'numpy'
+        # frame indices 1 indexed
+        videoSize = self.getVideoSize()
+        if startFrame is None:
+            startFrame = 1
+        if endFrame is None:
+            endFrame = videoSize[0]
+
+        frameByteCount = videoSize[1]*videoSize[2]*3
+        startByte = (startFrame-1)*frameByteCount
+        endByte = endFrame*frameByteCount
+        numFrames = endFrame - startFrame + 1
 
         ffmpegCommand = [FFMPEG_EXE, '-y', '-v', self.ffmpegVerbosity,
-            '-i', '"'+self.filename+'"', '-f', 'rawvideo', '-c:v', 'rawvideo', '-pix_fmt', 'rgb0', '-an', '-']
-        print(' '.join(ffmpegCommand))
-        with subprocess.Popen(ffmpegCommand, stdout=subprocess.PIPE, text=False) as self.ffmpegProc:
-            frameBytes, err = self.ffmpegProc.communicate()
+            '-i', '"'+self.filename+'"', '-f', 'rawvideo', '-c:v', 'rawvideo', '-pix_fmt', 'rgb24', '-an', '-']
+        with subprocess.Popen(' '.join(ffmpegCommand), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=False) as self.ffmpegProc:
+            self.ffmpegProc.stdout.seek(startByte)
+            frameBytes = self.ffmpegProc.stdout.read(endByte-startByte)
+            self.ffmpegProc.kill()
+            err = self.ffmpegProc.stderr.read()
 
-        print('Stderr:', err)
         if outputType == 'bytes':
             return frameBytes
+        elif outputType == 'numpy':
+            frames = frombuffer(frameBytes, dtype='uint8')
+            outputVideoSize = [numFrames, videoSize[1], videoSize[2], 3]
+            return reshape(frames, outputVideoSize)
         else:
-            frame = frombuffer(frameBytes)
-            videoSize = self.getVideoSize()
-            breakpoint()
-            return reshape(frame, videoSize)
+            raise SyntaxError('Unknown output type: {ot}'.format(ot=outputType))
 
 class ffmpegVideoWriter():
-    def __init__(self, filename, frameType, verbose=1, fps=30, shape=None,
+    def __init__(self, filename, frameType="bytes", verbose=1, fps=30, shape=None,
                 input_pixel_format="bayer_rggb8", output_pixel_format="rgb0",
                 gpuVEnc=False, gpuCompressionArgs=DEFAULT_GPU_COMPRESSION_ARGS,
                 cpuCompressionArgs=DEFAULT_CPU_COMPRESSION_ARGS):
@@ -87,6 +100,17 @@ class ffmpegVideoWriter():
         self.gpuCompressionArgs = gpuCompressionArgs
         self.cpuCompressionArgs = cpuCompressionArgs
 
+    def getFFMPEGVerbosity(self):
+        if self.verbose <= 0:
+            ffmpegVerbosity = 'quiet'
+        elif self.verbose == 1:
+            ffmpegVerbosity = 'error'
+        elif self.verbose == 2:
+            ffmpegVerbosity = 'warning'
+        elif self.verbose >= 3:
+            ffmpegVerbosity = 'verbose'
+        return ffmpegVerbosity
+
     def initializeFFMPEG(self, shape):
         # Initialize a new ffmpeg process
 
@@ -96,31 +120,25 @@ class ffmpegVideoWriter():
         if self.verbose >= 3:
             print("STARTING NEW FFMPEG VIDEO PROCESS!")
 
-        if self.verbose <= 0:
-            ffmpegVerbosity = 'quiet'
-        elif self.verbose == 1:
-            ffmpegVerbosity = 'error'
-        elif self.verbose == 2:
-            ffmpegVerbosity = 'warning'
-        elif self.verbose >= 3:
-            ffmpegVerbosity = 'verbose'
+        ffmpegVerbosity = self.getFFMPEGVerbosity()
 
         if self.gpuVEnc:
             # With GPU acceleration
             ffmpegCommand = [FFMPEG_EXE, '-y', '-probesize', '32', '-flush_packets', '1',
-                '-vsync', 'passthrough', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
+                '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
                 '-v', ffmpegVerbosity, '-f', 'rawvideo', '-c:v', 'rawvideo',
                 '-pix_fmt', self.input_pixel_format, '-s', shapeArg, '-thread_queue_size', '128',
-                '-r', str(self.fps), '-i', '-', *self.gpuCompressionArgs, '-pix_fmt', self.output_pixel_format, '-an',
+                '-r', str(self.fps), '-i', '-', *self.gpuCompressionArgs,
+                '-pix_fmt', self.output_pixel_format, '-fps_mode', 'passthrough', '-an',
                 self.filename]
         else:
             # Without GPU acceleration
             ffmpegCommand = [FFMPEG_EXE, '-y', '-probesize', '32', '-flush_packets', '1',
-                '-vsync', 'passthrough', '-v', ffmpegVerbosity, '-f', 'rawvideo',
+                '-v', ffmpegVerbosity, '-f', 'rawvideo',
                 '-c:v', 'rawvideo', '-pix_fmt', self.input_pixel_format,
                 '-s', shapeArg, '-r', str(self.fps), '-thread_queue_size', '128',
                  '-i', '-', *self.cpuCompressionArgs,
-                '-pix_fmt', self.output_pixel_format, '-an',
+                '-pix_fmt', self.output_pixel_format, '-fps_mode', 'passthrough', '-an',
                 self.filename]
 
         if self.verbose >= 2:
@@ -186,12 +204,102 @@ class ffmpegVideoWriter():
 
     def close(self):
         if self.ffmpegProc is not None:
-            self.ffmpegProc.stdin.close()
+            self.ffmpegProc.kill()
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             self.ffmpegProc = None
             if self.verbose >= 2:
                 print('Closed pipe to ffmpeg')
+
+class ffmpegPipedVideoWriter(ffmpegVideoWriter):
+    def __init__(self, filename, pipePath, **kwargs):
+        super().__init__(filename, **kwargs)
+        self.pipePath = pipePath
+        if not self.frameType == "bytes":
+            raise ValueError('Piped video writers can only accomodate "bytes" frame type')
+
+    def initializeFFMPEG(self, shape):
+        # Initialize a new ffmpeg process
+
+        w, h = shape
+        shapeArg = '{w}x{h}'.format(w=w, h=h)
+
+        if self.verbose >= 3:
+            print("STARTING NEW FFMPEG VIDEO PROCESS!")
+
+        ffmpegVerbosity = self.getFFMPEGVerbosity()
+
+        if self.gpuVEnc:
+            # With GPU acceleration
+            ffmpegCommand = [FFMPEG_EXE, '-y', '-probesize', '32', '-flush_packets', '1',
+                '-progress', '-', '-stats_period', '0.1',
+                '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
+                '-v', ffmpegVerbosity, '-f', 'rawvideo', '-c:v', 'rawvideo',
+                '-pix_fmt', self.input_pixel_format, '-s', shapeArg, '-thread_queue_size', '128',
+                '-r', str(self.fps), '-i', self.pipePath, *self.gpuCompressionArgs,
+                '-pix_fmt', self.output_pixel_format, '-fps_mode', 'passthrough', '-an',
+                self.filename]
+        else:
+            # Without GPU acceleration
+            ffmpegCommand = [FFMPEG_EXE, '-y', '-probesize', '32', '-flush_packets', '1',
+                '-progress', '-', '-stats_period', '0.1',
+                '-v', ffmpegVerbosity, '-f', 'rawvideo',
+                '-c:v', 'rawvideo', '-pix_fmt', self.input_pixel_format,
+                '-s', shapeArg, '-r', str(self.fps), '-thread_queue_size', '128',
+                 '-i', self.pipePath, *self.cpuCompressionArgs,
+                '-pix_fmt', self.output_pixel_format, '-fps_mode', 'passthrough', '-an',
+                self.filename]
+
+        if self.verbose >= 2:
+            print('ffmpeg command:')
+            print(ffmpegCommand)
+        try:
+            self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except TypeError:
+            raise OSError('Error starting ffmpeg process - check that ffmpeg is present on this system and included in the system PATH variable')
+
+    def currentFrameNumber(self):
+        # Check the frame number the writer has most recently received
+        if self.ffmpegProc is None:
+            raise IOError('ffmpeg process does not currently exist')
+
+        print('Checking current frame #')
+        self.ffmpegProc.stderr.flush()
+        data = self.ffmpegProc.stderr.read(8)
+        print("PROGRESS:")
+        print(data)
+
+    def checkProgress(self, timeout=1):
+        # Doesn't work, ffmpeg buffers stderr until it exist :()
+        try:
+            out, err = self.ffmpegProc.communicate(timeout=timeout)
+            print('out:')
+            print(out)
+            print('err:')
+            print(err)
+            print('return code:')
+            print(self.ffmpegProc.returncode)
+        except subprocess.TimeoutExpired:
+            print('Communicate timeout expired after', timeout)
+
+    def wait(self):
+        if self.ffmpegProc is None:
+            return
+
+        out, err = self.ffmpegProc.communicate()
+        print('out:')
+        print(out)
+        print('err:')
+        print(err)
+        print('return code:')
+        print(self.ffmpegProc.returncode)
+
+    def write(self, frame, shape=None):
+        # This method has no purpose for a piped writer, as the data will flow
+        #   directly from the source through the pipe to the ffmpeg process
+        raise SyntaxError('write method should not be called for a piped video writer. Writing occurs automatically as data is made available on the named pipe')
+
+
 
 class ffmpegAudioWriter():
     # Thanks to https://github.com/Zulko/moviepy/blob/master/moviepy/audio/io/ffmpeg_audiowriter.py

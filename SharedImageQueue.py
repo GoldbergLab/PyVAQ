@@ -35,6 +35,8 @@ class SharedImageSender():
                 maxBufferSize=100,                  # Maximum size for metadata queue
                 pipeName=None,                      # Name for named pipe
                 allowOverflow=False,                # Should an error be raised if the queue is filled up, or should old entries be overwritten?
+                createReceiver=True,
+                includeMetadata=True,
                 ):
 
         if pipeName is None:
@@ -53,39 +55,47 @@ class SharedImageSender():
         self.channels = channels
         self.allowOverflow = allowOverflow
 
-        self.metadataQueue = mp.Queue(maxsize=maxBufferSize)
+        if includeMetadata:
+            self.metadataQueue = mp.Queue(maxsize=maxBufferSize)
+        else:
+            self.metadataQueue = None
 
         self.pipe = None
         self.pipeConnected = False
 
-        self.receiver = SharedImageReceiver(
-            pipeName=self.pipeName,
-            width=self.width,
-            height=self.height,
-            channels=self.channels,
-            pixelFormat=pixelFormat,
-            frameSize=self.width*self.height*self.channels*(imageBitsPerPixel//8),
-            verbose=self.verbose,
-            offsetX=offsetX,
-            offsetY=offsetY,
-            outputType=outputType,
-            fileWriter=fileWriter,
-            imageDataType=imageDataType,
-            lockForOutput=lockForOutput,
-            maxBufferSize = self.maxBufferSize,
-            metadataQueue=self.metadataQueue)
+        if createReceiver:
+            self.receiver = SharedImageReceiver(
+                pipeName=self.pipeName,
+                width=self.width,
+                height=self.height,
+                channels=self.channels,
+                pixelFormat=pixelFormat,
+                frameSize=self.width*self.height*self.channels*(imageBitsPerPixel//8),
+                verbose=self.verbose,
+                offsetX=offsetX,
+                offsetY=offsetY,
+                outputType=outputType,
+                fileWriter=fileWriter,
+                imageDataType=imageDataType,
+                lockForOutput=lockForOutput,
+                maxBufferSize = self.maxBufferSize,
+                metadataQueue=self.metadataQueue)
+        else:
+            self.receiver = None
 
     def qsize(self):
         return (0, 0) # (main queue, metadata queue)
 
     def setupNamedPipe(self):
         self.pipe = win32pipe.CreateNamedPipe(
-                self.pipePath,
-                win32pipe.PIPE_ACCESS_OUTBOUND,
-                win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_WAIT,
-                1, 65536, 65536,
-                300,
-                None)
+                self.pipePath,                                      # pipeName
+                win32pipe.PIPE_ACCESS_OUTBOUND,                     # openMode (int)
+                win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_WAIT,  # pipeMode (int)
+                1,                                                  # nMaxInstances
+                65536,                                              # nOutBufferSize
+                65536,                                              # nInBufferSize
+                300,                                                # nDefaultTimeOut
+                None)                                               # security attributes
 
     def getReceiver(self):
         return self.receiver
@@ -110,13 +120,14 @@ class SharedImageSender():
         if image is not None:
             imarray = image.GetNDArray()
 
-        try:
-            self.metadataQueue.put(metadata, block=False)
-        except qFull:
-            if not self.allowOverflow:
-                raise qFull('{name}: Metadata queue overflow. qsize={qsize} max={maxsize}'.format(name=self.pipeName, qsize=self.qsize(), maxsize=self.maxBufferSize))
-            elif self.verbose >= 2:
-                print('{name}: Warning, metadata queue full. Overflow allowed - continuing...'.format(name=self.pipeName))
+        if self.metadataQueue is not None:
+            try:
+                self.metadataQueue.put(metadata, block=False)
+            except qFull:
+                if not self.allowOverflow:
+                    raise qFull('{name}: Metadata queue overflow. qsize={qsize} max={maxsize}'.format(name=self.pipeName, qsize=self.qsize(), maxsize=self.maxBufferSize))
+                elif self.verbose >= 2:
+                    print('{name}: Warning, metadata queue full. Overflow allowed - continuing...'.format(name=self.pipeName))
 
         # Write the numpy array data buffer to the pipe
         print('Writing data: len=', len(bytes(imarray.data)), 'shape=', imarray.shape)
@@ -236,9 +247,14 @@ class SharedImageReceiver():
         except:
             raise IOError('pipe read failed')
 
-        metadata = self.metadataQueue.get(block=False)
+        if self.metadataQueue is not None:
+            metadata = self.metadataQueue.get(block=False)
+        else:
+            metadata = None
 
         if includeMetadata:
+            if self.metadataQueue is None:
+                raise IOError('Cannot include metadata, as metadata queue does not exist.')
             return output, metadata
         else:
             return output
