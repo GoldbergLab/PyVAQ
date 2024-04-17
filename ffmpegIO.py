@@ -15,7 +15,13 @@ DEFAULT_GPU_COMPRESSION_ARGS = [
 
 class ffmpegVideoReader():
     def __init__(self, filename, verbose=1):
-        self.filename = filename
+        """Create a new ffmpeg video reader object.
+
+        Args:
+            filename (str): Filename to read video from.
+            verbose (verbose): Output verbosity level. Defaults to 1.
+        """
+        self.filename = str(filename)
 
         if verbose <= 0:
             self.ffmpegVerbosity = 'quiet'
@@ -29,6 +35,12 @@ class ffmpegVideoReader():
         self.ffmpegProc = None
 
     def getVideoInfo(self):
+        """Use ffprobe to get information about the video.
+
+        Returns:
+            dict: Dictionary of information about the video.
+
+        """
         ffprobeCommand = [FFPROBE_EXE,
             '-v', 'error',
             '-select_streams', 'v:0',
@@ -42,6 +54,11 @@ class ffmpegVideoReader():
         return videoInfo
 
     def getVideoSize(self):
+        """Use ffprobe to get the size of the video.
+
+        Returns:
+            list of ints: number of frames x height x width
+        """
         videoInfo = self.getVideoInfo()
         numFrames = int(videoInfo['nb_frames'])
         width = int(videoInfo['width'])
@@ -49,8 +66,19 @@ class ffmpegVideoReader():
         return [numFrames, height, width]
 
     def read(self, outputType='numpy', startFrame=None, endFrame=None):
-        # outputType must be 'bytes' or 'numpy'
-        # frame indices 1 indexed
+        """Read the video from file.
+
+        Args:
+            outputType (str): Output format - either "bytes" or "numpy".
+                Defaults to 'numpy'.
+            startFrame (int or None): First frame to read. 1 if left as None
+            endFrame (int or None): Last frame to read. Defaults to the entire
+                video, if left as None.
+
+        Returns:
+            bytes or numpy.ndarray: Frame data, either as bytes or numpy array,
+                depending on the "outputType" argument
+        """
         videoSize = self.getVideoSize()
         if startFrame is None:
             startFrame = 1
@@ -80,18 +108,40 @@ class ffmpegVideoReader():
             raise SyntaxError('Unknown output type: {ot}'.format(ot=outputType))
 
 class ffmpegVideoWriter():
-    def __init__(self, filename, frameType="bytes", verbose=1, fps=30, shape=None,
+    def __init__(self, filename, frameType="bytes", verbose=1, fps=30.0, shape=None,
                 input_pixel_format="bayer_rggb8", output_pixel_format="rgb0",
                 gpuVEnc=False, gpuCompressionArgs=DEFAULT_GPU_COMPRESSION_ARGS,
                 cpuCompressionArgs=DEFAULT_CPU_COMPRESSION_ARGS):
-        # You can specify the image shape at initialization, or when you write
-        #   the first frame (the shape parameter is ignored for subsequent
-        #   frames), or not at all, and hope we can figure it out.
-        # frameType should be one of 'numpy', 'image', or 'bytes'
+        """Construct a new ffmpegVideoWriter object.
+
+        Args:
+            filename (str): Filename where video should be written.
+            frameType (str): A string indicating which frame type will be
+                provided. Must be one of "image" (PIL.Image), "numpy"
+                (numpy.ndarray) or "bytes" (bytes, the default)
+            verbose (int): Verbosity output level. Defaults to 1.
+            fps (float): Frames per second of the video Defaults to 30.0.
+            shape (2-tuple or None): A tuple of two integers indicating the
+                width and height of the video frames in pixels.
+            input_pixel_format (str): The input pixel format to be used by
+                ffmpeg to decode the incoming data. See ffmpeg for options.
+                Defaults to "bayer_rggb8".
+            output_pixel_format (str): The output pixel format to be used by
+                ffmpeg to encode the video file. see ffmpeg for options.
+                Defaults to "rgb0".
+            gpuVEnc (bool): Whether or not to use GPU for encoding (nvenc).
+                Defaults to False.
+            gpuCompressionArgs (list of str): List of ffmpeg arguments
+                describing desired compression algorithm/arguments, used only if
+                gpeVEnc is True. Defaults to DEFAULT_GPU_COMPRESSION_ARGS.
+            cpuCompressionArgs (list of str): List of ffmpeg arguments
+                describing desired compression algorithm/arguments, used only if
+                gpeVEnc is False. Defaults to DEFAULT_CPU_COMPRESSION_ARGS.
+        """
         self.ffmpegProc = None
         self.verbose = verbose
         self.fps = fps
-        self.filename = filename
+        self.filename = str(filename)
         self.shape = shape
         self.frameType = frameType
         self.input_pixel_format = input_pixel_format
@@ -101,6 +151,13 @@ class ffmpegVideoWriter():
         self.cpuCompressionArgs = cpuCompressionArgs
 
     def getFFMPEGVerbosity(self):
+        """Translate a numerical verbosity level to a verbosity level word
+            understood by ffmpeg.
+
+        Returns:
+            str: ffmpeg verbosity level word
+
+        """
         if self.verbose <= 0:
             ffmpegVerbosity = 'quiet'
         elif self.verbose == 1:
@@ -112,7 +169,12 @@ class ffmpegVideoWriter():
         return ffmpegVerbosity
 
     def initializeFFMPEG(self, shape):
-        # Initialize a new ffmpeg process
+        """Initialize a new ffmpeg process.
+
+        Args:
+            shape (2-tuple or None): A tuple of two integers indicating the
+                width and height of the video frames in pixels.
+        """
 
         w, h = shape
         shapeArg = '{w}x{h}'.format(w=w, h=h)
@@ -150,7 +212,17 @@ class ffmpegVideoWriter():
             raise OSError('Error starting ffmpeg process - check that ffmpeg is present on this system and included in the system PATH variable')
 
     def getFrameShape(self, frame, shape=None):
-        # Ensure we know the shape of the frame
+        """If shape is not provided, try to determine the shape from the frame
+            data.
+
+        Args:
+            frame (PIL.Image, np.array, or bytes): A frame of video as the type
+                specified by ffmpegWriter.frameType.
+            shape (2-tuple or None): A tuple of two integers indicating the
+                width and height of the video frames in pixels. If None, we will
+                try to figure out the image shape. Defaults to None.
+        """
+
         if shape is None:
             # No shape given
             if self.shape is None:
@@ -174,15 +246,16 @@ class ffmpegVideoWriter():
         return shape
 
     def write(self, frame, shape=None):
-        # Send a video frame to an ffmpeg process. If a ffmpeg process does not
-        #   currently exist, start a new one
-        #
-        # frame should be an RGB PIL image
-        #   or a numpy array (of the format returned by calling
-        #   np.asarray(image) on a RGB PIL image
-        # All frames should be the same size and format
-        # If shape is given (as a (width, height) tuple), it will be used. If
-        #   not, we will try to figure out the image shape.
+        """Send a video frame to an ffmpeg process. If a ffmpeg process does not
+            currently exist, start a new one
+
+        Args:
+            frame (PIL.Image, np.array, or bytes): A frame of video as the type
+                specified by ffmpegWriter.frameType.
+            shape (2-tuple or None): A tuple of two integers indicating the
+                width and height of the video frames in pixels. If None, we will
+                try to figure out the image shape. Defaults to None.
+        """
 
         if self.frameType == 'image':
             bytes = frame.tobytes()
@@ -205,21 +278,46 @@ class ffmpegVideoWriter():
     def close(self):
         if self.ffmpegProc is not None:
             self.ffmpegProc.kill()
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            self.ffmpegProc = None
-            if self.verbose >= 2:
-                print('Closed pipe to ffmpeg')
+        # with warnings.catch_warnings():
+        #     warnings.simplefilter("ignore")
+        self.ffmpegProc = None
+        if self.verbose >= 2:
+            print('Closed pipe to ffmpeg')
 
 class ffmpegPipedVideoWriter(ffmpegVideoWriter):
-    def __init__(self, filename, pipePath, **kwargs):
+    def __init__(self, filename, pipePath, numFrames=None, **kwargs):
+        """Construct an ffmpegPipedVideoWriter.
+
+        Args:
+            filename (str): Filename where video should be written.
+            pipePath (str): Path to windows named pipe
+            numFrames (int or None): Number of frames to write before closing
+                the writer. If None, wil continue to write until pipe is closed
+                by the sender.
+            **kwargs (dict): Arguments to pass to ffmpegVideoWriter parent class
+        """
         super().__init__(filename, **kwargs)
         self.pipePath = pipePath
+        self.numFrames = numFrames
         if not self.frameType == "bytes":
             raise ValueError('Piped video writers can only accomodate "bytes" frame type')
 
-    def initializeFFMPEG(self, shape):
-        # Initialize a new ffmpeg process
+    def initializeFFMPEG(self, shape, numTries=None, tryInverval=None, timeout=None):
+        """Open an ffmpeg process to prepare to write video.
+
+        Args:
+            shape (2-tuple of ints): A tuple of two integers indicating the
+                width and height of the video frames in pixels
+            numTries (int or None): Number of times to attempt initializing the
+                ffmpeg process. If None, will continue trying indefinitely, or
+                until the given timeout expires.
+            tryInterval (float or None): Amount of time to wait between tries.
+                If None, will wait by default 1/fps, where fps is the given
+                video framerate
+            timeout (float or None): Maximum amount of time to keep trying. If
+                None, will keep trying indefinitely or until it has tried
+                numTries times.
+        """
 
         w, h = shape
         shapeArg = '{w}x{h}'.format(w=w, h=h)
@@ -229,6 +327,13 @@ class ffmpegPipedVideoWriter(ffmpegVideoWriter):
 
         ffmpegVerbosity = self.getFFMPEGVerbosity()
 
+        if self.numFrames is not None:
+            # User requested specific # of frames to write
+            frameCountArgs = ['-frames', str(self.numFrames)]
+        else:
+            # Continue writing until pipe is closed by sender
+            frameCountArgs = []
+
         if self.gpuVEnc:
             # With GPU acceleration
             ffmpegCommand = [FFMPEG_EXE, '-y', '-probesize', '32', '-flush_packets', '1',
@@ -236,9 +341,12 @@ class ffmpegPipedVideoWriter(ffmpegVideoWriter):
                 '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
                 '-v', ffmpegVerbosity, '-f', 'rawvideo', '-c:v', 'rawvideo',
                 '-pix_fmt', self.input_pixel_format, '-s', shapeArg, '-thread_queue_size', '128',
-                '-r', str(self.fps), '-i', self.pipePath, *self.gpuCompressionArgs,
-                '-pix_fmt', self.output_pixel_format, '-fps_mode', 'passthrough', '-an',
-                self.filename]
+                '-r', str(self.fps),
+                '-i', self.pipePath,
+                *self.gpuCompressionArgs,
+                '-pix_fmt', self.output_pixel_format, '-fps_mode', 'passthrough', '-an'] + \
+                frameCountArgs + \
+                [self.filename]
         else:
             # Without GPU acceleration
             ffmpegCommand = [FFMPEG_EXE, '-y', '-probesize', '32', '-flush_packets', '1',
@@ -247,19 +355,25 @@ class ffmpegPipedVideoWriter(ffmpegVideoWriter):
                 '-c:v', 'rawvideo', '-pix_fmt', self.input_pixel_format,
                 '-s', shapeArg, '-r', str(self.fps), '-thread_queue_size', '128',
                  '-i', self.pipePath, *self.cpuCompressionArgs,
-                '-pix_fmt', self.output_pixel_format, '-fps_mode', 'passthrough', '-an',
-                self.filename]
+                '-pix_fmt', self.output_pixel_format, '-fps_mode', 'passthrough', '-an'] + \
+                frameCountArgs + \
+                [self.filename]
 
         if self.verbose >= 2:
             print('ffmpeg command:')
             print(ffmpegCommand)
         try:
             self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        except TypeError:
+        except FileNotFoundError:
             raise OSError('Error starting ffmpeg process - check that ffmpeg is present on this system and included in the system PATH variable')
 
     def currentFrameNumber(self):
-        # Check the frame number the writer has most recently received
+        """Get the most recent frame number ffmpeg wrote. Does not work.
+
+        Returns:
+            int: The most recently written frame number
+
+        """
         if self.ffmpegProc is None:
             raise IOError('ffmpeg process does not currently exist')
 
@@ -268,38 +382,43 @@ class ffmpegPipedVideoWriter(ffmpegVideoWriter):
         data = self.ffmpegProc.stderr.read(8)
         print("PROGRESS:")
         print(data)
+        return 0
 
     def checkProgress(self, timeout=1):
-        # Doesn't work, ffmpeg buffers stderr until it exist :()
+        """Get a dictionary containing information about ffmpeg progress. Does
+            not work because ffmpeg apparently buffers output until it's closed
+            unless it detects that it's piping output to a tty process
+
+        Args:
+            timeout (int): Seconds to wait for ffmpeg to report progress before
+                timing out
+
+        Returns:
+            dict: A dictionary of information about ffmpeg progress
+
+        """
         try:
             out, err = self.ffmpegProc.communicate(timeout=timeout)
-            print('out:')
-            print(out)
-            print('err:')
-            print(err)
-            print('return code:')
-            print(self.ffmpegProc.returncode)
         except subprocess.TimeoutExpired:
             print('Communicate timeout expired after', timeout)
+        if not self.ffmpegProc.returncode == 0:
+            raise IOError('ffmpeg error: {e}'.format(e=str(err)))
+        return {}
 
     def wait(self):
+        """Wait for ffmpeg writer to finish.
+        """
         if self.ffmpegProc is None:
             return
 
         out, err = self.ffmpegProc.communicate()
-        print('out:')
-        print(out)
-        print('err:')
-        print(err)
-        print('return code:')
-        print(self.ffmpegProc.returncode)
+        if not self.ffmpegProc.returncode == 0:
+           raise IOError('ffmpeg error: {e}'.format(e=str(err)))
 
     def write(self, frame, shape=None):
         # This method has no purpose for a piped writer, as the data will flow
         #   directly from the source through the pipe to the ffmpeg process
         raise SyntaxError('write method should not be called for a piped video writer. Writing occurs automatically as data is made available on the named pipe')
-
-
 
 class ffmpegAudioWriter():
     # Thanks to https://github.com/Zulko/moviepy/blob/master/moviepy/audio/io/ffmpeg_audiowriter.py
@@ -312,7 +431,7 @@ class ffmpegAudioWriter():
         self.ffmpegProc = None
         self.verbose = verbose
         self.sampleRate = sampleRate
-        self.filename = filename
+        self.filename = str(filename)
         # nBytes and nChannels will be determined by the first audio chunk provided.
         self.nBytes = None
         self.nChannels = None

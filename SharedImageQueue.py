@@ -62,8 +62,11 @@ class SharedImageSender():
 
         self.pipe = None
         self.pipeConnected = False
+        self.pipeReady = mp.Event()
 
         if createReceiver:
+            # If user requests a receiver object, create it.
+            # Otherwise the user can use the named pipe directly
             self.receiver = SharedImageReceiver(
                 pipeName=self.pipeName,
                 width=self.width,
@@ -79,7 +82,8 @@ class SharedImageSender():
                 imageDataType=imageDataType,
                 lockForOutput=lockForOutput,
                 maxBufferSize = self.maxBufferSize,
-                metadataQueue=self.metadataQueue)
+                metadataQueue=self.metadataQueue,
+                pipeReady=self.pipeReady)
         else:
             self.receiver = None
 
@@ -87,38 +91,73 @@ class SharedImageSender():
         return (0, 0) # (main queue, metadata queue)
 
     def setupNamedPipe(self):
+        self.close() # Just in case
         self.pipe = win32pipe.CreateNamedPipe(
                 self.pipePath,                                      # pipeName
-                win32pipe.PIPE_ACCESS_OUTBOUND,                     # openMode (int)
-                win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_WAIT,  # pipeMode (int)
+                win32pipe.PIPE_ACCESS_OUTBOUND | win32file.GENERIC_WRITE,                     # openMode (int)
+                win32pipe.PIPE_TYPE_BYTE | win32pipe.PIPE_WAIT,  # pipeMode (int)
                 1,                                                  # nMaxInstances
                 65536,                                              # nOutBufferSize
                 65536,                                              # nInBufferSize
                 300,                                                # nDefaultTimeOut
                 None)                                               # security attributes
+# x = win32pipe.GetNamedPipeHandleState(self.pipe)
+# print('Pipe state #1:', x)
+# time.sleep(1)
+# x = win32pipe.GetNamedPipeHandleState(self.pipe)
+# print('Pipe state #2:', x)
+        self.pipeReady.set()
 
     def getReceiver(self):
         return self.receiver
 
     def connectPipe(self):
-        win32pipe.ConnectNamedPipe(self.pipe, None)
-        self.pipeConnected = True
+        if self.pipe is None:
+            print("SETUP NAMED PIPE...")
+            self.setupNamedPipe()
+            print("...DONE")
+        if not self.pipeConnected:
+            print('CONNECT NAMED PIPE')
+            win32pipe.ConnectNamedPipe(self.pipe, None)
+            print('...DONE')
+            self.pipeConnected = True
 
-    def put(self, image=None, imarray=None, metadata=None):
+    def put(self, image=None, imarray=None, metadata=None, autoReopen=True):
         # Puts an image in the shared memory queue.
         # Either pass a PySpin Image in the "image" argument
         #   or pass a numpy array in the "imarray" argument
 
-        if self.pipe is None:
-            self.setupNamedPipe()
-        if not self.pipeConnected:
-            # wait for pipe to be connected
-            self.connectPipe()
+        self.connectPipe()
 
         # image is a PySpin ImagePtr that must match the characteristics passed to the SharedImageSender constructor
         #   image = cam.GetNextImage()
         if image is not None:
             imarray = image.GetNDArray()
+
+        print('Writing data: len=', len(bytes(imarray.data)), 'shape=', imarray.shape)
+        attempts = 0
+        while True:
+            try:
+                # Write the numpy array data buffer to the pipe
+                win32file.WriteFile(self.pipe, bytes(imarray.data))
+                # Write succeeded - don't try again
+                break
+            except pywintypes.error as e:
+                self.close()
+                if attempts > 0:
+                    raise IOError('Failed to write to pipe: {e}'.format(e=str(e)))
+                if e.args[0] == 232:
+                    if autoReopen:
+                        # Receiver must have closed the pipe - reopen it and try again
+                        self.connectPipe()
+                        print('pipe:', self.pipe)
+                        print('pipeConnected:', self.pipeConnected)
+                        print('pipeReady:', self.pipeReady.is_set())
+                    else:
+                        raise e
+                else:
+                    raise e
+                attempts += 1
 
         if self.metadataQueue is not None:
             try:
@@ -129,12 +168,11 @@ class SharedImageSender():
                 elif self.verbose >= 2:
                     print('{name}: Warning, metadata queue full. Overflow allowed - continuing...'.format(name=self.pipeName))
 
-        # Write the numpy array data buffer to the pipe
-        print('Writing data: len=', len(bytes(imarray.data)), 'shape=', imarray.shape)
-        win32file.WriteFile(self.pipe, bytes(imarray.data))
-
     def close(self):
+        self.pipeConnected = False
+        self.pipeReady.clear()
         win32file.CloseHandle(self.pipe)
+        self.pipe = None
 
 class SharedImageReceiver():
     def __init__(self,
@@ -153,6 +191,7 @@ class SharedImageReceiver():
                 lockForOutput=True,
                 maxBufferSize=1,
                 metadataQueue=None,
+                pipeReady=None
                 ):
         self.width = width
         self.height = height
@@ -173,6 +212,7 @@ class SharedImageReceiver():
         self.pipePath = getPipePath(self.pipeName)
         self.pipeHandle = None
         self.pipeConnected = False
+        self.pipeReady = pipeReady
 
         if self.channels > 1:
             self.frameShape = (self.height, self.width, self.channels)
@@ -216,7 +256,11 @@ class SharedImageReceiver():
             if self.verbose >= 3: print('Applied filewriter!')
         return output
 
-    def connectPipe(self):
+    def connectPipe(self, timeout=None):
+        ready = self.pipeReady.wait(timeout=timeout)
+        if not ready:
+            # Sender did not indicate pipe was ready in time
+            raise mp.TimeoutError('Pipe did not become available before the timeout period elapsed')
         success = False
         numAttempts = 10
         for k in range(numAttempts):
@@ -224,7 +268,8 @@ class SharedImageReceiver():
                 self.pipeHandle = open(self.pipePath, 'rb')
                 success = True
                 break
-            except:
+            except Exception as e:
+                print(e)
                 success = False
                 print('Failed to connect to pipe...')
                 time.sleep(1)
@@ -237,10 +282,9 @@ class SharedImageReceiver():
         # Returns a PySpin image, if one is available in the buffer, otherwise
         #   raise queue.Empty
 
-        if not self.pipeConnected or self.pipeHandle is None:
+        if not self.pipeConnected or self.pipeHandle is None or not self.pipeReady.is_set():
             # Pipe not set up - do it now
             self.connectPipe()
-
         try:
             print('framesize=', self.frameSize)
             output = self.pipeHandle.read(self.frameSize)
@@ -258,3 +302,7 @@ class SharedImageReceiver():
             return output, metadata
         else:
             return output
+
+    def closePipe(self):
+        self.pipeConnected = False
+        self.pipeHandle.close()

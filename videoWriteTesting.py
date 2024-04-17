@@ -6,6 +6,7 @@ import ffmpegIO as fIO
 from SharedImageQueue import SharedImageSender
 import multiprocessing as mp
 from PIL import Image
+from pathlib import Path
 
 def dummyAcquirer(testFrames, imageQueue):
     numFrames = testFrames.shape[0]
@@ -13,14 +14,34 @@ def dummyAcquirer(testFrames, imageQueue):
         print("ACQUIRER: \"Acquiring\" frame #", f)
         time.sleep(1/10)
         imageQueue.put(imarray=testFrames[f, :, :, :])
+    imageQueue.close()
 
-def dummyWriter(pipePath, shape):
-    videoFileInterface = fIO.ffmpegPipedVideoWriter(filename, pipePath, gpuVEnc=True, verbose=1, input_pixel_format='rgb24')
-    print("WRITER: Initializing writer")
-    videoFileInterface.initializeFFMPEG(shape[::-1])
-    videoFileInterface.wait()
-    print("WRITER: Writer done")
-    videoFileInterface.close()
+def dummyWriter(filename, pipePath, pipeReady, shape, chunkSize):
+    k = 1
+    filePath = Path(filename)
+    suffix = filePath.suffix
+    originalStem = filePath.stem
+    while True:
+        if k > 1:
+            filePath = filePath.with_name(originalStem + '_' + str(k) + suffix)
+        print('Writing to:', filePath)
+        while not pipeReady.is_set():
+            print('Pipe not ready...trying again...')
+            isReady = pipeReady.wait(timeout=1)
+            print('pipe is ready?', isReady, pipeReady.is_set())
+        videoFileInterface = fIO.ffmpegPipedVideoWriter(filePath, pipePath, gpuVEnc=True, verbose=1, input_pixel_format='rgb24', numFrames=chunkSize)
+        # if k > 0:
+        #     with open(pipePath, 'rb') as np:
+        #         print('opened it')
+        #         time.sleep(10)
+        #         print('slept 10')
+        #         breakpoint()
+        #         print('breakpoint done')
+        # time.sleep(0.1)
+        videoFileInterface.initializeFFMPEG(shape[::-1])
+        videoFileInterface.wait()
+        videoFileInterface.close()
+        k += 1
 
 if __name__ == '__main__':
     # Initialize variables
@@ -29,7 +50,7 @@ if __name__ == '__main__':
 
     if debugMode == 'squirrel':
         ffr = fIO.ffmpegVideoReader(r'C:\Users\briankardon\Downloads\squirrel.avi')
-        testFrames = ffr.read(startFrame=1, endFrame=50)
+        testFrames = ffr.read(startFrame=1, endFrame=75)
 
         # from PIL import Image
         # frame = videoData[5, :, :, :]
@@ -65,9 +86,10 @@ if __name__ == '__main__':
         outputType='bytes',
         channels=3,
         pipeName=pipeName,
-        includeMetadata=False
+        includeMetadata=False,
+        # createReceiver=False
     )
-    imageQueueReceiver = imageQueue.getReceiver()
+    # imageQueueReceiver = imageQueue.getReceiver()
 
     print('Writer starting')
     p = mp.Process(target=dummyAcquirer, args=(testFrames, imageQueue))
@@ -75,6 +97,6 @@ if __name__ == '__main__':
     print('Writer started')
     startTime = time.time()
     print('Acquirer starting')
-    dummyWriter(imageQueue.pipePath, [h, w])
+    dummyWriter(filename, imageQueue.pipePath, imageQueue.pipeReady, [h, w], 25)
     print('Elapsed time:')
     print(time.time() - startTime)
