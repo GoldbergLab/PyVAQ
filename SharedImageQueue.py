@@ -5,6 +5,7 @@ from queue import Full as qFull
 import win32pipe, win32file, pywintypes
 import ctypes
 import time
+import queue
 
 try:
     import PySpin
@@ -33,42 +34,60 @@ class SharedImageSender():
                 fileWriter=None,                    # fileWriter must be either None or a function that takes the specified output type and writes it to a file.
                 lockForOutput=True,                 # Should the shared memory buffer be locked during fileWriter call? If outputCopy=False and fileWriter is not None, it is recommended that lockForOutput=True
                 maxBufferSize=100,                  # Maximum size for metadata queue
-                pipeName=None,                      # Name for named pipe
+                pipeBaseName=None,                  # Name for named pipe
                 allowOverflow=False,                # Should an error be raised if the queue is filled up, or should old entries be overwritten?
-                createReceiver=True,
+                createReceiver=False,
                 includeMetadata=True,
+                chunkFrameCount=300,                # Number of frames per named pipe
+                allowNonconsecutiveFrames=False
                 ):
 
-        if pipeName is None:
-            pipeName = 'PyVAQ_fifo_{t}'.format(t=int(time.time()*10))
+        if pipeBaseName is None:
+            pipeBaseName = 'PyVAQ_fifo_{t}'.format(t=int(time.time()*10))
         else:
             # Add timestamp to ensure the name is not in use
-            pipeName = pipeName + '_' + str(int(time.time()*10))
-        self.pipeName = pipeName
-        self.pipePath = getPipePath(self.pipeName)
+            pipeBaseName = pipeBaseName + '_' + str(int(time.time()*10))
+        self.pipeBaseName = pipeBaseName
+        self.pipeBasePath = getPipePath(self.pipeBaseName)
         self.verbose = verbose
         self.maxBufferSize = maxBufferSize
         if self.maxBufferSize < 1:
-            raise ValueError("{name}: maxBufferSize must be greater than 1".format(name=self.pipeName))
+            raise ValueError("{name}: maxBufferSize must be greater than 1".format(name=self.pipeBaseName))
         self.width = width
         self.height = height
         self.channels = channels
         self.allowOverflow = allowOverflow
+
+        self.currentPipeIndex = 0
+
+        # Local list of pipe info - pipe handles stay in this list from the time
+        #   they are created until they are marked as read by the reader and
+        #   closed and cleaned up by the cleanupPipes function
+        self.pipes = []
+        # Queue to tell the reader which named pipes have been created and are ready for reading
+        self.pipeReadyQueue = mp.Queue()
+        # Queue to indicate which named pipes have been read and are ready for disposal
+        self.pipeDoneQueue = mp.Queue()
+        # The current pipe being written to
+        self.currentPipe = None
 
         if includeMetadata:
             self.metadataQueue = mp.Queue(maxsize=maxBufferSize)
         else:
             self.metadataQueue = None
 
-        self.pipe = None
-        self.pipeConnected = False
-        self.pipeReady = mp.Event()
+        self.chunkFrameCount = chunkFrameCount
+        self.framesLeftInChunk = 0
+
+        self.lastFrameIndex = None
+
+        self.allowNonconsecutiveFrames = allowNonconsecutiveFrames
 
         if createReceiver:
             # If user requests a receiver object, create it.
             # Otherwise the user can use the named pipe directly
             self.receiver = SharedImageReceiver(
-                pipeName=self.pipeName,
+                pipeBaseName=self.pipeBaseName,
                 width=self.width,
                 height=self.height,
                 channels=self.channels,
@@ -90,29 +109,78 @@ class SharedImageSender():
     def qsize(self):
         return (0, 0) # (main queue, metadata queue)
 
-    def setupNamedPipe(self):
-        self.close() # Just in case
-        self.pipe = win32pipe.CreateNamedPipe(
-                self.pipePath,                                      # pipeName
-                win32pipe.PIPE_ACCESS_OUTBOUND | win32file.GENERIC_WRITE,                     # openMode (int)
-                win32pipe.PIPE_TYPE_BYTE | win32pipe.PIPE_WAIT,  # pipeMode (int)
-                1,                                                  # nMaxInstances
-                65536,                                              # nOutBufferSize
-                65536,                                              # nInBufferSize
-                300,                                                # nDefaultTimeOut
-                None)                                               # security attributes
-# x = win32pipe.GetNamedPipeHandleState(self.pipe)
-# print('Pipe state #1:', x)
-# time.sleep(1)
-# x = win32pipe.GetNamedPipeHandleState(self.pipe)
-# print('Pipe state #2:', x)
-        self.pipeReady.set()
+    def getNextPipeIndex(self):
+        nextPipeIndex = self.currentPipeIndex
+        self.currentPipeIndex += 1
+        return nextPipeIndex
 
-    def getReceiver(self):
-        return self.receiver
+    def addNewNamedPipe(self, frameRange=(None, None)):
+        pipeIndex = self.getNextPipeIndex()
+        pipePath = self.pipeBasePath + '_' + str(pipeIndex)
+        pipe = win32pipe.CreateNamedPipe(
+                pipePath,                                                   # pipeName
+                win32pipe.PIPE_ACCESS_OUTBOUND | win32file.GENERIC_WRITE,   # openMode (int)
+                win32pipe.PIPE_TYPE_BYTE | win32pipe.PIPE_WAIT,             # pipeMode (int)
+                1,                                                          # nMaxInstances
+                65536,                                                      # nOutBufferSize
+                65536,                                                      # nInBufferSize
+                300,                                                        # nDefaultTimeOut
+                None)                                                       # security attributes
+        print('Created new pipe: {p}'.format(p=pipePath))
+        # Add new pipe handle to the end of the list
+        self.pipes.append({'path':pipePath, 'index':pipeIndex, 'pipe':pipe, 'frameRange':frameRange})
+        # Reset frame count for new pipe
+        self.framesLeftInChunk = self.chunkFrameCount
+        # Inform client of the new pipe path and index so it can use the pipe,
+        #   then inform the server which pipe it's done reading from
+        self.pipeReadyQueue.put({'path':pipePath, 'index':pipeIndex, 'frameRange':frameRange})
+        # Set the current pipe for writing
+        self.currentPipe = pipe
+        # Clean up any pipes the reader is done with
+        self.cleanupPipes()
+
+    def cleanupPipes(self, block=False, timeout=None):
+        # Cleanup pipes that the reader is done with
+        while True:
+            try:
+                pipePath = self.pipeDoneQueue.get(block=block, timeout=timeout)
+                self.destroyPipe(pipePath)
+            except queue.Empty:
+                # No more done pipes
+                break
+
+    def getPipeInfoLocation(self, pipeIndexOrPath):
+        # Get the location of the pipe in the self.pipes structure (note this is
+        #   not the same as the "pipe index")
+        if isinstance(pipeIndexOrPath, str):
+            locations = [k for k, p in enumerate(self.pipes) if p['path'] == pipeIndexOrPath]
+        elif isinstance(pipeIndexOrPath, int):
+            locations = [k for k, p in enumerate(self.pipes) if p['index'] == pipeIndexOrPath]
+        else:
+            raise SyntaxError('pipeIndexOrPath must be an integer pipe index or a string pipe path')
+        if len(locations) > 1:
+            # Uh oh, duplicate pipe indices
+            raise RuntimeError('Error, duplicate pipe indexes/paths for {i}!'.format(i=pipeIndexOrPath))
+        elif len(locations) == 0:
+            # Pipe index not found
+            raise RunTimeError('Error, pipe index/path not found: {i}'.format(i=pipeIndexOrPath))
+        else:
+            # Only one match, which is as it should be
+            return locations[0]
+
+    def getPipe(self, pipeIndex):
+        # Return the pipe handle matching the given pipe index
+        pipeInfoLocation = self.getPipeInfoLocation(pipeIndex)
+        return self.pipes[pipeInfoLocation]
+
+    def destroyPipe(self, pipeIndexOrPath):
+        pipeInfoLocation = self.getPipeInfoLocation(pipeIndexOrPath)
+        pipeInfo = self.pipes[pipeInfoLocation]
+        win32file.CloseHandle(pipeInfo['pipe'])
+        self.pipes.pop(pipeInfoLoction)
 
     def connectPipe(self):
-        if self.pipe is None:
+        if self.pipes is None:
             print("SETUP NAMED PIPE...")
             self.setupNamedPipe()
             print("...DONE")
@@ -122,12 +190,28 @@ class SharedImageSender():
             print('...DONE')
             self.pipeConnected = True
 
-    def put(self, image=None, imarray=None, metadata=None, autoReopen=True):
+    def put(self, image=None, imarray=None, frameIndex=0, metadata=None):
         # Puts an image in the shared memory queue.
         # Either pass a PySpin Image in the "image" argument
         #   or pass a numpy array in the "imarray" argument
 
-        self.connectPipe()
+        if self.lastFrameIndex is not None and not frameIndex - self.lastFrameIndex == 1:
+            msg = 'Frames are not consecutive! Last index: {i} Current index: {j}'.format(i=self.lastFrameIndex, j=frameIndex)
+            if self.allowNonconsecutiveFrames:
+                print(msg)
+            else:
+                raise IndexError(msg)
+        self.lastFrameIndex = frameIndex
+
+        if self.framesLeftInChunk < 0:
+            raise RuntimeError('Something went wrong: self.framesLeftInChunk={flic}'.format(flic=self.framesLeftInChunk))
+        if self.currentPipe is None or self.framesLeftInChunk == 0:
+            # Either no pipes have been created yet, or the current pipe is done - set up another one
+            self.addNewNamedPipe(frameRange=(frameIndex, frameIndex + self.chunkFrameCount))
+            # Wait for client to connect to pipe
+            win32pipe.ConnectNamedPipe(self.currentPipe, None)
+
+        print('Sending image #{f}'.format(f=frameIndex))
 
         # image is a PySpin ImagePtr that must match the characteristics passed to the SharedImageSender constructor
         #   image = cam.GetNextImage()
@@ -135,29 +219,9 @@ class SharedImageSender():
             imarray = image.GetNDArray()
 
         print('Writing data: len=', len(bytes(imarray.data)), 'shape=', imarray.shape)
-        attempts = 0
-        while True:
-            try:
-                # Write the numpy array data buffer to the pipe
-                win32file.WriteFile(self.pipe, bytes(imarray.data))
-                # Write succeeded - don't try again
-                break
-            except pywintypes.error as e:
-                self.close()
-                if attempts > 0:
-                    raise IOError('Failed to write to pipe: {e}'.format(e=str(e)))
-                if e.args[0] == 232:
-                    if autoReopen:
-                        # Receiver must have closed the pipe - reopen it and try again
-                        self.connectPipe()
-                        print('pipe:', self.pipe)
-                        print('pipeConnected:', self.pipeConnected)
-                        print('pipeReady:', self.pipeReady.is_set())
-                    else:
-                        raise e
-                else:
-                    raise e
-                attempts += 1
+        # Write the numpy array data buffer to the pipe
+        win32file.WriteFile(self.currentPipe, bytes(imarray.data))
+        self.framesLeftInChunk -= 1
 
         if self.metadataQueue is not None:
             try:
@@ -168,11 +232,24 @@ class SharedImageSender():
                 elif self.verbose >= 2:
                     print('{name}: Warning, metadata queue full. Overflow allowed - continuing...'.format(name=self.pipeName))
 
-    def close(self):
-        self.pipeConnected = False
-        self.pipeReady.clear()
-        win32file.CloseHandle(self.pipe)
-        self.pipe = None
+    def close(self, force=False):
+        if force:
+            # Rude - close pipes regardless of whether they've been read or are
+            #   being read or not
+            for pipeHandle in self.pipes:
+                win32file.CloseHandle(pipeHandle)
+        else:
+            # Wait for all pipes to be done, then close
+            while True:
+                self.pipeReadyQueue.close()
+                self.pipeReadyQueue.join_thread()
+                try:
+                    self.cleanupPipes(block=True, timeout=1)
+                except TimeoutError:
+                    print('Still waiting for reader to consume data in {c} pipes'.format(c=len(self.pipes)))
+            self.pipeDoneQueue.close()
+            self.pipeDoneQueue.join_thread()
+            print('Image queue closed')
 
 class SharedImageReceiver():
     def __init__(self,

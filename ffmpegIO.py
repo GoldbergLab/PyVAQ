@@ -299,11 +299,15 @@ class ffmpegPipedVideoWriter(ffmpegVideoWriter):
         super().__init__(filename, **kwargs)
         self.pipePath = pipePath
         self.numFrames = numFrames
+        self.completed = False
         if not self.frameType == "bytes":
             raise ValueError('Piped video writers can only accomodate "bytes" frame type')
 
-    def initializeFFMPEG(self, shape, numTries=None, tryInverval=None, timeout=None):
-        """Open an ffmpeg process to prepare to write video.
+    def initializeFFMPEG(self, *args, **kwargs):
+        self.dispatchFFMPEG(*args, **kwargs)
+
+    def dispatchFFMPEG(self, shape): #, numTries=None, tryInverval=None, timeout=None):
+        """Open an ffmpeg process and write video.
 
         Args:
             shape (2-tuple of ints): A tuple of two integers indicating the
@@ -318,6 +322,9 @@ class ffmpegPipedVideoWriter(ffmpegVideoWriter):
                 None, will keep trying indefinitely or until it has tried
                 numTries times.
         """
+
+        if self.completed:
+            raise RuntimeError('Process is already completed - create a new one')
 
         w, h = shape
         shapeArg = '{w}x{h}'.format(w=w, h=h)
@@ -367,43 +374,21 @@ class ffmpegPipedVideoWriter(ffmpegVideoWriter):
         except FileNotFoundError:
             raise OSError('Error starting ffmpeg process - check that ffmpeg is present on this system and included in the system PATH variable')
 
-    def currentFrameNumber(self):
-        """Get the most recent frame number ffmpeg wrote. Does not work.
-
-        Returns:
-            int: The most recently written frame number
-
-        """
+    def getOutput(self, timeout=None):
         if self.ffmpegProc is None:
-            raise IOError('ffmpeg process does not currently exist')
+            raise RuntimeError('Process does not exist')
+        # Get output from process - will raise TimeoutError if process does not finish before timeout (in seconds) expires
+        outs, errs = self.ffmpegProc.communicate(timeout=timeout)
+        returncode = self.ffmpegProc.returncode
+        self.completed = True
+        return [outs, errs, returncode]
 
-        print('Checking current frame #')
-        self.ffmpegProc.stderr.flush()
-        data = self.ffmpegProc.stderr.read(8)
-        print("PROGRESS:")
-        print(data)
-        return 0
-
-    def checkProgress(self, timeout=1):
-        """Get a dictionary containing information about ffmpeg progress. Does
-            not work because ffmpeg apparently buffers output until it's closed
-            unless it detects that it's piping output to a tty process
-
-        Args:
-            timeout (int): Seconds to wait for ffmpeg to report progress before
-                timing out
-
-        Returns:
-            dict: A dictionary of information about ffmpeg progress
-
-        """
-        try:
-            out, err = self.ffmpegProc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            print('Communicate timeout expired after', timeout)
-        if not self.ffmpegProc.returncode == 0:
-            raise IOError('ffmpeg error: {e}'.format(e=str(err)))
-        return {}
+    def getReturnCode(self):
+        if self.ffmpegProc is None:
+            raise RuntimeError('Process does not exist')
+        if self.ffmpegProc.returncode is not None:
+            self.completed = True
+        return self.ffmpegProc.returncode
 
     def wait(self):
         """Wait for ffmpeg writer to finish.
@@ -411,9 +396,10 @@ class ffmpegPipedVideoWriter(ffmpegVideoWriter):
         if self.ffmpegProc is None:
             return
 
-        out, err = self.ffmpegProc.communicate()
-        if not self.ffmpegProc.returncode == 0:
-           raise IOError('ffmpeg error: {e}'.format(e=str(err)))
+        [outs, errs, returncode] = self.getOutput(timeout=None)
+        if not returncode == 0:
+           raise IOError('ffmpeg error: {e}'.format(e=str(errs)))
+        return [outs, errs, returncode]
 
     def write(self, frame, shape=None):
         # This method has no purpose for a piped writer, as the data will flow

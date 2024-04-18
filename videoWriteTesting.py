@@ -7,29 +7,57 @@ from SharedImageQueue import SharedImageSender
 import multiprocessing as mp
 from PIL import Image
 from pathlib import Path
+import queue
+from subprocess import TimeoutExpired
 
 def dummyAcquirer(testFrames, imageQueue):
     numFrames = testFrames.shape[0]
     for f in range(numFrames):
         print("ACQUIRER: \"Acquiring\" frame #", f)
         time.sleep(1/10)
-        imageQueue.put(imarray=testFrames[f, :, :, :])
+        imageQueue.put(imarray=testFrames[f, :, :, :], frameIndex=f)
     imageQueue.close()
 
-def dummyWriter(filename, pipePath, pipeReady, shape, chunkSize):
+def dummyWriter(filename, pipeQueues, shape, chunkSize):
+    pipeReadyQueue, pipeDoneQueue = pipeQueues
+
     k = 1
     filePath = Path(filename)
     suffix = filePath.suffix
     originalStem = filePath.stem
+    videoFileInterfaces = []
     while True:
+        for vfi in videoFileInterfaces:
+            # Loop over videoFileInterfaces and try to communicate with them to see if they're done
+            try:
+                [outs, errs, returncode] = vfi.getOutput(timeout=0)
+                if not returncode == 0:
+                    raise RuntimeError('Writer for pipe {p} returned an error: {err}'.format(p=vfi.pipePath, err=errs))
+                else:
+                    print('Writer for pipe {p} finished.'.format(p=vfi.pipePath))
+                    # This one is done - tell the server it can delete this pipe
+                    pipeDoneQueue.put(vfi.pipePath)
+            except TimeoutExpired:
+                # this writer is not done yet
+                pass
+        # Filter videoFileInterfaces for ones that are marked as completed
+        videoFileInterfaces = [vfi for vfi in videoFileInterfaces if not vfi.completed]
+
         if k > 1:
             filePath = filePath.with_name(originalStem + '_' + str(k) + suffix)
         print('Writing to:', filePath)
-        while not pipeReady.is_set():
-            print('Pipe not ready...trying again...')
-            isReady = pipeReady.wait(timeout=1)
-            print('pipe is ready?', isReady, pipeReady.is_set())
-        videoFileInterface = fIO.ffmpegPipedVideoWriter(filePath, pipePath, gpuVEnc=True, verbose=1, input_pixel_format='rgb24', numFrames=chunkSize)
+        while True:
+            try:
+                pipeInfo = pipeReadyQueue.get(block=True, timeout=1)
+                pipePath = pipeInfo['path']
+                print('got image pipe:', pipeInfo)
+                break
+            except queue.Empty:
+                print('No image pipes ready')
+
+        newVFI = fIO.ffmpegPipedVideoWriter(filePath, pipePath,
+            gpuVEnc=True, verbose=1, input_pixel_format='rgb24')
+        videoFileInterfaces.append(newVFI)
         # if k > 0:
         #     with open(pipePath, 'rb') as np:
         #         print('opened it')
@@ -38,9 +66,7 @@ def dummyWriter(filename, pipePath, pipeReady, shape, chunkSize):
         #         breakpoint()
         #         print('breakpoint done')
         # time.sleep(0.1)
-        videoFileInterface.initializeFFMPEG(shape[::-1])
-        videoFileInterface.wait()
-        videoFileInterface.close()
+        newVFI.dispatchFFMPEG(shape[::-1])
         k += 1
 
 if __name__ == '__main__':
@@ -85,8 +111,9 @@ if __name__ == '__main__':
         pixelFormat="bayer_rggb8",
         outputType='bytes',
         channels=3,
-        pipeName=pipeName,
+        pipeBaseName=pipeName,
         includeMetadata=False,
+        chunkFrameCount=20
         # createReceiver=False
     )
     # imageQueueReceiver = imageQueue.getReceiver()
@@ -97,6 +124,6 @@ if __name__ == '__main__':
     print('Writer started')
     startTime = time.time()
     print('Acquirer starting')
-    dummyWriter(filename, imageQueue.pipePath, imageQueue.pipeReady, [h, w], 25)
+    dummyWriter(filename, (imageQueue.pipeReadyQueue, imageQueue.pipeDoneQueue), [h, w], 25)
     print('Elapsed time:')
     print(time.time() - startTime)
