@@ -284,23 +284,6 @@ class ffmpegVideoWriter():
         if self.verbose >= 2:
             print('Closed pipe to ffmpeg')
 
-class ffmpegPipedVideoDiscarder(ffmpegPipedVideoWriter):
-    def __init__(self, *args, **kwargs):
-        """Construct an ffmpegPipedVideoDiscarder, which reads and discards data
-
-            *args (list): Arguments to pass to ffmpegPipedVideoWriter parent class
-            **kwargs (dict): Arguments to pass to ffmpegPipedVideoWriter parent class
-        """
-        super().__init__('', '')
-
-def dispatchFFMPEG(self, *args):
-    """Open an ffmpegNull process
-    """
-
-    if self.verbose >= 2: print('dispatching ffmpegNull for discarding data:')
-
-    self.ffmpegProc = subprocess.Popen('python ffmpegNull.py', stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
 class ffmpegPipedVideoWriter(ffmpegVideoWriter):
     def __init__(self, filename, pipePath, pipeDiscardQueue=None, numFrames=None, **kwargs):
         """Construct an ffmpegPipedVideoWriter.
@@ -428,6 +411,23 @@ class ffmpegPipedVideoWriter(ffmpegVideoWriter):
         # This method has no purpose for a piped writer, as the data will flow
         #   directly from the source through the pipe to the ffmpeg process
         raise SyntaxError('write method should not be called for a piped video writer. Writing occurs automatically as data is made available on the named pipe')
+
+class ffmpegPipedVideoDiscarder(ffmpegPipedVideoWriter):
+    def __init__(self, *args, **kwargs):
+        """Construct an ffmpegPipedVideoDiscarder, which reads and discards data
+
+            *args (list): Arguments to pass to ffmpegPipedVideoWriter parent class
+            **kwargs (dict): Arguments to pass to ffmpegPipedVideoWriter parent class
+        """
+        super().__init__('', '')
+
+def dispatchFFMPEG(self, *args):
+    """Open an ffmpegNull process
+    """
+
+    if self.verbose >= 2: print('dispatching ffmpegNull for discarding data:')
+
+    self.ffmpegProc = subprocess.Popen('python ffmpegNull.py', stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 class ffmpegAudioWriter():
     # Thanks to https://github.com/Zulko/moviepy/blob/master/moviepy/audio/io/ffmpeg_audiowriter.py

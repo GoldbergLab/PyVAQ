@@ -3447,9 +3447,10 @@ class VideoAcquirer(StateMachineProcess):
                 verbose=self.verbose,
                 outputType='PIL',
                 bufferSize=100,
-                chunkCount=self.framesPerFile+1
+                chunkFrameCount=self.framesPerFile+1,
+                createReceiver=True
             )
-            self.monitorImageReceiver = self.monitorImageSender.getReceiver()
+            self.monitorImageReceiver = self.monitorImageSender.receiver
     #        self.monitorImageQueue.cancel_join_thread()
         else:
             self.monitorImageSender = None
@@ -3876,7 +3877,8 @@ class SimpleVideoWriter(StateMachineProcess):
                     else:
                         # Frame rate has been set by the synchronizer process - continue on
                         self.frameRate = self.frameRateVar.value
-                        self.videoFrameCount = round(self.videoLength * self.frameRate)
+                        self.videoLength = self.videoFrameCount / self.frameRate
+                        # self.videoFrameCount = round(self.videoLength * self.frameRate)
                         self.log("Video framerate = {f}".format(f=self.frameRate))
                         self.log("Video length = {L}".format(L=self.videoLength))
                         self.log("Video frame count = {n}".format(n=self.videoFrameCount))

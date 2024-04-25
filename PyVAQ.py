@@ -2057,7 +2057,7 @@ him know. Otherwise, I had nothing to do with it.
                     else:
                         self.cameraMonitors[camSerial].active()
                         pixelFormats[camSerial] = metadata['pixelFormat']
-                except queue.Empty:
+                except (queue.Empty, TimeoutError):
                     pass
 
             for camSerial in availableImages:
@@ -3732,7 +3732,6 @@ him know. Otherwise, I had nothing to do with it.
                         frameRate=self.actualVideoFrequency,
                         requestedFrameRate=p["videoFrequency"],
                         mergeMessageQueue=mergeMsgQueue,
-                        videoLength=p["recordTime"],
                         daySubfolders=p['daySubfolders'],
                         verbose=self.videoWriteVerbose,
                         stdoutQueue=self.StdoutManager.queue,
