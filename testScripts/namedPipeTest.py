@@ -14,13 +14,13 @@ imageQueue = SharedImageSender(
     pixelFormat="bayer_rggb8",
     outputType='bytes',
     channels=3,
-    pipeName=pipeName,
+    pipeBaseName=pipeName,
     includeMetadata=False,
     # createReceiver=False
 )
-
-imageQueue.setupNamedPipe()
+pipeInfo = imageQueue.pipeReadyQueue
 f = open(imageQueue.pipePath, 'rb')
+imageQueue.put(imarray=image)
 print('pipe connected! #1')
 imageQueue.connectPipe()
 f.close()
@@ -34,5 +34,7 @@ except OSError as e:
 imageQueue.setupNamedPipe()
 print('Pipe exists?:', os.path.isfile(imageQueue.pipePath))
 f = open(imageQueue.pipePath, 'rb')
-
 print('pipe connected! #2')
+f.close()
+print('Trying to write to closing pipe:')
+imageQueue.put(b'test')

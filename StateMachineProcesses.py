@@ -3396,6 +3396,7 @@ class VideoAcquirer(StateMachineProcess):
                 sendToWriter=True,
                 sendToMonitor=True,
                 monitorFrameRate=15,
+                framesPerFile=300,
                 ready=None,                        # Synchronization barrier to ensure everyone's ready before beginning
                 **kwargs):
         StateMachineProcess.__init__(self, **kwargs)
@@ -3407,6 +3408,7 @@ class VideoAcquirer(StateMachineProcess):
         self.requestedFrameRate = requestedFrameRate
         self.frameRateVar = frameRate
         self.frameRate = None
+        self.framesPerFile = framesPerFile
         self.pixelFormat = None
         # self.imageQueue = mp.Queue()
         # self.imageQueue.cancel_join_thread()
@@ -3424,14 +3426,14 @@ class VideoAcquirer(StateMachineProcess):
             self.imageQueue = SharedImageSender(
                 width=videoWidth,
                 height=videoHeight,
+                channels=self.nChannels,
                 verbose=self.verbose,
                 pixelFormat=self.pixelFormat,
                 outputType='bytes',
-                lockForOutput=False,
-                maxBufferSize=self.bufferSize,
-                channels=self.nChannels,
-                pipeName=self.camSerial+'_main',
-                allowOverflow=False
+                maxMetadataBufferSize=self.bufferSize,
+                pipeBaseName=self.camSerial+'_main',
+                allowOverflow=False,
+                chunkFrameCount=self.framesPerFile
             )
             if self.verbose >= 2: self.log("Creating shared image sender with max buffer size:", self.bufferSize)
             self.imageQueueReceiver = self.imageQueue.getReceiver()
@@ -3441,14 +3443,13 @@ class VideoAcquirer(StateMachineProcess):
 
         if sendToMonitor:
             self.monitorImageSender = SharedImageSender(
-                pipeName=self.camSerial+'_monitor',
+                pipeBaseName=self.camSerial+'_monitor',
                 width=videoWidth,
                 height=videoHeight,
+                channels=self.nChannels,
                 verbose=self.verbose,
                 outputType='PIL',
-                lockForOutput=False,
-                maxBufferSize=1,
-                channels=self.nChannels,
+                maxMetadataBufferSize=1,
                 allowOverflow=True
             )
             self.monitorImageReceiver = self.monitorImageSender.getReceiver()
@@ -3800,7 +3801,7 @@ class SimpleVideoWriter(StateMachineProcess):
                 mergeMessageQueue=None,            # Queue to put (filename, trigger) in for merging
                 camSerial='',
                 daySubfolders=True,
-                videoLength=2,   # Video length in seconds
+                framesPerFile=300,   # Video length in seconds
                 gpuVEnc=False,   # Should we use GPU acceleration
                 enableWrite=True,
                 scheduleEnabled=False,
@@ -3823,8 +3824,7 @@ class SimpleVideoWriter(StateMachineProcess):
         self.mergeMessageQueue = mergeMessageQueue
         self.videoWriteMethod = 'ffmpeg'   # options are ffmpeg, PySpin, OpenCV
         self.daySubfolders = daySubfolders
-        self.videoLength = videoLength
-        self.videoFrameCount = None   # Number of frames to save to each video. Wait until we get actual framerate from synchronizer
+        self.videoFrameCount = framesPerFile   # Number of frames to save to each video. Wait until we get actual framerate from synchronizer
         self.gpuVEnc = gpuVEnc
         self.enableWrite = enableWrite
         self.scheduleEnabled = scheduleEnabled

@@ -285,12 +285,14 @@ class ffmpegVideoWriter():
             print('Closed pipe to ffmpeg')
 
 class ffmpegPipedVideoWriter(ffmpegVideoWriter):
-    def __init__(self, filename, pipePath, numFrames=None, **kwargs):
+    def __init__(self, filename, pipePath, pipeDiscardQueue=None, numFrames=None, **kwargs):
         """Construct an ffmpegPipedVideoWriter.
 
         Args:
             filename (str): Filename where video should be written.
             pipePath (str): Path to windows named pipe
+            pipeDiscardQueue (multiprocessing.Queue): A queue to put the pipe
+                path in after finishing to mark it for cleanup
             numFrames (int or None): Number of frames to write before closing
                 the writer. If None, wil continue to write until pipe is closed
                 by the sender.
@@ -300,6 +302,7 @@ class ffmpegPipedVideoWriter(ffmpegVideoWriter):
         self.pipePath = pipePath
         self.numFrames = numFrames
         self.completed = False
+        self.pipeDiscardQueue = pipeDiscardQueue
         if not self.frameType == "bytes":
             raise ValueError('Piped video writers can only accomodate "bytes" frame type')
 
@@ -381,14 +384,17 @@ class ffmpegPipedVideoWriter(ffmpegVideoWriter):
         outs, errs = self.ffmpegProc.communicate(timeout=timeout)
         returncode = self.ffmpegProc.returncode
         self.completed = True
+        if self.pipeDiscardQueue is not None:
+            self.pipeDiscardQueue.put(self.pipePath)
         return [outs, errs, returncode]
 
     def getReturnCode(self):
-        if self.ffmpegProc is None:
-            raise RuntimeError('Process does not exist')
-        if self.ffmpegProc.returncode is not None:
-            self.completed = True
-        return self.ffmpegProc.returncode
+        if self.completed:
+            if self.ffmpegProc is None:
+                raise RuntimeError('Process does not exist')
+            return self.ffmpegProc.returncode
+        else:
+            return None
 
     def wait(self):
         """Wait for ffmpeg writer to finish.

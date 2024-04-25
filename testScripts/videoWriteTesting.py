@@ -36,7 +36,6 @@ def dummyWriter(filename, pipeQueues, shape, chunkSize):
                 else:
                     print('Writer for pipe {p} finished.'.format(p=vfi.pipePath))
                     # This one is done - tell the server it can delete this pipe
-                    pipeDoneQueue.put(vfi.pipePath)
             except TimeoutExpired:
                 # this writer is not done yet
                 pass
@@ -55,7 +54,7 @@ def dummyWriter(filename, pipeQueues, shape, chunkSize):
             except queue.Empty:
                 print('No image pipes ready')
 
-        newVFI = fIO.ffmpegPipedVideoWriter(filePath, pipePath,
+        newVFI = fIO.ffmpegPipedVideoWriter(filePath, pipePath, pipeDiscardQueue=pipeDoneQueue,
             gpuVEnc=True, verbose=1, input_pixel_format='rgb24')
         videoFileInterfaces.append(newVFI)
         # if k > 0:
