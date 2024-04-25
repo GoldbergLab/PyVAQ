@@ -3728,7 +3728,7 @@ him know. Otherwise, I had nothing to do with it.
                         camSerial=camSerial,
                         videoDirectory=videoDirectory,
                         videoBaseFileName=videoBaseFileName,
-                        imageQueue=videoAcquireProcess.imageQueueReceiver,
+                        imageQueue=videoAcquireProcess.imageQueue,
                         frameRate=self.actualVideoFrequency,
                         requestedFrameRate=p["videoFrequency"],
                         mergeMessageQueue=mergeMsgQueue,

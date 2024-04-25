@@ -11,7 +11,7 @@ from PIL import Image
 from collections import defaultdict, deque
 from threading import BrokenBarrierError
 import itertools
-import ffmpegIO as fw
+import ffmpegIO as fIO
 from SharedImageQueue import SharedImageSender
 import traceback
 import unicodedata
@@ -3424,22 +3424,19 @@ class VideoAcquirer(StateMachineProcess):
 
         if sendToWriter:
             self.imageQueue = SharedImageSender(
+                pipeBaseName=self.camSerial+'_main',
                 width=videoWidth,
                 height=videoHeight,
                 channels=self.nChannels,
                 verbose=self.verbose,
                 pixelFormat=self.pixelFormat,
                 outputType='bytes',
-                maxMetadataBufferSize=self.bufferSize,
-                pipeBaseName=self.camSerial+'_main',
-                allowOverflow=False,
+                bufferSize=self.bufferSize,
                 chunkFrameCount=self.framesPerFile
             )
             if self.verbose >= 2: self.log("Creating shared image sender with max buffer size:", self.bufferSize)
-            self.imageQueueReceiver = self.imageQueue.getReceiver()
         else:
             self.imageQueue = None
-            self.imageQueueReceiver = None
 
         if sendToMonitor:
             self.monitorImageSender = SharedImageSender(
@@ -3449,8 +3446,8 @@ class VideoAcquirer(StateMachineProcess):
                 channels=self.nChannels,
                 verbose=self.verbose,
                 outputType='PIL',
-                maxMetadataBufferSize=1,
-                allowOverflow=True
+                bufferSize=100,
+                chunkCount=self.framesPerFile+1
             )
             self.monitorImageReceiver = self.monitorImageSender.getReceiver()
     #        self.monitorImageQueue.cancel_join_thread()
@@ -3670,7 +3667,7 @@ class VideoAcquirer(StateMachineProcess):
                                 actualMonitorFramePeriod = thisTime - lastTime
                                 if (thisTime - lastTime) >= monitorFramePeriod:
                                     try:
-                                        self.monitorImageSender.put(imageResult, metadata={'pixelFormat':self.pixelFormat})
+                                        self.monitorImageSender.put(imarray=imageResult.GetNDArray, metadata={'pixelFormat':self.pixelFormat})
                                         if self.verbose >= 3: self.log("Sent frame for monitoring")
                                         lastTime = thisTime
                                     except queue.Full:
@@ -3770,7 +3767,6 @@ class VideoAcquirer(StateMachineProcess):
 class SimpleVideoWriter(StateMachineProcess):
     # Human-readable states
     stateList = {
-        States.WRITING :'WRITING',
         States.FILEINIT : 'FILEINIT',
     }
 
@@ -3816,13 +3812,10 @@ class SimpleVideoWriter(StateMachineProcess):
         self.videoDirectory=videoDirectory
         self.videoBaseFileName = videoBaseFileName
         self.imageQueue = imageQueue
-        # if self.imageQueue is not None:
-        #     self.imageQueue.cancel_join_thread()
         self.requestedFrameRate = requestedFrameRate
         self.frameRateVar = frameRate
         self.frameRate = None
         self.mergeMessageQueue = mergeMessageQueue
-        self.videoWriteMethod = 'ffmpeg'   # options are ffmpeg, PySpin, OpenCV
         self.daySubfolders = daySubfolders
         self.videoFrameCount = framesPerFile   # Number of frames to save to each video. Wait until we get actual framerate from synchronizer
         self.gpuVEnc = gpuVEnc
@@ -3873,6 +3866,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     numFramesInCurrentSeries = 0    # Initialize series-wide frame count, for estimating subsequent video times
                     writeEnabledPrevious = True
                     writeEnabled = True
+                    videoFileInterfaces = []        # Hold video writer objects so they can be properly disposed of when done
 
                     self.frameRate = self.frameRateVar.value
                     if self.frameRate == -1:
@@ -3915,8 +3909,6 @@ class SimpleVideoWriter(StateMachineProcess):
                     # Check if
                     #   1. Video write is manually enabled or not
                     #   2. Video write is scheduled to be on or off
-                    numFramesInCurrentVideo = 0
-
                     scheduledOn = inSchedule(self.scheduleStartTime, self.scheduleStopTime)
 
                     writeEnabledPrevious = writeEnabled
@@ -3936,63 +3928,79 @@ class SimpleVideoWriter(StateMachineProcess):
                         elif not writeEnabled and writeEnabledPrevious:
                             self.logTime('Video write now disabled')
 
-                    if writeEnabled:
-                        im = None
-                        videoFileStartTime = seriesStartTime + numFramesInCurrentSeries / self.frameRate
+                    # Clean up and completed video file interfaces
+                    for vfi in videoFileInterfaces:
+                        # Loop over videoFileInterfaces and try to communicate with them to see if they're done
+                        try:
+                            [outs, errs, returncode] = vfi.getOutput(timeout=0)
+                            if not returncode == 0:
+                                raise RuntimeError('Writer for pipe {p} returned an error: {err}'.format(p=vfi.pipePath, err=errs))
+                            elif self.verbose >= 2:
+                                print('Writer for pipe {p} finished.'.format(p=vfi.pipePath))
+                                # Record frames written
+                                numFramesInCurrentSeries += self.imageQueue.chunkFrameCount
+                        except TimeoutExpired:
+                            # this writer is not done yet
+                            pass
 
-                        if videoFileInterface is not None:
-                            if self.verbose >= 2: self.log('Closing pre-existing video file interface.')
-                            # Close file
-                            if self.videoWriteMethod == "PySpin":
-                                videoFileInterface.Close()
-                            elif self.videoWriteMethod == "ffmpeg":
-                                videoFileInterface.close()
-                            videoFileInterface = None
+                    # Filter videoFileInterfaces for ones that are marked as completed - completed ones will be garbage collected
+                    videoFileInterfaces = [vfi for vfi in videoFileInterfaces if not vfi.completed]
 
-                        # Generate new video file path
-                        videoFileNameTags = [self.camSerial, generateTimeString(timestamp=seriesStartTime), '{videoCount:04d}'.format(videoCount=videoCount)]
-                        if self.daySubfolders:
-                            videoDirectory = getDaySubfolder(self.videoDirectory, timestamp=videoFileStartTime)
-                        else:
-                            videoDirectory = self.videoDirectory
-                        videoFileName = generateFileName(directory=videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
-                        if self.verbose >= 2: self.log('New filename:', videoFileName)
-                        if self.verbose >= 3: self.log('Ensuring directory exists:', videoDirectory)
-                        ensureDirectoryExists(videoDirectory)
+                    # Attempt to get video pipe from acquirer
+                    try:
+                        pipeInfo = self.imageQueue.pipeReadyQueue.get(block=True, timeout=0.5)
+                        pipePath = pipeInfo['path']
+                        print('got image pipe:', pipeInfo)
+                        break
+                    except queue.Empty:
+                        pipePath = None
+                        if self.verbose >= 2: print('No image pipes ready yet')
 
-                        if self.verbose >= 3: self.log('Opening new file writing interface...')
+                    if pipePath is not None:
+                        # We have a new image pipe - spawn a video writer to use it
 
-                        # Initialize video writer interface
-                        if self.videoWriteMethod == "PySpin":
-                            if videoFileInterface is not None:
-                                videoFileInterface.Close()
+                        if writeEnabled:
+                            # Write is enabled - prepare process to get data from acquirer and write to disk
 
-                            videoFileInterface = PySpin.SpinVideo()
-                            option = PySpin.AVIOption()
-                            option.frameRate = self.frameRate
-                            if self.verbose >= 2: self.log("Opening file to save video with frameRate ", option.frameRate)
-                            videoFileInterface.Open(videoFileName, option)
-                            stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
-                            videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
-                        elif self.videoWriteMethod == "ffmpeg":
-                            if self.verbose >= 3: self.log('Using ffmpeg writer')
-                            if videoFileInterface is not None:
-                                if self.verbose >= 3: self.log('Closing previous file interface')
-                                videoFileInterface.close()
+                            im = None
+                            videoFileStartTime = seriesStartTime + numFramesInCurrentSeries / self.frameRate
+
+                            # Generate new video file path
+                            videoFileNameTags = [self.camSerial, generateTimeString(timestamp=seriesStartTime), '{videoCount:04d}'.format(videoCount=videoCount)]
+                            if self.daySubfolders:
+                                videoDirectory = getDaySubfolder(self.videoDirectory, timestamp=videoFileStartTime)
+                            else:
+                                videoDirectory = self.videoDirectory
+                            videoFileName = generateFileName(directory=videoDirectory, baseName=self.videoBaseFileName, extension='.avi', tags=videoFileNameTags)
+                            if self.verbose >= 2: self.log('New filename:', videoFileName)
+                            if self.verbose >= 3: self.log('Ensuring directory exists:', videoDirectory)
+                            ensureDirectoryExists(videoDirectory)
+
+                            if self.verbose >= 3: self.log('Opening new file writing interface...')
 
                             # Map PySpin pixel format into an ffmpeg pixel format
                             ffmpegPixelFormats = psu.pixelFormats[self.imageQueue.pixelFormat]['ffmpeg']
                             if ffmpegPixelFormats is None or len(ffmpegPixelFormats) == 0:
                                 raise TypeError('No ffmpeg format is known for PySpin format {f}'.format(f=self.imageQueue.pixelFormat))
 
-                            videoFileInterface = fw.ffmpegVideoWriter(videoFileName, "bytes", verbose=self.verbose, input_pixel_format=ffmpegPixelFormats[0], fps=self.frameRate, gpuVEnc=self.gpuVEnc)
+                            newVFI = fIO.ffmpegPipedVideoWriter(videoFileName,
+                                pipePath,
+                                pipeDiscardQueue=self.imageQueue.pipeDoneQueue,
+                                verbose=self.verbose,
+                                input_pixel_format=ffmpegPixelFormats[0],
+                                fps=self.frameRate, gpuVEnc=self.gpuVEnc)
 
-                        newFileInfo = 'Opened video file #{num:04d}: {f:.2f} fps, gpu encoding={gpu}'.format(num=videoCount, f=self.frameRate, gpu=self.gpuVEnc);
-                        self.updatePublishedInfo(newFileInfo)
+                            newFileInfo = 'Opened video file #{num:04d}: {f:.2f} fps, gpu encoding={gpu}'.format(num=videoCount, f=self.frameRate, gpu=self.gpuVEnc);
+                            self.updatePublishedInfo(newFileInfo)
 
-                        if self.verbose >= 3: self.log('...opened new file writing interface')
+                            if self.verbose >= 3: self.log('...opened new file writing interface')
+                        else:
+                            # Write is not enabled - set up process to read and discard data from acquirer
+                            newVFI = fIO.ffmpegPipedVideoDiscarder(verbose=self.verbose)
 
-                    videoCount += 1
+                        videoFileInterfaces.append(newVFI)
+
+                        videoCount += 1
 
                     # CHECK FOR MESSAGES
                     msg, arg = self.checkMessages(block=False)
@@ -4006,114 +4014,7 @@ class SimpleVideoWriter(StateMachineProcess):
                         self.exitFlag = True
                         self.nextState = States.STOPPING
                     elif msg in ['', Messages.START]:
-                        self.nextState = States.WRITING
-                    else:
-                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
-                    # if self.verbose >= 1: profiler.disable()
-# SimpleVideoWriter: ************** WRITING *********************************
-                elif self.state == States.WRITING:
-                    # if self.verbose >= 1: profiler.enable()
-                    # DO STUFF
-                    if self.verbose >= 3:
-                        self.logTime("Image queue size: ", self.imageQueue.qsize(), ". Getting next image...")
-
-                    im, frameTime, imageID, frameShape = self.getNextimage()
-
-                    if im is None:
-                        # No images available.
-                        if self.verbose >= 3:
-                            self.logTime("...no image yet. Waiting...")
-                    else:
-                        if writeEnabled:
-                            if videoFileInterface is None:
-                                raise IOError('Attempted to write but writer interface does not exist')
-
-                            if self.verbose >= 3:
-                                self.logTime("...got image. Sending to writer...")
-
-                            if len(self.imageQueue.frameShape) == 3:
-                                width, height, channels = frameShape
-                            else:
-                                width, height = frameShape
-                                channels = 1
-
-                            # Write video frame from queue to file
-                            if self.videoWriteMethod == "PySpin":
-                                # Reconstitute PySpin image from PickleableImage
-                                # im = PySpin.Image.Create(imp.width, imp.height, imp.offsetX, imp.offsetY, imp.pixelFormat, imp.data)
-                                # Convert image to desired format
-                                videoFileInterface.Append(im.Convert(PySpin.PixelFormat_RGB8, PySpin.HQ_LINEAR))
-                                if self.verbose >= 2: self.logTime("wrote frame using PySpin!")
-                                # try:
-                                #     im.Release()
-                                # except PySpin.SpinnakerException:
-                                #     if self.verbose >= 0:
-                                #         self.log("Error releasing unconverted PySpin image after appending to AVI.")
-                                #         self.log(traceback.format_exc())
-                                del im
-                            elif self.videoWriteMethod == "ffmpeg":
-                                videoFileInterface.write(im, shape=(height, width))
-                                if self.verbose >= 2: self.logTime("wrote frame using ffmpeg!")
-                                if self.verbose >= 3: self.log("bytes=", str(im[0:10]))
-                            if self.verbose >= 3:
-                                self.logTime("...wrote image ID " + str(imageID))
-                        elif self.verbose >= 3:
-                            self.log('Skipped writing a frame because video write is disabled.')
-
-                        numFramesInCurrentVideo += 1
-                        numFramesInCurrentSeries += 1
-
-                    # CHECK FOR MESSAGES (and consume certain messages that don't trigger state transitions)
-                    msg, arg = self.checkMessages(block=False)
-
-                    # CHOOSE NEXT STATE
-                    if self.exitFlag:
-                        self.nextState = States.STOPPING
-                    elif msg == Messages.STOP:
-                        self.nextState = States.STOPPING
-                    elif msg == Messages.EXIT:
-                        self.exitFlag = True
-                        self.nextState = States.STOPPING
-                    elif msg in ['', Messages.START]:
-                        if numFramesInCurrentVideo == self.videoFrameCount:
-                            # We've reached desired video frame count. Start a new video.
-                            self.nextState = States.FILEINIT
-                            # If requested, merge with audio.
-                            #   This doesn't really work with SimpleVideoWriter right now. For potential future use.
-                            if self.mergeMessageQueue is not None and videoFileInterface is not None:
-                                # Send file for AV merging:
-                                if self.videoWriteMethod == "PySpin":
-                                    fileEvent = dict(
-                                        filePath=videoFileInterface.videoFileName,
-                                        streamType=AVMerger.VIDEO,
-                                        trigger=None, #triggers[0],
-                                        streamID=self.camSerial,
-                                        startTime=videoFileStartTime,
-                                        tags=['{videoCount:04d}'.format(videoCount=videoCount)]
-                                    )
-                                else:
-                                    fileEvent = dict(
-                                        filePath=videoFileName,
-                                        streamType=AVMerger.VIDEO,
-                                        trigger=Trigger(videoFileStartTime,
-                                            videoFileStartTime,
-                                            videoFileStartTime+self.videoFrameCount/self.frameRate,
-                                            id=videoCount, idspace='SimpleAVFiles'), #triggers[0],
-                                        streamID=self.camSerial,
-                                        startTime=videoFileStartTime,
-                                        tags=['{videoCount:04d}'.format(videoCount=videoCount)]
-                                    )
-                                if self.verbose >= 2: self.log("Sending video filename to merger")
-                                self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
-                            else:
-                                if self.verbose >= 3:
-                                    self.log('No merge message queue available, cannot send to AVMerger')
-                        elif numFramesInCurrentVideo < self.videoFrameCount:
-                            # Not enough frames yet. Keep writing.
-                            self.nextState = States.WRITING
-                        else:
-                            # Uh oh, too many frames? Something went wrong.
-                            raise IOError('More frames ({k}) than requested ({n}) in video!'.format(k=numFramesInCurrentVideo, n=self.videoFrameCount))
+                        self.nextState = States.FILEINIT
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
                     # if self.verbose >= 1: profiler.disable()
@@ -4121,33 +4022,20 @@ class SimpleVideoWriter(StateMachineProcess):
                 elif self.state == States.STOPPING:
                     # DO STUFF
                     if videoFileInterface is not None:
-                        if self.videoWriteMethod == "PySpin":
-                            videoFileInterface.Close()
-                        elif self.videoWriteMethod == "ffmpeg":
-                            videoFileInterface.close()
+                        videoFileInterface.close()
                         if self.mergeMessageQueue is not None:
                             # Send file for AV merging:
-                            if self.videoWriteMethod == "PySpin":
-                                fileEvent = dict(
-                                    filePath=videoFileInterface.videoFileName,
-                                    streamType=AVMerger.VIDEO,
-                                    trigger=None, #triggers[0],
-                                    streamID=self.camSerial,
-                                    startTime=videoFileStartTime,
-                                    tags=['{videoCount:04d}'.format(videoCount=videoCount)]
-                                )
-                            else:
-                                fileEvent = dict(
-                                    filePath=videoFileName,
-                                    streamType=AVMerger.VIDEO,
-                                    trigger=Trigger(videoFileStartTime,
-                                        videoFileStartTime,
-                                        videoFileStartTime+self.videoFrameCount/self.frameRate,
-                                        id=videoCount, idspace='SimpleAVFiles'), #triggers[0],
-                                    streamID=self.camSerial,
-                                    startTime=videoFileStartTime,
-                                    tags=['{videoCount:04d}'.format(videoCount=videoCount)]
-                                )
+                            fileEvent = dict(
+                                filePath=videoFileName,
+                                streamType=AVMerger.VIDEO,
+                                trigger=Trigger(videoFileStartTime,
+                                    videoFileStartTime,
+                                    videoFileStartTime+self.videoFrameCount/self.frameRate,
+                                    id=videoCount, idspace='SimpleAVFiles'), #triggers[0],
+                                streamID=self.camSerial,
+                                startTime=videoFileStartTime,
+                                tags=['{videoCount:04d}'.format(videoCount=videoCount)]
+                            )
                             self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
                         videoFileInterface = None
 
@@ -4409,7 +4297,7 @@ class VideoWriter(StateMachineProcess):
                                 stupidChangedVideoNameThanksABunchFLIR = videoFileName + '-0000.avi'
                                 videoFileInterface.videoFileName = stupidChangedVideoNameThanksABunchFLIR
                             elif self.videoWriteMethod == "ffmpeg":
-                                videoFileInterface = fw.ffmpegVideoWriter(videoFileName+'.avi', verbose=self.verbose, fps=self.frameRate)
+                                videoFileInterface = fIO.ffmpegVideoWriter(videoFileName+'.avi', verbose=self.verbose, fps=self.frameRate)
 
                         # Write video frame to file that was previously retrieved from the buffer
                         if self.verbose >= 3:
