@@ -3431,7 +3431,7 @@ class VideoAcquirer(StateMachineProcess):
                 verbose=self.verbose,
                 pixelFormat=self.pixelFormat,
                 outputType='bytes',
-                bufferSize=self.bufferSize,
+                bufferSize=self.bufferSize//2,
                 chunkFrameCount=self.framesPerFile
             )
             if self.verbose >= 2: self.log("Creating shared image sender with max buffer size:", self.bufferSize)
@@ -3446,7 +3446,7 @@ class VideoAcquirer(StateMachineProcess):
                 channels=self.nChannels,
                 verbose=self.verbose,
                 outputType='PIL',
-                bufferSize=100,
+                bufferSize=50,
                 chunkFrameCount=self.framesPerFile+1,
                 createReceiver=True
             )
