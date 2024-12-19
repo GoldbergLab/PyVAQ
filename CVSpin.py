@@ -2,6 +2,8 @@ import cv2
 from PIL import Image
 import re
 import os
+from pathlib import Path
+import time
 
 # A module designed to be a partial drop-in replacement for PySpin, so FLIR
 #   cameras or other USB cameras that can be controlled by OpenCV can be used
@@ -172,21 +174,68 @@ def GetAttributeCode(attributeName):
             raise NameError('Attribute name {n} not recognized.'.format(n=attributeName))
         return attributeCode
 
+CAM_NUM_FILE = Path('.\OpenCV_cam_list.tmp')
+CAM_UPDATE_INTERVAL = 10
+
 def find_valid_ports(max_attempts=5):
+    # Find a list of cameras via OpenCV. Unfortunately, OpenCV does not provide
+    #   a function that lists all available cameras, so we have to go through
+    #   an irritatingly slow and arbitrary search process.
+
+    # CAM_NUM_FILE, if it exists, should be a simple text file with two
+    #   lines. The first line contains a floating point number repressenting
+    #   the system time (as per time.time()) when the camera list was last
+    #   updated. The second line is a space-separated list of camera numbers
+    #   (as numbered by cv2).
+    # We will check if the cameras listed in CAM_NUM_FILE are too stale
+    #   (as per CAM_UPDATE_INTERVAL), then either use the old camera list
+    #   if not, or re-update if so.
+    try:
+        with open(CAM_NUM_FILE, 'r') as f:
+            cam_record = [txt.strip() for txt in f.readlines()]
+            lastUpdateTime = float(cam_record[0])
+            timeSinceLastUpdate = time.time() - lastUpdateTime
+            if timeSinceLastUpdate < CAM_UPDATE_INTERVAL:
+                valid_port_nums = [int(n) for n in cam_record[1]]
+                return valid_port_nums
+    except Exception as e:
+        # Something went wrong, just update cam list
+        print('Error getting record of valid cv2 camera ports:')
+        print(e)
+        print('Re-updating camera port list')
+
+    # Starting "port" number is 0
     port_num = 0
+    # Initialize empty list of port numbers that correspond to actual cameras
     valid_port_nums = []
+    # Number of failed attempts so far
     num_fails = 0
     while True:
+        # Loop over port numbers one at a time
+        # Attempt to open camera
         cap = cv2.VideoCapture(port_num)
         if cap is not None and cap.isOpened():
+            # We got a valid camera! Record it.
             valid_port_nums.append(port_num)
+            # Reset # of fails because we got a live one
             num_fails = 0
+            # Release camera resource, not going to actually use it now.
             cap.release()
         else:
+            # No dice, try the next one?
             num_fails += 1
             if num_fails > max_attempts:
+                # Too many misses in a row, stop searching
                 break
         port_num += 1
+
+    # Update CAM_NUM_FILE with latest camera list
+    with open(CAM_NUM_FILE, 'w') as f:
+        cam_record = [
+            str(time.time())+'\n',
+            ' '.join(str(n) for n in valid_port_nums)+'\n'
+        ]
+        f.writelines(cam_record)
     return valid_port_nums
 
 def portNumToSerial(port):
