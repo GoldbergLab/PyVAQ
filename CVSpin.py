@@ -3,6 +3,10 @@ from PIL import Image
 import re
 import os
 
+# A module designed to be a partial drop-in replacement for PySpin, so FLIR
+#   cameras or other USB cameras that can be controlled by OpenCV can be used
+#   with the same class/function call signature.
+
 os.environ['OPENCV_VIDEOIO_PRIORITY_MSMF'] = '0'
 
 intfIString = None
@@ -938,7 +942,7 @@ class Camera:
         if self._width == 0:
             self._width = self.GetAttribute('FRAME_WIDTH')
         if self._width == 0:
-            imagePtr = self.GetNextFrame()
+            imagePtr = self.GetNextImage()
             self._width = imagePtr.GetWidth()
             self._height = imagePtr.GetHeight()
             imagePtr.Release()
@@ -959,7 +963,7 @@ class Camera:
         if self._height == 0:
             self._height = self.GetAttribute('FRAME_HEIGHT')
         if self._height == 0:
-            imagePtr = self.GetNextFrame()
+            imagePtr = self.GetNextImage()
             self._width = imagePtr.GetWidth()
             self._height = imagePtr.GetHeight()
             imagePtr.Release()
@@ -1392,7 +1396,7 @@ class Camera:
         ret, image_array = self._camera_pointer.read()
         if not ret:
             raise IOError('Camera capture failed')
-        frame_num = self._camera_pointer.get(cv2.CAP_PROP_POS_FRAME)
+        frame_num = self._camera_pointer.get(cv2.CAP_PROP_POS_FRAMES)
         timestamp = self._camera_pointer.get(cv2.CAP_PROP_POS_MSEC)
         return ImagePtr(image_array, frame_id=frame_num, timestamp=timestamp)
 

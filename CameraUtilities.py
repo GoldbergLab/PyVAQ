@@ -19,13 +19,16 @@ else:
         import pyspin as PySpin
 
 import CVSpin
+# DEBUG ONLY TEMPOORARY:
+import CVSpin as ApSpin
 
 
 # Camera types
 FLIR_CAM = 0
-OTHER_CAM = 1
-CAM_TYPES = [FLIR_CAM, OTHER_CAM]
-CamLibs = {FLIR_CAM:PySpin, OTHER_CAM:CVSpin, None:PySpin}
+APTINA_CAM = 1
+OTHER_CAM = 2
+CAM_TYPES = [FLIR_CAM, APTINA_CAM, OTHER_CAM]
+CamLibs = {FLIR_CAM:PySpin, OTHER_CAM:CVSpin, APTINA_CAM:ApSpin, None:PySpin}
 
 # Information about PySpin pixel formats, with a partial mapping to common ffmpeg pixel formats
 pixelFormats = {

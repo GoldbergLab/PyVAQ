@@ -3290,6 +3290,7 @@ class VideoAcquirer(StateMachineProcess):
     def __init__(self,
                 startTime=None,
                 camSerial='',
+                camType=None,
                 acquireSettings={},
                 frameRate=None,
                 requestedFrameRate=None,
@@ -3307,6 +3308,7 @@ class VideoAcquirer(StateMachineProcess):
         self.acquireSettings = acquireSettings
         self.requestedFrameRate = requestedFrameRate
         self.frameRateVar = frameRate
+        self.camType = camType
         if self.frameRateVar is None:
             # This must be a software timed camera, so frame rate is not controlled by Sync process
             self.hardwareTimed = False
@@ -3320,12 +3322,12 @@ class VideoAcquirer(StateMachineProcess):
         # self.imageQueue.cancel_join_thread()
         self.bufferSize = int(bufferSizeSeconds * self.requestedFrameRate)
 
-        self.nChannels = cu.getColorChannelCount(camSerial=self.camSerial)
+        self.nChannels = cu.getColorChannelCount(camSerial=self.camSerial, camType=self.camType)
 
         if self.verbose >= 3: self.log("Temporarily initializing camera to get image size...")
-        videoWidth, videoHeight = cu.getFrameSize(camSerial=self.camSerial)
+        videoWidth, videoHeight = cu.getFrameSize(camSerial=self.camSerial, camType=self.camType)
         # Get current camera pixel format
-        self.pixelFormat = cu.getPixelFormat(camSerial=self.camSerial)
+        self.pixelFormat = cu.getPixelFormat(camSerial=self.camSerial, camType=self.camType)
         if self.verbose >= 2: print('Camera pixel format is:', self.pixelFormat)
 
         if sendToWriter:
@@ -3442,7 +3444,7 @@ class VideoAcquirer(StateMachineProcess):
                         if self.hardwareTimed:
                             self.frameRate = self.frameRateVar.value
                         if self.verbose >= 2: self.log("Initializing camera...")
-                        cam, camList, system = cu.initCam(self.camSerial)
+                        cam, camList, system = cu.initCam(self.camSerial, camType=self.camType)
 
                         cu.applyCameraConfiguration(self.acquireSettings, cam=cam)
                         if self.verbose >= 2: self.log("...camera initialization complete")

@@ -115,8 +115,8 @@ class CameraConfigPanel(tk.Frame):
         self.applyConfigurationOnInitCheckbox.grid(row=7, column=1, sticky=tk.E)
 
         self.updateCameraList()
-        self.grabAllCameraAttributes()
-        self.updateCameraAttributes(grab=False)
+        self.grabAllCameraAttributes(updateCameraList=False)
+        self.updateCameraAttributes(grab=False, updateCameraList=False)
 
         self.grid()
 
@@ -185,7 +185,7 @@ class CameraConfigPanel(tk.Frame):
         else:
             return self.cameraList['values'][idx]
 
-    def grabAllCameraAttributes(self):
+    def grabAllCameraAttributes(self, updateCameraList=True):
         """Get all the camera attributes from all the attached cameras.
 
         Returns:
@@ -193,7 +193,8 @@ class CameraConfigPanel(tk.Frame):
 
         """
 
-        self.updateCameraList()
+        if updateCameraList:
+            self.updateCameraList()
 
         progressPopup = tk.Toplevel(self.parent)
         progressPopup.title('Gathering camera information...')
@@ -204,7 +205,7 @@ class CameraConfigPanel(tk.Frame):
         progressBar.grid(row=1, column=0, sticky=tk.EW)
 
         for camSerial, camType in zip(self.camSerials, self.camTypes):
-            nestedAttributes = cu.getAllCameraAttributes(camSerial=camSerial, camType=camType)
+            nestedAttributes = cu.getAllCameraAttributes(camSerial=camSerial, camType=camType, updateCameraList=updateCameraList)
             flattenedAttributes = cu.flattenCameraAttributes(nestedAttributes)
             self.storedAttributes[camSerial] = flattenedAttributes
             progressBar.step(1)
@@ -212,7 +213,7 @@ class CameraConfigPanel(tk.Frame):
 
         progressPopup.destroy()
 
-    def updateCameraAttributes(self, camSerial=None, grab=True):
+    def updateCameraAttributes(self, camSerial=None, grab=True, updateCameraList=True):
         """Reload current attributes from current camera, update widgets.
 
         Args:
@@ -227,7 +228,8 @@ class CameraConfigPanel(tk.Frame):
 
         """
 
-        self.updateCameraList()
+        if updateCameraList:
+            self.updateCameraList()
 
         if camSerial is None:
             camSerial = self.getCurrentCamSerial()
