@@ -2,6 +2,7 @@ import cv2
 from PIL import Image
 import re
 import os
+from numpy import ndarray
 from pathlib import Path
 import time
 
@@ -1182,8 +1183,7 @@ class Camera:
 
         A reference to the INodeMap.
         """
-        raise NotImplementedError()
-        return
+        return None
 
 
     def GetTLDeviceNodeMap(self):
@@ -1618,8 +1618,6 @@ class Camera:
         raise NotImplementedError()
         return
 
-
-
 class ImagePtr(object):
     """
 
@@ -1673,7 +1671,7 @@ class ImagePtr(object):
         pointer is valid
         """
 
-        return type(self._image_array) == np.ndarray
+        return type(self._image_array) == ndarray
 
 
     def __nonzero__(self):
@@ -2155,8 +2153,10 @@ class ImagePtr(object):
         self: Spinnaker::BasePtr< IImage > const *
 
         """
-
-        return type(self._image_array) == np.ndarray
+        print('IsIncomplete:')
+        print('type(self._image_array)', type(self._image_array))
+        print('ndarray', ndarray)
+        return type(self._image_array) != ndarray
 
 
     def GetValidPayloadSize(self):
@@ -2354,8 +2354,7 @@ class ImagePtr(object):
         self: Spinnaker::BasePtr< IImage > const *
 
         """
-        raise NotImplementedError()
-        return
+        return None
 
 
     def IsCompressed(self):
@@ -2420,8 +2419,6 @@ class ImagePtr(object):
 
         """
         return self._image_array
-
-
 
 #
 # PixelFormat_Mono8 = cv2.

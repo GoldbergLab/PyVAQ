@@ -54,7 +54,6 @@ class SharedImageSender():
         self.bufferLocks = []
         self.npBuffers = []
         for k in range(self.maxBufferSize):
-            print('Creating raw array:', imageDataType, imageDataSize)
             # Create a series of shared memory locations, one for each image buffer slot
             self.buffers.append(mp.RawArray(imageDataType, imageDataSize))
             # Create synchronization locks to ensure that any given buffer element
