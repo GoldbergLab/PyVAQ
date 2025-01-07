@@ -674,10 +674,10 @@ class PyVAQ:
         self.videoMonitorUpdateJob = None
         self.audioAnalysisMonitorUpdateJob = None
         self.triggerIndicatorUpdateJob = None
-        self.autoUpdateVideoMonitors()
-        self.autoUpdateAudioMonitors()
-        if self.triggerModeVar.get() == "Audio":
-            self.autoUpdateAudioAnalysisMonitors()
+        # self.autoUpdateVideoMonitors()
+        # self.autoUpdateAudioMonitors()
+        # if self.triggerModeVar.get() == "Audio":
+        #     self.autoUpdateAudioAnalysisMonitors()
 
         self.updateStatusDisplayJob = None
         self.metaState = None
@@ -2589,6 +2589,7 @@ him know. Otherwise, I had nothing to do with it.
             self.setupInputMonitoringWidgets(showWriteWidgets=not self.previewMode)
             self.createChildProcesses()
         self.initializeChildProcesses()
+        self.startMonitors()
         # Schedule button update after 100 ms to give child processes a chance to react
         # self.master.after(100, self.updateAcquisitionButton)
     def haltAcquisition(self):
