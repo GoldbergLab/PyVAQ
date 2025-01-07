@@ -2153,9 +2153,7 @@ class ImagePtr(object):
         self: Spinnaker::BasePtr< IImage > const *
 
         """
-        print('IsIncomplete:')
-        print('type(self._image_array)', type(self._image_array))
-        print('ndarray', ndarray)
+
         return type(self._image_array) != ndarray
 
 
