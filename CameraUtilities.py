@@ -60,7 +60,7 @@ None:                           dict(bayer=False, channelCount=None, ffmpeg=None
 "YCbCr8":                       dict(bayer=False, channelCount=3,    ffmpeg=None),
 "YCbCr422_8":                   dict(bayer=False, channelCount=3,    ffmpeg=None),
 "YCbCr411_8":                   dict(bayer=False, channelCount=3,    ffmpeg=None),
-"BGR8":                         dict(bayer=False, channelCount=3,    ffmpeg=['bgr8']),
+"BGR8":                         dict(bayer=False, channelCount=3,    ffmpeg=['bgr24']),
 "BGRa8":                        dict(bayer=False, channelCount=3,    ffmpeg=['bgra']),
 "Mono10Packed":                 dict(bayer=False, channelCount=3,    ffmpeg=['gray10be', 'gray10le']),
 "BayerGR10Packed":              dict(bayer=True,  channelCount=1,    ffmpeg=None),
@@ -495,7 +495,7 @@ def getFrameSize(cam=None, **kwargs):
 def getPixelFormat(cam=None, camType=None, **kwargs):
     if camType == OTHER_CAM:
         # Quick fix, not sure how to consistently get this from OpenCV across camera backends
-        return "RGB8"
+        return "BGR8"
     return getCameraAttribute('PixelFormat', 'enum', cam=cam)[1]
 
 @handleCam
