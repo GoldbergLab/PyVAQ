@@ -1056,8 +1056,10 @@ him know. Otherwise, I had nothing to do with it.
         availableDigitalChannels = ['None'] + flattenList(discoverDAQTerminals().values())
 
         availableFLIRCamSerials, _ = cu.discoverCameras(camType=cu.FLIR_CAM)
+        availableAptinaCamSerials, _ = cu.discoverCameras(camType=cu.APTINA_CAM)
+        print('Aptina cams found:', availableAptinaCamSerials)
         availableOtherCamSerials, _ = cu.discoverCameras(camType=cu.OTHER_CAM)
-        availableCamSerials = availableFLIRCamSerials + availableOtherCamSerials
+        availableCamSerials = availableFLIRCamSerials + availableOtherCamSerials + availableAptinaCamSerials
 
         camSerials = []
 
@@ -1075,6 +1077,8 @@ him know. Otherwise, I had nothing to do with it.
             params.append(Param(name='Audio Channels', widgetType=Param.MULTICHOICE, options=availableAudioChannels, default=defaultAudioDAQChannels))
         if len(availableFLIRCamSerials) > 0:
             params.append(Param(name='FLIR Cameras', widgetType=Param.MULTICHOICE, options=availableFLIRCamSerials, default=None))
+        if len(availableAptinaCamSerials) > 0:
+            params.append(Param(name='Aptina Cameras', widgetType=Param.MULTICHOICE, options=availableAptinaCamSerials, default=None))
         if len(availableOtherCamSerials) > 0:
             params.append(Param(name='Other Cameras', widgetType=Param.MULTICHOICE, options=availableOtherCamSerials, default=None))
         if len(availableCamSerials) > 0:
@@ -1091,6 +1095,8 @@ him know. Otherwise, I had nothing to do with it.
         if len(params) > 0:
             pd = ParamDialog(self.master, params=params, title="Choose audio/video inputs to use", maxHeight=35, arrangement=ParamDialog.HYBRID)
             choices = pd.results
+            print('choices:')
+            print(choices)
             if choices is not None:
                 # We're changing acquisition settings, so stop everything
                 self.stopMonitors()
@@ -1110,6 +1116,10 @@ him know. Otherwise, I had nothing to do with it.
                     otherCamSerials = choices['Other Cameras']
                 else:
                     otherCamSerials = []
+                if 'Aptina Cameras' in choices:
+                    aptinaCamSerials = choices['Aptina Cameras']
+                else:
+                    aptinaCamSerials = []
                 if 'Cameras Requiring Hardware Sync' in choices:
                     camHardwareSyncList = choices['Cameras Requiring Hardware Sync']
                 else:
@@ -1140,8 +1150,8 @@ him know. Otherwise, I had nothing to do with it.
                 if 'Audio channel configuration' in choices and len(choices['Audio channel configuration']) > 0:
                     audioChannelConfiguration = choices['Audio channel configuration']
 
-                camSerials = FLIRCamSerials + otherCamSerials
-                camTypes = [cu.FLIR_CAM for camSerial in FLIRCamSerials] + [cu.OTHER_CAM for camSerial in otherCamSerials]
+                camSerials = FLIRCamSerials + otherCamSerials + aptinaCamSerials
+                camTypes = [cu.FLIR_CAM for camSerial in FLIRCamSerials] + [cu.OTHER_CAM for camSerial in otherCamSerials] + [cu.APTINA_CAM for camSerial in aptinaCamSerials]
                 camHardwareSync = [camSerial in camHardwareSyncList for camSerial in camSerials]
 
                 # Set chosen parameters
@@ -1192,13 +1202,15 @@ him know. Otherwise, I had nothing to do with it.
             "audioChannelConfiguration"
             )
 
-        FLIRCamSerials =  [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.FLIR_CAM]
-        otherCamSerials = [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.OTHER_CAM]
+        FLIRCamSerials =   [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.FLIR_CAM]
+        aptinaCamSerials = [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.APTINA_CAM]
+        otherCamSerials =  [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.OTHER_CAM]
 
         lines.extend([
             'Acquisition hardware selections:',
             '  Audio DAQ channels:   {audioDAQChannels}'.format(audioDAQChannels=', '.join(p['audioDAQChannels'])),
             '  FLIR Cameras:         {camSerials}'.format(camSerials=', '.join(FLIRCamSerials)),
+            '  Aptina Cameras:       {camSerials}'.format(camSerials=', '.join(aptinaCamSerials)),
             '  Other Cameras:        {camSerials}'.format(camSerials=', '.join(otherCamSerials)),
             '  Audio sync terminal:  {audioSyncTerminal}'.format(audioSyncTerminal=p['audioSyncTerminal']),
             '  Video sync terminal:  {videoSyncTerminal}'.format(videoSyncTerminal=p['videoSyncTerminal']),

@@ -17,11 +17,8 @@ else:
     except ModuleNotFoundError:
         # pip seems to install PySpin as pyspin sometimes...
         import pyspin as PySpin
-
 import CVSpin
-# DEBUG ONLY TEMPOORARY:
-import CVSpin as ApSpin
-
+import ApSpin
 
 # Camera types
 FLIR_CAM = 0
@@ -434,8 +431,13 @@ def discoverCameras(numFakeCameras=0, camType=None):
     else:
         otherCamSerials = []
 
-    camSerials = FLIRCamSerials + otherCamSerials
-    camTypes = [FLIR_CAM for _ in FLIRCamSerials] + [OTHER_CAM for _ in otherCamSerials]
+    if camType is None or camType == APTINA_CAM:
+        aptinaCamSerials = discoverAptinaCameras()
+    else:
+        aptinaCamSerials = []
+
+    camSerials = FLIRCamSerials + otherCamSerials + aptinaCamSerials
+    camTypes = [FLIR_CAM for _ in FLIRCamSerials] + [OTHER_CAM for _ in otherCamSerials] + [APTINA_CAM for _ in aptinaCamSerials]
 
     return camSerials, camTypes
 
@@ -450,6 +452,11 @@ def discoverFLIRCameras(camList=None, numFakeCameras=0, **kwargs):
     for k in range(numFakeCameras):
         camSerials.append('fake_camera_'+str(k))
     return camSerials
+
+def discoverAptinaCameras():
+    system = ApSpin.System.GetInstance()
+    camList = system.GetCameras()
+    return [cam.Serial for cam in camList]
 
 def discoverOtherCameras():
     system = CVSpin.System.GetInstance()
@@ -561,7 +568,7 @@ def getCameraAttribute(attributeName, attributeType, cam=None, camSerial=None, n
     #   nodemap = string indicating type of nodemap to use
     #   attributeName = name of attribute
 
-    if camType == OTHER_CAM:
+    if camType in [OTHER_CAM, APTINA_CAM]:
         return cam.GetAttribute(attributeName)
 
     nodeType = typeNameToNodeType[attributeType]
@@ -775,6 +782,26 @@ def getAllCameraAttributes(cam=None, camType=None, **kwargs):
             # This is a 3rd party camera - assemble camera info into the same
             #   type of structure native to PySpin
             for attributeName in CVSpin.CameraAttributes:
+                attributeValue = cam.GetAttribute(attributeName)
+                nodeData['children'].append(
+                    dict(
+                        type='float',
+                        name=attributeName,
+                        symbolic=attributeName,
+                        displayName=attributeName,
+                        value=attributeValue,
+                        tooltip='',
+                        accessMode=CVSpin.CameraAttributeAccessMode[attributeName],
+                        options=[],
+                        subcategories=[],
+                        children=[],
+                    )
+                )
+            return nodeData
+        elif camType == APTINA_CAM:
+            # This is a 3rd party camera - assemble camera info into the same
+            #   type of structure native to PySpin
+            for attributeName in ApSpin.CameraAttributes:
                 attributeValue = cam.GetAttribute(attributeName)
                 nodeData['children'].append(
                     dict(

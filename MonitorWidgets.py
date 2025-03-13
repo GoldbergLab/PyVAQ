@@ -370,10 +370,6 @@ class CameraMonitor(ttk.LabelFrame):
         # Expects a PIL image object
         self.active()
         if self.viewerEnabled():
-            print('pixel format:')
-            print(pixelFormat)
-            print('translate to:')
-            print(cu.pixelFormats[pixelFormat])
             if cu.pixelFormats[pixelFormat]['bayer']:
                 # Invert bayer filter to get full color image
                 print('de-bayering')

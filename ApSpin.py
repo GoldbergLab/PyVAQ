@@ -1,6 +1,59 @@
-# from PIL import Image
-# import re
-# import os
+import ctypes
+from ctypes import c_char_p, c_void_p, c_uint32, c_int, c_size_t, POINTER, byref, create_string_buffer, c_char_p, c_ubyte
+import numpy as np
+import time
+from pathlib import Path
+
+# Load the apbase DLL from Aptina (onsemi)
+p = Path('C:\\')
+aptinaRoots = list(p.glob('*Aptina*'))
+if len(aptinaRoots) == 0:
+    raise OSError('Could not find aptina.dll - please make sure Aptina API is installed in the default location.')
+aptinaRoot = aptinaRoots[0]
+dllPath = aptinaRoot / 'bin' / 'apbase.dll'
+if not dllPath.exists():
+    raise OSError('Could not find aptina.dll - please make sure Aptina API is installed in the default location.')
+apbase_dll = ctypes.WinDLL(str(dllPath))
+
+# Define some return codes and constants if not already defined
+MI_CAMERA_SUCCESS = 0
+MI_INI_SUCCESS = 256
+
+# Define custom ctypes types
+ap_handle = c_void_p
+ap_s32 = c_int
+ap_u32 = c_uint32
+
+# Set up argument and return types for the functions we need:
+apbase_dll.ap_Create.argtypes = [c_int]
+apbase_dll.ap_Create.restype = ap_handle
+
+apbase_dll.ap_Destroy.argtypes = [ap_handle]
+apbase_dll.ap_Destroy.restype = None
+
+apbase_dll.ap_Finalize.argtypes = []
+apbase_dll.ap_Finalize.restype = None
+
+apbase_dll.ap_LoadIniPreset.argtypes = [ap_handle, c_char_p, c_char_p]
+apbase_dll.ap_LoadIniPreset.restype = ap_s32
+
+apbase_dll.ap_CheckSensorState.argtypes = [ap_handle, c_uint32]
+apbase_dll.ap_CheckSensorState.restype = ap_s32
+
+apbase_dll.ap_GrabFrame.argtypes = [ap_handle, c_char_p, ap_u32]
+apbase_dll.ap_GrabFrame.restype = ap_u32
+
+apbase_dll.ap_ColorPipe.argtypes = [ap_handle, c_char_p, ap_u32, POINTER(ap_u32), POINTER(ap_u32), POINTER(ap_u32)]
+apbase_dll.ap_ColorPipe.restype = POINTER(c_ubyte)  # returns unsigned char *
+
+apbase_dll.ap_GetLastError.argtypes = []
+apbase_dll.ap_GetLastError.restype = ap_s32
+
+apbase_dll.ap_DeviceProbe.argtypes = [c_char_p]
+apbase_dll.ap_DeviceProbe.restype = ap_s32
+
+apbase_dll.ap_NumCameras.argtypes = []
+apbase_dll.ap_NumCameras.restype = c_int
 
 # A module designed to be a partial drop-in replacement for PySpin, so FLIR
 #   cameras or Aptina cameras can be used with the same class/function call
@@ -31,112 +84,112 @@ CRegisterPtr = None
 CEnumEntryPtr = None
 
 CameraAttributes = dict(
-    POS_MSEC=cv2.CAP_PROP_POS_MSEC,
-    POS_FRAMES=cv2.CAP_PROP_POS_FRAMES,
-    POS_AVI_RATIO=cv2.CAP_PROP_POS_AVI_RATIO,
-    FRAME_WIDTH=cv2.CAP_PROP_FRAME_WIDTH,
-    FRAME_HEIGHT=cv2.CAP_PROP_FRAME_HEIGHT,
-    FPS=cv2.CAP_PROP_FPS,
-    FOURCC=cv2.CAP_PROP_FOURCC,
-    FRAME_COUNT=cv2.CAP_PROP_FRAME_COUNT,
-    FORMAT=cv2.CAP_PROP_FORMAT,
-    MODE=cv2.CAP_PROP_MODE,
-    BRIGHTNESS=cv2.CAP_PROP_BRIGHTNESS,
-    CONTRAST=cv2.CAP_PROP_CONTRAST,
-    SATURATION=cv2.CAP_PROP_SATURATION,
-    HUE=cv2.CAP_PROP_HUE,
-    GAIN=cv2.CAP_PROP_GAIN,
-    EXPOSURE=cv2.CAP_PROP_EXPOSURE,
-    CONVERT_RGB=cv2.CAP_PROP_CONVERT_RGB,
-    WHITE_BALANCE_BLUE_U=cv2.CAP_PROP_WHITE_BALANCE_BLUE_U,
-    RECTIFICATION=cv2.CAP_PROP_RECTIFICATION,
-    MONOCHROME=cv2.CAP_PROP_MONOCHROME,
-    SHARPNESS=cv2.CAP_PROP_SHARPNESS,
-    AUTO_EXPOSURE=cv2.CAP_PROP_AUTO_EXPOSURE,
-    GAMMA=cv2.CAP_PROP_GAMMA,
-    TEMPERATURE=cv2.CAP_PROP_TEMPERATURE,
-    TRIGGER=cv2.CAP_PROP_TRIGGER,
-    TRIGGER_DELAY=cv2.CAP_PROP_TRIGGER_DELAY,
-    WHITE_BALANCE_RED_V=cv2.CAP_PROP_WHITE_BALANCE_RED_V,
-    ZOOM=cv2.CAP_PROP_ZOOM,
-    FOCUS=cv2.CAP_PROP_FOCUS,
-    GUID=cv2.CAP_PROP_GUID,
-    ISO_SPEED=cv2.CAP_PROP_ISO_SPEED,
-    BACKLIGHT=cv2.CAP_PROP_BACKLIGHT,
-    PAN=cv2.CAP_PROP_PAN,
-    TILT=cv2.CAP_PROP_TILT,
-    ROLL=cv2.CAP_PROP_ROLL,
-    IRIS=cv2.CAP_PROP_IRIS,
-    SETTINGS=cv2.CAP_PROP_SETTINGS,
-    BUFFERSIZE=cv2.CAP_PROP_BUFFERSIZE,
-    AUTOFOCUS=cv2.CAP_PROP_AUTOFOCUS,
-    SAR_NUM=cv2.CAP_PROP_SAR_NUM,
-    SAR_DEN=cv2.CAP_PROP_SAR_DEN,
-    BACKEND=cv2.CAP_PROP_BACKEND,
-    CHANNEL=cv2.CAP_PROP_CHANNEL,
-    AUTO_WB=cv2.CAP_PROP_AUTO_WB,
-    WB_TEMPERATURE=cv2.CAP_PROP_WB_TEMPERATURE,
-    CODEC_PIXEL_FORMAT=cv2.CAP_PROP_CODEC_PIXEL_FORMAT,
-    BITRATE=cv2.CAP_PROP_BITRATE,
-    ORIENTATION_META=cv2.CAP_PROP_ORIENTATION_META,
-    ORIENTATION_AUTO=cv2.CAP_PROP_ORIENTATION_AUTO,
-    OPEN_TIMEOUT_MSEC=cv2.CAP_PROP_OPEN_TIMEOUT_MSEC,
-    READ_TIMEOUT_MSEC=cv2.CAP_PROP_READ_TIMEOUT_MSEC
+    POS_MSEC='POS_MSEC',
+    POS_FRAMES='POS_FRAMES',
+    POS_AVI_RATIO='POS_AVI_RATIO',
+    FRAME_WIDTH='FRAME_WIDTH',
+    FRAME_HEIGHT='FRAME_HEIGHT',
+    FPS='FPS',
+    FOURCC='FOURCC',
+    FRAME_COUNT='FRAME_COUNT',
+    FORMAT='FORMAT',
+    MODE='MODE',
+    BRIGHTNESS='BRIGHTNESS',
+    CONTRAST='CONTRAST',
+    SATURATION='SATURATION',
+    HUE='HUE',
+    GAIN='GAIN',
+    EXPOSURE='EXPOSURE',
+    CONVERT_RGB='CONVERT_RGB',
+    WHITE_BALANCE_BLUE_U='WHITE_BALANCE_BLUE_U',
+    RECTIFICATION='RECTIFICATION',
+    MONOCHROME='MONOCHROME',
+    SHARPNESS='SHARPNESS',
+    AUTO_EXPOSURE='AUTO_EXPOSURE',
+    GAMMA='GAMMA',
+    TEMPERATURE='TEMPERATURE',
+    TRIGGER='TRIGGER',
+    TRIGGER_DELAY='TRIGGER_DELAY',
+    WHITE_BALANCE_RED_V='WHITE_BALANCE_RED_V',
+    ZOOM='ZOOM',
+    FOCUS='FOCUS',
+    GUID='GUID',
+    ISO_SPEED='ISO_SPEED',
+    BACKLIGHT='BACKLIGHT',
+    PAN='PAN',
+    TILT='TILT',
+    ROLL='ROLL',
+    IRIS='IRIS',
+    SETTINGS='SETTINGS',
+    BUFFERSIZE='BUFFERSIZE',
+    AUTOFOCUS='AUTOFOCUS',
+    SAR_NUM='SAR_NUM',
+    SAR_DEN='SAR_DEN',
+    BACKEND='BACKEND',
+    CHANNEL='CHANNEL',
+    AUTO_WB='AUTO_WB',
+    WB_TEMPERATURE='WB_TEMPERATURE',
+    CODEC_PIXEL_FORMAT='CODEC_PIXEL_FORMAT',
+    BITRATE='BITRATE',
+    ORIENTATION_META='ORIENTATION_META',
+    ORIENTATION_AUTO='ORIENTATION_AUTO',
+    OPEN_TIMEOUT_MSEC='OPEN_TIMEOUT_MSEC',
+    READ_TIMEOUT_MSEC='READ_TIMEOUT_MSEC'
 )
 
-CameraAttributeAccessMode = dict(
-    POS_MSEC='RW',
-    POS_FRAMES='RW',
-    POS_AVI_RATIO='RW',
-    FRAME_WIDTH='RW',
-    FRAME_HEIGHT='RW',
-    FPS='RW',
-    FOURCC='RW',
-    FRAME_COUNT='RW',
-    FORMAT='RW',
-    MODE='RW',
-    BRIGHTNESS='RW',
-    CONTRAST='RW',
-    SATURATION='RW',
-    HUE='RW',
-    GAIN='RW',
-    EXPOSURE='RW',
-    CONVERT_RGB='RW',
-    WHITE_BALANCE_BLUE_U='RW',
-    RECTIFICATION='RW',
-    MONOCHROME='RW',
-    SHARPNESS='RW',
-    AUTO_EXPOSURE='RW',
-    GAMMA='RW',
-    TEMPERATURE='RW',
-    TRIGGER='RW',
-    TRIGGER_DELAY='RW',
-    WHITE_BALANCE_RED_V='RW',
-    ZOOM='RW',
-    FOCUS='RW',
-    GUID='RW',
-    ISO_SPEED='RW',
-    BACKLIGHT='RW',
-    PAN='RW',
-    TILT='RW',
-    ROLL='RW',
-    IRIS='RW',
-    SETTINGS='RW',
-    BUFFERSIZE='RW',
-    AUTOFOCUS='RW',
-    SAR_NUM='RW',
-    SAR_DEN='RW',
-    BACKEND='RO',
-    CHANNEL='RW',
-    AUTO_WB='RW',
-    WB_TEMPERATURE='RW',
-    CODEC_PIXEL_FORMAT='RO',
-    BITRATE='RO',
-    ORIENTATION_META='RO',
-    ORIENTATION_AUTO='RW',
-    OPEN_TIMEOUT_MSEC='RW',
-    READ_TIMEOUT_MSEC='RW',
-)
+# CameraAttributeAccessMode = dict(
+#     POS_MSEC='RW',
+#     POS_FRAMES='RW',
+#     POS_AVI_RATIO='RW',
+#     FRAME_WIDTH='RW',
+#     FRAME_HEIGHT='RW',
+#     FPS='RW',
+#     FOURCC='RW',
+#     FRAME_COUNT='RW',
+#     FORMAT='RW',
+#     MODE='RW',
+#     BRIGHTNESS='RW',
+#     CONTRAST='RW',
+#     SATURATION='RW',
+#     HUE='RW',
+#     GAIN='RW',
+#     EXPOSURE='RW',
+#     CONVERT_RGB='RW',
+#     WHITE_BALANCE_BLUE_U='RW',
+#     RECTIFICATION='RW',
+#     MONOCHROME='RW',
+#     SHARPNESS='RW',
+#     AUTO_EXPOSURE='RW',
+#     GAMMA='RW',
+#     TEMPERATURE='RW',
+#     TRIGGER='RW',
+#     TRIGGER_DELAY='RW',
+#     WHITE_BALANCE_RED_V='RW',
+#     ZOOM='RW',
+#     FOCUS='RW',
+#     GUID='RW',
+#     ISO_SPEED='RW',
+#     BACKLIGHT='RW',
+#     PAN='RW',
+#     TILT='RW',
+#     ROLL='RW',
+#     IRIS='RW',
+#     SETTINGS='RW',
+#     BUFFERSIZE='RW',
+#     AUTOFOCUS='RW',
+#     SAR_NUM='RW',
+#     SAR_DEN='RW',
+#     BACKEND='RO',
+#     CHANNEL='RW',
+#     AUTO_WB='RW',
+#     WB_TEMPERATURE='RW',
+#     CODEC_PIXEL_FORMAT='RO',
+#     BITRATE='RO',
+#     ORIENTATION_META='RO',
+#     ORIENTATION_AUTO='RW',
+#     OPEN_TIMEOUT_MSEC='RW',
+#     READ_TIMEOUT_MSEC='RW',
+# )
 
 # For compatibility with PySpin
 AlternateCameraAttributeNames = dict(
@@ -169,22 +222,10 @@ def GetAttributeCode(attributeName):
             raise NameError('Attribute name {n} not recognized.'.format(n=attributeName))
         return attributeCode
 
-def find_valid_ports(max_attempts=5):
-    port_num = 0
-    valid_port_nums = []
-    num_fails = 0
-    while True:
-        cap = cv2.VideoCapture(port_num)
-        if cap is not None and cap.isOpened():
-            valid_port_nums.append(port_num)
-            num_fails = 0
-            cap.release()
-        else:
-            num_fails += 1
-            if num_fails > max_attempts:
-                break
-        port_num += 1
-    return valid_port_nums
+def find_valid_ports(device_dir, max_attempts=5):
+    err = apbase_dll.ap_DeviceProbe(device_dir)
+    numAptinaCameras = apbase_dll.ap_NumCameras()
+    return list(range(numAptinaCameras))
 
 def portNumToSerial(port):
     return 'Camera_{p}'.format(p=port)
@@ -205,8 +246,8 @@ class System:
     """
 
     def __init__(self, *args, **kwargs):
-        # raise AttributeError("No constructor defined")
-        pass
+        # Now translate the provided C code into Python:
+        self._device_dir = c_char_p(str(aptinaRoot / 'sensor_data' / 'MT9V024-REV4.xsdat').encode('utf-8'))
 
     def GetInstance():
         """GetInstance() -> SystemPtr"""
@@ -233,6 +274,9 @@ class System:
 
         See:   GetInstance()
         """
+
+        apbase_dll.ap_Finalize()
+
         return
 
     def GetInterfaces(self, updateInterface=True):
@@ -267,7 +311,6 @@ class System:
         raise NotImplementedError()
         return
 
-
     def UpdateInterfaceList(self):
         """
         UpdateInterfaceList(self)
@@ -279,7 +322,6 @@ class System:
         """
         raise NotImplementedError()
         return
-
 
     def GetCameras(self, updateInterfaces=True, updateCameras=True):
         """
@@ -331,10 +373,9 @@ class System:
         An CameraList object that contains a list of all cameras.
         """
 
-        valid_ports = find_valid_ports(max_attempts=5)
+        valid_ports = find_valid_ports(self._device_dir, max_attempts=5)
 
         return CameraList(valid_ports)
-
 
     def UpdateCameras(self, updateInterfaces=True):
         """
@@ -373,7 +414,6 @@ class System:
         raise NotImplementedError()
         return
 
-
     def RegisterEventHandler(self, evtHandlerToRegister):
         """
         RegisterEventHandler(self, evtHandlerToRegister)
@@ -386,7 +426,6 @@ class System:
         raise NotImplementedError()
         return
 
-
     def UnregisterEventHandler(self, evtHandlerToUnregister):
         """
         UnregisterEventHandler(self, evtHandlerToUnregister)
@@ -398,7 +437,6 @@ class System:
         """
         raise NotImplementedError()
         return
-
 
     def RegisterInterfaceEventHandler(self, evtHandlerToRegister, updateInterface=True):
         """
@@ -419,7 +457,6 @@ class System:
         raise NotImplementedError()
         return
 
-
     def UnregisterInterfaceEventHandler(self, evtHandlerToUnregister):
         """
         UnregisterInterfaceEventHandler(self, evtHandlerToUnregister)
@@ -431,7 +468,6 @@ class System:
         """
         raise NotImplementedError()
         return
-
 
     def RegisterLoggingEventHandler(self, handler):
         """
@@ -445,7 +481,6 @@ class System:
         raise NotImplementedError()
         return
 
-
     def UnregisterAllLoggingEventHandlers(self):
         """
         UnregisterAllLoggingEventHandlers(self)
@@ -458,7 +493,6 @@ class System:
         raise NotImplementedError()
         return
 
-
     def UnregisterLoggingEventHandler(self, handler):
         """
         UnregisterLoggingEventHandler(self, handler)
@@ -470,7 +504,6 @@ class System:
         """
         raise NotImplementedError()
         return
-
 
     def SetLoggingEventPriorityLevel(self, level):
         """
@@ -512,7 +545,6 @@ class System:
         raise NotImplementedError()
         return
 
-
     def GetLoggingEventPriorityLevel(self):
         """
         GetLoggingEventPriorityLevel(self) -> Spinnaker::SpinnakerLogLevel
@@ -547,7 +579,6 @@ class System:
         raise NotImplementedError()
         return
 
-
     def IsInUse(self):
         """
         IsInUse(self) -> bool
@@ -566,7 +597,6 @@ class System:
         """
         raise NotImplementedError()
         return
-
 
     def SendActionCommand(self, deviceKey, groupKey, groupMask, actionTime=0, pResultSize=None, results=0):
         """
@@ -644,7 +674,6 @@ class System:
         raise NotImplementedError()
         return
 
-
     def GetLibraryVersion(self):
         """
         GetLibraryVersion(self) -> LibraryVersion
@@ -656,7 +685,6 @@ class System:
         """
         raise NotImplementedError()
         return
-
 
     def GetTLNodeMap(self):
         """
@@ -709,7 +737,6 @@ class CameraList:
             self._iteration_number += 1
             return camera
 
-
     def GetSize(self):
         """
         GetSize(self) -> unsigned int
@@ -729,7 +756,6 @@ class CameraList:
         """
 
         return len(self._valid_ports)
-
 
     def GetByIndex(self, index):
         """
@@ -754,7 +780,6 @@ class CameraList:
         """
 
         return self._cameras[index]
-
 
     def GetBySerial(self, serialNumber):
         """
@@ -795,7 +820,6 @@ class CameraList:
         raise NotImplementedError()
         return
 
-
     def Clear(self):
         """
         Clear(self)
@@ -819,7 +843,6 @@ class CameraList:
         """
         # Nothing to do, really
         return
-
 
     def RemoveByIndex(self, index):
         """
@@ -879,7 +902,6 @@ class CameraList:
         raise NotImplementedError()
         return
 
-
     def Append(self, list):
         """
         Append(self, list)
@@ -913,16 +935,37 @@ class Camera:
 
     """
 
-    def __init__(self, port_number, *args, **kwargs):
+    def __init__(self,
+                port_number,
+                *args,
+                ini_file_path = r'resources/MT9V024-REV4.ini',
+                hwtrig_preset_name = b'EyeCAM-Triggered',
+                swtrig_preset_name = b'EyeCAM',
+                hardware_triggered = True,
+                **kwargs
+                ):
         self._port_number = port_number
         self._camera_pointer = None
+        self._ini_file_path = ini_file_path
+        self._ini_hwtrig_preset_name = hwtrig_preset_name
+        self._ini_swtrig_preset_name = swtrig_preset_name
+        self._hardware_triggered = hardware_triggered
 
         self.Width =  Value(self.GetFrameWidth)
         self.Height = Value(self.GetFrameHeight)
-        self._width = 0
-        self._height = 0
+        self._width = None
+        self._height = None
+        self._depth = None
+        self._buf_size = None
 
-        self.Serial = portNumToSerial(self._port_number)
+        # Prepare variables for ap_ColorPipe
+        self._rgbWidth = None
+        self._rgbHeight = None
+        self._rgbBitDepth = None
+
+        self._pBuffer = None
+
+        self.Serial = str(self._port_number)
 
     def GetFrameWidth(self):
         """Get the width of the frames the camera acquires.
@@ -981,12 +1024,21 @@ class Camera:
         """
         # Throw error if camera has not been initialized
         if not self.IsInitialized():
-            raise IOError('Camera must be initialized before getting attribute')
+            self.Init(hardware_triggered=True)
+            was_initialized = False
+        else:
+            was_initialized = True
 
-        # Attempt to translate the attributeName into a valid OpenCV VideoCaptureProperty code
-        attributeCode = GetAttributeCode(attributeName)
-
-        return self._camera_pointer.get(attributeCode)
+        # Now grab the frame into pBuffer
+        bytes_returned = apbase_dll.ap_GrabFrame(camera_handle, pBuffer, buf_size)
+        if attributeName == 'FRAME_WIDTH':
+            return rgbWidth.value
+        elif attributeName == 'FRAME_HEIGHT':
+            return rgbHeight.value
+        elif attributeName == 'BIT_DEPTH':
+            return rgbBitDepth.value
+        else:
+            raise NameError('Unknown attribute name: {name}'.format(name=attributeName))
 
     def SetAttribute(self, attributeName, attributeValue):
         """Set a camera attribute.
@@ -1011,7 +1063,42 @@ class Camera:
 
         self._camera_pointer.set(attributeCode, attributeValue)
 
-    def Init(self):
+    def _InitBuffers(self):
+        # First, call ap_GrabFrame with NULL to get the required buffer size
+        self._buf_size = apbase_dll.ap_GrabFrame(self._camera_pointer, None, 0)
+        if self._buf_size == 0:
+            last_err = apbase_dll.ap_GetLastError()
+            self.DeInit()
+            raise IOError("Failed to get buffer size. Error code: {e}".format(e=err))
+
+        # Allocate a buffer of the required size
+        self._pBuffer = create_string_buffer(self._buf_size)
+
+        self._rgbWidth = ap_u32(0)
+        self._rgbHeight = ap_u32(0)
+        self._rgbBitDepth = ap_u32(0)
+
+    def _LoadSWTrigPresetAndCheckSensor(self, hardware_triggered=False):
+        # Get the default INI preset name
+        ini = c_char_p(self._ini_file_path.encode('utf-8'));
+
+        if hardware_triggered:
+            preset_name = self._ini_hwtrig_preset_name
+        else:
+            preset_name = self._ini_swtrig_preset_name
+
+        # Load the specified ini preset
+        err = apbase_dll.ap_LoadIniPreset(self._camera_pointer, ini, preset_name)
+        if err != MI_INI_SUCCESS:
+            self.DeInit()
+            raise IOError("Failed to load default INI preset. Error code: {e}".format(e=err))
+
+        err = apbase_dll.ap_CheckSensorState(self._camera_pointer, 0)
+        if err != MI_CAMERA_SUCCESS:
+            self.DeInit()
+            raise IOError("Failed to check camera sensor state. Error code: {e}".format(e=err))
+
+    def Init(self, hardware_triggered=None):
         """
         Init(self)
 
@@ -1036,10 +1123,29 @@ class Camera:
         See:   GetNextImage()
         """
 
-        self._camera_pointer = cv2.VideoCapture(self._port_number)
+        # Create a device handle for the camera
+        self._camera_pointer = apbase_dll.ap_Create(self._port_number)
+        if not self._camera_pointer:
+            self.DeInit()
+            raise IOError('Failed to create camera handle.')
+
+        self._InitBuffers()
+
+        # First initialize in software triggered mode so we can grab a frame and
+        #   get some attribute information. Later we can reinitiailze in
+        #   hardware triggered mode if necessary.
+        self._LoadSWTrigPresetAndCheckSensor(hardware_triggered=False)
+        # Grab and discard an image, just to load camera attributes
+        self.GetNextImage()
+
+        if hardware_triggered:
+            # Turns out we want hardware triggered mode, so re-init camera
+            self.DeInit(destroyBuffers=False)
+            self._LoadSWTrigPresetAndCheckSensor(hardware_triggered=True, deinit=False)
+
         return
 
-    def DeInit(self):
+    def DeInit(self, destroyBuffers=True):
         """
         DeInit(self)
 
@@ -1062,8 +1168,15 @@ class Camera:
 
         See:   UnregisterEvent(Event & evtToUnregister)
         """
-        self._camera_pointer.release()
 
+        apbase_dll.ap_Destroy(self._camera_pointer)
+        self._camera_pointer = None
+        if destroyBuffers:
+            self._pBuffer = None
+            self._buf_size = None
+            self._rgbWidth = None
+            self._rgbHeight = None
+            self._rgbBitDepth = None
 
     def IsInitialized(self):
         """
@@ -1085,8 +1198,7 @@ class Camera:
         If camera is initialized or not
         """
 
-        return self._camera_pointer is not None and self._camera_pointer.isOpened()
-
+        return self._camera_pointer is not None and self._pBuffer is not None
 
     def IsValid(self):
         """
@@ -1108,8 +1220,7 @@ class Camera:
         In order to determine the validity of the camera using a CameraPtr,
         user must first call get() to retrieve the CameraBase object.
         """
-        return self._camera_pointer is not None and self._camera_pointer.isOpened()
-
+        return self._camera_pointer is not None and self._pBuffer is not None
 
     def GetNodeMap(self):
         """
@@ -1130,9 +1241,7 @@ class Camera:
 
         A reference to the INodeMap.
         """
-        raise NotImplementedError()
-        return
-
+        return None
 
     def GetTLDeviceNodeMap(self):
         """
@@ -1154,7 +1263,6 @@ class Camera:
         raise NotImplementedError()
         return
 
-
     def GetTLStreamNodeMap(self):
         """
         GetTLStreamNodeMap(self) -> INodeMap
@@ -1174,7 +1282,6 @@ class Camera:
         """
         raise NotImplementedError()
         return
-
 
     def GetAccessMode(self):
         """
@@ -1197,7 +1304,6 @@ class Camera:
         raise NotImplementedError()
         return
 
-
     def BeginAcquisition(self):
         """
         BeginAcquisition(self)
@@ -1217,7 +1323,6 @@ class Camera:
         """
 
         return
-
 
     def EndAcquisition(self):
         """
@@ -1249,7 +1354,6 @@ class Camera:
 
         return
 
-
     def GetBufferOwnership(self):
         """
         GetBufferOwnership(self) -> Spinnaker::BufferOwnership
@@ -1261,7 +1365,6 @@ class Camera:
         """
         raise NotImplementedError()
         return
-
 
     def SetBufferOwnership(self, mode):
         """
@@ -1275,7 +1378,6 @@ class Camera:
         raise NotImplementedError()
         return
 
-
     def GetUserBufferCount(self):
         """
         GetUserBufferCount(self) -> uint64_t
@@ -1287,7 +1389,6 @@ class Camera:
         """
         raise NotImplementedError()
         return
-
 
     def GetUserBufferSize(self):
         """
@@ -1301,7 +1402,6 @@ class Camera:
         raise NotImplementedError()
         return
 
-
     def GetUserBufferTotalSize(self):
         """
         GetUserBufferTotalSize(self) -> uint64_t
@@ -1313,7 +1413,6 @@ class Camera:
         """
         raise NotImplementedError()
         return
-
 
     def SetUserBuffers(self, *args):
         """
@@ -1335,7 +1434,6 @@ class Camera:
         """
         raise NotImplementedError()
         return
-
 
     def GetNextImage(self, *args):
         """
@@ -1385,18 +1483,37 @@ class Camera:
         pointer to an Image object
         """
 
-        if len(args) > 0:
-            timeout = args[0]
-        else:
-            timeout = None
+        # Now grab the frame into pBuffer
+        bytes_returned = apbase_dll.ap_GrabFrame(self._camera_pointer, pBuffer, buf_size)
+        if bytes_returned == 0 or apbase_dll.ap_GetLastError() != MI_CAMERA_SUCCESS:
+            last_err = apbase_dll.ap_GetLastError()
+            self.DeInit()
+            raise IOError("Failed to grab frame. Error code: {e}".format(e=last_err))
 
-        ret, image_array = self._camera_pointer.read()
-        if not ret:
-            raise IOError('Camera capture failed')
-        frame_num = self._camera_pointer.get(cv2.CAP_PROP_POS_FRAME)
-        timestamp = self._camera_pointer.get(cv2.CAP_PROP_POS_MSEC)
+        pRGB = apbase_dll.ap_ColorPipe(self._camera_pointer,
+                                   self._pBuffer,               # Input image
+                                   self._buf_size,
+                                   byref(self.__rgbWidth),
+                                   byref(self.__rgbHeight),
+                                   byref(self.__rgbBitDepth))
+
+        if self._width is not None and pRGB:
+            # pRGB points to an internal buffer managed by apbase_dll.
+            # If needed, copy it out now because subsequent calls may overwrite it.
+            self.width = rgbWidth.value
+            self.height = rgbHeight.value
+            self.depth = rgbBitDepth.value
+
+        total_bytes = width * height * depth // 8
+        c_array_type = c_ubyte * total_bytes
+        c_array = ctypes.cast(pRGB, POINTER(c_ubyte * total_bytes)).contents
+        image_array = np.array(c_array).reshape([height, width, 4])
+
+
+        frame_num = None
+        timestamp = time.time()
+
         return ImagePtr(image_array, frame_id=frame_num, timestamp=timestamp)
-
 
     def GetUniqueID(self):
         """
@@ -1416,7 +1533,6 @@ class Camera:
         """
         raise NotImplementedError()
         return
-
 
     def IsStreaming(self):
         """
@@ -1438,8 +1554,7 @@ class Camera:
         returns true if camera is streaming and false otherwise.
         """
 
-        return self._camera_pointer is not None and self._camera_pointer.isOpened()
-
+        return self._camera_pointer is not None and self._pBuffer is not None
 
     def GetGuiXml(self):
         """
@@ -1460,7 +1575,6 @@ class Camera:
         raise NotImplementedError()
         return
 
-
     def RegisterEventHandler(self, *args):
         """
         RegisterEventHandler(self, evtHandlerToRegister)
@@ -1480,7 +1594,6 @@ class Camera:
         raise NotImplementedError()
         return
 
-
     def UnregisterEventHandler(self, evtHandlerToUnregister):
         """
         UnregisterEventHandler(self, evtHandlerToUnregister)
@@ -1492,7 +1605,6 @@ class Camera:
         """
         raise NotImplementedError()
         return
-
 
     def GetNumImagesInUse(self):
         """
@@ -1514,7 +1626,6 @@ class Camera:
         raise NotImplementedError()
         return
 
-
     def GetNumDataStreams(self):
         """
         GetNumDataStreams(self) -> unsigned int
@@ -1532,7 +1643,6 @@ class Camera:
         """
         raise NotImplementedError()
         return
-
 
     def DiscoverMaxPacketSize(self):
         """
@@ -1552,7 +1662,6 @@ class Camera:
         """
         raise NotImplementedError()
         return
-
 
     def ForceIP(self):
         """
@@ -1606,7 +1715,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def IsValid(self):
         """
         IsValid(self) -> bool
@@ -1623,11 +1731,9 @@ class ImagePtr(object):
 
         return type(self._image_array) == np.ndarray
 
-
     def __nonzero__(self):
         raise NotImplementedError()
         return
-
 
     def __eq__(self, *args):
         """
@@ -1659,7 +1765,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def get(self):
         """
         get(self) -> IImage
@@ -1672,7 +1777,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def GetColorProcessing(self):
         """
         GetColorProcessing(self) -> Spinnaker::ColorProcessingAlgorithm
@@ -1684,7 +1788,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def Convert(self, *args):
         """
@@ -1719,7 +1822,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def ResetImage(self, *args):
         """
@@ -1761,7 +1863,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def Release(self):
         """
         Release(self)
@@ -1774,7 +1875,6 @@ class ImagePtr(object):
 
         self._image_array = None
 
-
     def GetID(self):
         """
         GetID(self) -> uint64_t
@@ -1786,7 +1886,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def GetData(self, *args):
         """
@@ -1801,7 +1900,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def GetPrivateData(self):
         """
         GetPrivateData(self) -> void *
@@ -1813,7 +1911,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def GetDataAbsoluteMax(self):
         """
@@ -1827,7 +1924,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def GetDataAbsoluteMin(self):
         """
         GetDataAbsoluteMin(self) -> float
@@ -1839,7 +1935,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def GetBufferSize(self):
         """
@@ -1853,7 +1948,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def DeepCopy(self, pSrcImage):
         """
         DeepCopy(self, pSrcImage)
@@ -1864,8 +1958,7 @@ class ImagePtr(object):
 
         """
 
-        return ImagePtr(self._image_array.copy())
-
+        return ImagePtr(self._image_array.copy(), frame_id=self._frame_id, timestamp=self._timestamp)
 
     def GetWidth(self):
         """
@@ -1879,7 +1972,6 @@ class ImagePtr(object):
 
         return self._image_array.shape[1]
 
-
     def GetHeight(self):
         """
         GetHeight(self) -> size_t
@@ -1892,7 +1984,6 @@ class ImagePtr(object):
 
         return self._image_array.shape[0]
 
-
     def GetStride(self):
         """
         GetStride(self) -> size_t
@@ -1904,7 +1995,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def GetBitsPerPixel(self):
         """
@@ -1921,7 +2011,6 @@ class ImagePtr(object):
 
         return bitsPerChannel * numChannels
 
-
     def GetNumChannels(self):
         """
         GetNumChannels(self) -> size_t
@@ -1937,7 +2026,6 @@ class ImagePtr(object):
         else:
             return self._image_array.shape[3]
 
-
     def GetXOffset(self):
         """
         GetXOffset(self) -> size_t
@@ -1949,7 +2037,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def GetYOffset(self):
         """
@@ -1963,7 +2050,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def GetXPadding(self):
         """
         GetXPadding(self) -> size_t
@@ -1975,7 +2061,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def GetYPadding(self):
         """
@@ -1989,7 +2074,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def GetFrameID(self):
         """
         GetFrameID(self) -> uint64_t
@@ -2001,7 +2085,6 @@ class ImagePtr(object):
         """
 
         return self._frame_id
-
 
     def GetPayloadType(self):
         """
@@ -2015,7 +2098,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def GetTLPayloadType(self):
         """
         GetTLPayloadType(self) -> Spinnaker::PayloadTypeInfoIDs
@@ -2027,7 +2109,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def GetTLPixelFormat(self):
         """
@@ -2041,7 +2122,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def GetTLPixelFormatNamespace(self):
         """
         GetTLPixelFormatNamespace(self) -> Spinnaker::PixelFormatNamespaceID
@@ -2053,7 +2133,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def GetPixelFormatName(self):
         """
@@ -2067,7 +2146,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def GetPixelFormat(self):
         """
         GetPixelFormat(self) -> Spinnaker::PixelFormatEnums
@@ -2079,7 +2157,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def GetPixelFormatIntType(self):
         """
@@ -2093,7 +2170,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def IsIncomplete(self):
         """
         IsIncomplete(self) -> bool
@@ -2104,8 +2180,7 @@ class ImagePtr(object):
 
         """
 
-        return type(self._image_array) == np.ndarray
-
+        return type(self._image_array) != np.ndarray
 
     def GetValidPayloadSize(self):
         """
@@ -2119,7 +2194,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def GetChunkLayoutId(self):
         """
         GetChunkLayoutId(self) -> uint64_t
@@ -2132,7 +2206,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def GetTimeStamp(self):
         """
         GetTimeStamp(self) -> uint64_t
@@ -2144,7 +2217,6 @@ class ImagePtr(object):
         """
 
         return self._timestamp
-
 
     def Save(self, filename, *args):
         """
@@ -2214,7 +2286,6 @@ class ImagePtr(object):
 
         Image.fromarray(self._image_array).save(filename)
 
-
     def GetChunkData(self):
         """
         GetChunkData(self) -> ChunkData
@@ -2226,7 +2297,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def CalculateStatistics(self, pStatistics):
         """
@@ -2240,7 +2310,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def HasCRC(self):
         """
         HasCRC(self) -> bool
@@ -2252,7 +2321,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def CheckCRC(self):
         """
@@ -2266,7 +2334,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def GetImageSize(self):
         """
         GetImageSize(self) -> size_t
@@ -2278,7 +2345,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def IsInUse(self):
         """
@@ -2292,7 +2358,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def GetImageStatus(self):
         """
         GetImageStatus(self) -> Spinnaker::ImageStatus
@@ -2304,7 +2369,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def IsCompressed(self):
         """
@@ -2318,7 +2382,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def CalculateChannelStatistics(self, channel):
         """
         CalculateChannelStatistics(self, channel) -> ChannelStatistics
@@ -2330,7 +2393,6 @@ class ImagePtr(object):
         """
         raise NotImplementedError()
         return
-
 
     def GetDefaultColorProcessing(self):
         """
@@ -2344,7 +2406,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def SetDefaultColorProcessing(self, defaultMethod):
         """
         SetDefaultColorProcessing(self, defaultMethod)
@@ -2357,7 +2418,6 @@ class ImagePtr(object):
         raise NotImplementedError()
         return
 
-
     def GetNDArray(self):
         """
         GetNDArray(self) -> PyObject *
@@ -2368,8 +2428,6 @@ class ImagePtr(object):
 
         """
         return self._image_array
-
-
 
 #
 # PixelFormat_Mono8 = cv2.
