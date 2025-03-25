@@ -811,7 +811,7 @@ def getAllCameraAttributes(cam=None, camType=None, **kwargs):
                         displayName=attributeName,
                         value=attributeValue,
                         tooltip='',
-                        accessMode=CVSpin.CameraAttributeAccessMode[attributeName],
+                        accessMode=ApSpin.CameraAttributeAccessMode[attributeName],
                         options=[],
                         subcategories=[],
                         children=[],

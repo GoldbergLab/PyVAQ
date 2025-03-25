@@ -84,65 +84,67 @@ CRegisterPtr = None
 CEnumEntryPtr = None
 
 CameraAttributes = dict(
-    POS_MSEC='POS_MSEC',
-    POS_FRAMES='POS_FRAMES',
-    POS_AVI_RATIO='POS_AVI_RATIO',
+    # POS_MSEC='POS_MSEC',
+    # POS_FRAMES='POS_FRAMES',
+    # POS_AVI_RATIO='POS_AVI_RATIO',
     FRAME_WIDTH='FRAME_WIDTH',
     FRAME_HEIGHT='FRAME_HEIGHT',
-    FPS='FPS',
-    FOURCC='FOURCC',
-    FRAME_COUNT='FRAME_COUNT',
-    FORMAT='FORMAT',
-    MODE='MODE',
-    BRIGHTNESS='BRIGHTNESS',
-    CONTRAST='CONTRAST',
-    SATURATION='SATURATION',
-    HUE='HUE',
-    GAIN='GAIN',
-    EXPOSURE='EXPOSURE',
-    CONVERT_RGB='CONVERT_RGB',
-    WHITE_BALANCE_BLUE_U='WHITE_BALANCE_BLUE_U',
-    RECTIFICATION='RECTIFICATION',
-    MONOCHROME='MONOCHROME',
-    SHARPNESS='SHARPNESS',
-    AUTO_EXPOSURE='AUTO_EXPOSURE',
-    GAMMA='GAMMA',
-    TEMPERATURE='TEMPERATURE',
-    TRIGGER='TRIGGER',
-    TRIGGER_DELAY='TRIGGER_DELAY',
-    WHITE_BALANCE_RED_V='WHITE_BALANCE_RED_V',
-    ZOOM='ZOOM',
-    FOCUS='FOCUS',
-    GUID='GUID',
-    ISO_SPEED='ISO_SPEED',
-    BACKLIGHT='BACKLIGHT',
-    PAN='PAN',
-    TILT='TILT',
-    ROLL='ROLL',
-    IRIS='IRIS',
-    SETTINGS='SETTINGS',
-    BUFFERSIZE='BUFFERSIZE',
-    AUTOFOCUS='AUTOFOCUS',
-    SAR_NUM='SAR_NUM',
-    SAR_DEN='SAR_DEN',
-    BACKEND='BACKEND',
-    CHANNEL='CHANNEL',
-    AUTO_WB='AUTO_WB',
-    WB_TEMPERATURE='WB_TEMPERATURE',
-    CODEC_PIXEL_FORMAT='CODEC_PIXEL_FORMAT',
-    BITRATE='BITRATE',
-    ORIENTATION_META='ORIENTATION_META',
-    ORIENTATION_AUTO='ORIENTATION_AUTO',
-    OPEN_TIMEOUT_MSEC='OPEN_TIMEOUT_MSEC',
-    READ_TIMEOUT_MSEC='READ_TIMEOUT_MSEC'
+    BIT_DEPTH='BIT_DEPTH'
+    # FPS='FPS',
+    # FOURCC='FOURCC',
+    # FRAME_COUNT='FRAME_COUNT',
+    # FORMAT='FORMAT',
+    # MODE='MODE',
+    # BRIGHTNESS='BRIGHTNESS',
+    # CONTRAST='CONTRAST',
+    # SATURATION='SATURATION',
+    # HUE='HUE',
+    # GAIN='GAIN',
+    # EXPOSURE='EXPOSURE',
+    # CONVERT_RGB='CONVERT_RGB',
+    # WHITE_BALANCE_BLUE_U='WHITE_BALANCE_BLUE_U',
+    # RECTIFICATION='RECTIFICATION',
+    # MONOCHROME='MONOCHROME',
+    # SHARPNESS='SHARPNESS',
+    # AUTO_EXPOSURE='AUTO_EXPOSURE',
+    # GAMMA='GAMMA',
+    # TEMPERATURE='TEMPERATURE',
+    # TRIGGER='TRIGGER',
+    # TRIGGER_DELAY='TRIGGER_DELAY',
+    # WHITE_BALANCE_RED_V='WHITE_BALANCE_RED_V',
+    # ZOOM='ZOOM',
+    # FOCUS='FOCUS',
+    # GUID='GUID',
+    # ISO_SPEED='ISO_SPEED',
+    # BACKLIGHT='BACKLIGHT',
+    # PAN='PAN',
+    # TILT='TILT',
+    # ROLL='ROLL',
+    # IRIS='IRIS',
+    # SETTINGS='SETTINGS',
+    # BUFFERSIZE='BUFFERSIZE',
+    # AUTOFOCUS='AUTOFOCUS',
+    # SAR_NUM='SAR_NUM',
+    # SAR_DEN='SAR_DEN',
+    # BACKEND='BACKEND',
+    # CHANNEL='CHANNEL',
+    # AUTO_WB='AUTO_WB',
+    # WB_TEMPERATURE='WB_TEMPERATURE',
+    # CODEC_PIXEL_FORMAT='CODEC_PIXEL_FORMAT',
+    # BITRATE='BITRATE',
+    # ORIENTATION_META='ORIENTATION_META',
+    # ORIENTATION_AUTO='ORIENTATION_AUTO',
+    # OPEN_TIMEOUT_MSEC='OPEN_TIMEOUT_MSEC',
+    # READ_TIMEOUT_MSEC='READ_TIMEOUT_MSEC'
 )
 
-# CameraAttributeAccessMode = dict(
+CameraAttributeAccessMode = dict(
 #     POS_MSEC='RW',
 #     POS_FRAMES='RW',
 #     POS_AVI_RATIO='RW',
-#     FRAME_WIDTH='RW',
-#     FRAME_HEIGHT='RW',
+    FRAME_WIDTH='R',
+    FRAME_HEIGHT='R',
+    BIT_DEPTH='R'
 #     FPS='RW',
 #     FOURCC='RW',
 #     FRAME_COUNT='RW',
@@ -189,7 +191,7 @@ CameraAttributes = dict(
 #     ORIENTATION_AUTO='RW',
 #     OPEN_TIMEOUT_MSEC='RW',
 #     READ_TIMEOUT_MSEC='RW',
-# )
+)
 
 # For compatibility with PySpin
 AlternateCameraAttributeNames = dict(
@@ -967,7 +969,7 @@ class Camera:
 
         self.Serial = str(self._port_number)
 
-    def GetFrameWidth(self):
+    def GetFrameWidth(self, forceUpdate=False):
         """Get the width of the frames the camera acquires.
 
         Attempt to do so using the camera attribute from OpenCV. If that results
@@ -979,10 +981,10 @@ class Camera:
             int: Width of the camera frames in pixels
 
         """
-        if self._width == 0:
+        if self._width == 0 || self._width is None || forceUpdate:
             self._width = self.GetAttribute('FRAME_WIDTH')
-        if self._width == 0:
-            imagePtr = self.GetNextFrame()
+        if self._width == 0 || self._width is None:
+            imagePtr = self.GetNextImage()
             self._width = imagePtr.GetWidth()
             self._height = imagePtr.GetHeight()
             imagePtr.Release()
@@ -1003,13 +1005,13 @@ class Camera:
         if self._height == 0:
             self._height = self.GetAttribute('FRAME_HEIGHT')
         if self._height == 0:
-            imagePtr = self.GetNextFrame()
+            imagePtr = self.GetNextImage()
             self._width = imagePtr.GetWidth()
             self._height = imagePtr.GetHeight()
             imagePtr.Release()
         return self._height
 
-    def GetAttribute(self, attributeName):
+    def GetAttribute(self, attributeName, forceUpdate=False):
         """Get a camera attribute.
 
         Ideally this would mirror the PySpin nodemap system, but I was lazy.
@@ -1030,13 +1032,13 @@ class Camera:
             was_initialized = True
 
         # Now grab the frame into pBuffer
-        bytes_returned = apbase_dll.ap_GrabFrame(camera_handle, pBuffer, buf_size)
+        bytes_returned = apbase_dll.ap_GrabFrame(self._camera_pointer, self._pBuffer, self._buf_size)
         if attributeName == 'FRAME_WIDTH':
-            return rgbWidth.value
+            return self._width
         elif attributeName == 'FRAME_HEIGHT':
-            return rgbHeight.value
+            return self._height
         elif attributeName == 'BIT_DEPTH':
-            return rgbBitDepth.value
+            return self._depth
         else:
             raise NameError('Unknown attribute name: {name}'.format(name=attributeName))
 
@@ -1484,7 +1486,7 @@ class Camera:
         """
 
         # Now grab the frame into pBuffer
-        bytes_returned = apbase_dll.ap_GrabFrame(self._camera_pointer, pBuffer, buf_size)
+        bytes_returned = apbase_dll.ap_GrabFrame(self._camera_pointer, self._pBuffer, self._buf_size)
         if bytes_returned == 0 or apbase_dll.ap_GetLastError() != MI_CAMERA_SUCCESS:
             last_err = apbase_dll.ap_GetLastError()
             self.DeInit()
@@ -1493,21 +1495,23 @@ class Camera:
         pRGB = apbase_dll.ap_ColorPipe(self._camera_pointer,
                                    self._pBuffer,               # Input image
                                    self._buf_size,
-                                   byref(self.__rgbWidth),
-                                   byref(self.__rgbHeight),
-                                   byref(self.__rgbBitDepth))
+                                   byref(self._rgbWidth),
+                                   byref(self._rgbHeight),
+                                   byref(self._rgbBitDepth))
 
-        if self._width is not None and pRGB:
+        if pRGB:
             # pRGB points to an internal buffer managed by apbase_dll.
             # If needed, copy it out now because subsequent calls may overwrite it.
-            self.width = rgbWidth.value
-            self.height = rgbHeight.value
-            self.depth = rgbBitDepth.value
+            self._width = self._rgbWidth.value
+            self._height = self._rgbHeight.value
+            self._depth = self._rgbBitDepth.value
+        else:
+            raise Error('Failed to get image, I guess')
 
-        total_bytes = width * height * depth // 8
+        total_bytes = self._width * self._height * self._depth // 8
         c_array_type = c_ubyte * total_bytes
         c_array = ctypes.cast(pRGB, POINTER(c_ubyte * total_bytes)).contents
-        image_array = np.array(c_array).reshape([height, width, 4])
+        image_array = np.array(c_array).reshape([self._height, self._width, 4])
 
 
         frame_num = None
