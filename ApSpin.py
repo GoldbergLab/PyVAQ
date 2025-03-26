@@ -4,6 +4,14 @@ import numpy as np
 import time
 from pathlib import Path
 
+DEBUG=True
+
+def debug(*args, **kwargs):
+    if DEBUG:
+        print('*** ApSpin DEBUG ***')
+        print(*args, **kwargs)
+        print('*** ************ ***')
+
 # Load the apbase DLL from Aptina (onsemi)
 p = Path('C:\\')
 aptinaRoots = list(p.glob('*Aptina*'))
@@ -969,6 +977,8 @@ class Camera:
 
         self.Serial = str(self._port_number)
 
+        debug('Created camera object')
+
     def GetFrameWidth(self, forceUpdate=False):
         """Get the width of the frames the camera acquires.
 
@@ -981,16 +991,13 @@ class Camera:
             int: Width of the camera frames in pixels
 
         """
-        if self._width == 0 || self._width is None || forceUpdate:
-            self._width = self.GetAttribute('FRAME_WIDTH')
-        if self._width == 0 || self._width is None:
+        debug('Getting width')
+        if self._width == 0 or self._width is None or forceUpdate:
             imagePtr = self.GetNextImage()
-            self._width = imagePtr.GetWidth()
-            self._height = imagePtr.GetHeight()
             imagePtr.Release()
         return self._width
 
-    def GetFrameHeight(self):
+    def GetFrameHeight(self, forceUpdate=False):
         """Get the height of the frames the camera acquires.
 
         Attempt to do so using the camera attribute from OpenCV. If that results
@@ -1002,14 +1009,28 @@ class Camera:
             int: Height of the camera frames in pixels
 
         """
-        if self._height == 0:
-            self._height = self.GetAttribute('FRAME_HEIGHT')
-        if self._height == 0:
+        debug('Getting width')
+        if self._height == 0 or self._height is None or forceUpdate:
             imagePtr = self.GetNextImage()
-            self._width = imagePtr.GetWidth()
-            self._height = imagePtr.GetHeight()
             imagePtr.Release()
         return self._height
+
+    def GetFrameDepth(self, forceUpdate=False):
+        """Get the bit depth of the frames the camera acquires.
+
+        Attempt to do so using the camera attribute from OpenCV. If that results
+            in the default nonsense value of 0, try grabbing one frame to
+            measure the height. If it comes to that, also grab the width and
+            store it so next time we don't have to do it again.
+
+        Returns:
+            int: Height of the camera frames in pixels
+
+        """
+        if self._depth == 0 or self._depth is None or forceUpdate:
+            imagePtr = self.GetNextImage()
+            imagePtr.Release()
+        return self._depth
 
     def GetAttribute(self, attributeName, forceUpdate=False):
         """Get a camera attribute.
@@ -1024,6 +1045,9 @@ class Camera:
             *: Value corresponding to the given attribute name
 
         """
+
+        debug('Getting attribute:', attributeName)
+
         # Throw error if camera has not been initialized
         if not self.IsInitialized():
             self.Init(hardware_triggered=True)
@@ -1031,14 +1055,15 @@ class Camera:
         else:
             was_initialized = True
 
-        # Now grab the frame into pBuffer
-        bytes_returned = apbase_dll.ap_GrabFrame(self._camera_pointer, self._pBuffer, self._buf_size)
         if attributeName == 'FRAME_WIDTH':
-            return self._width
+            return self.GetFrameWidth()
         elif attributeName == 'FRAME_HEIGHT':
-            return self._height
+            return self.GetFrameHeight()
         elif attributeName == 'BIT_DEPTH':
-            return self._depth
+            return self.GetFrameDepth()
+        elif attributeName == 'AcquisitionFrameRate':
+            print('WARNING GIVING DUMMY ACQUISITION FRAME RATE')
+            return 50
         else:
             raise NameError('Unknown attribute name: {name}'.format(name=attributeName))
 
@@ -1125,6 +1150,8 @@ class Camera:
         See:   GetNextImage()
         """
 
+        debug('Initializing camera')
+
         # Create a device handle for the camera
         self._camera_pointer = apbase_dll.ap_Create(self._port_number)
         if not self._camera_pointer:
@@ -1170,6 +1197,8 @@ class Camera:
 
         See:   UnregisterEvent(Event & evtToUnregister)
         """
+
+        debug('De-initializing camera')
 
         apbase_dll.ap_Destroy(self._camera_pointer)
         self._camera_pointer = None
@@ -1485,6 +1514,8 @@ class Camera:
         pointer to an Image object
         """
 
+        debug('Getting next image')
+
         # Now grab the frame into pBuffer
         bytes_returned = apbase_dll.ap_GrabFrame(self._camera_pointer, self._pBuffer, self._buf_size)
         if bytes_returned == 0 or apbase_dll.ap_GetLastError() != MI_CAMERA_SUCCESS:
@@ -1517,7 +1548,7 @@ class Camera:
         frame_num = None
         timestamp = time.time()
 
-        return ImagePtr(image_array, frame_id=frame_num, timestamp=timestamp)
+        return ImagePtr(image_array, frame_id=frame_num, timestamp=timestamp, bit_depth=self._depth)
 
     def GetUniqueID(self):
         """
@@ -1691,7 +1722,7 @@ class ImagePtr(object):
     C++ includes: BasePtr.h
     """
 
-    def __init__(self, image_array, frame_id=0, timestamp=0, *args):
+    def __init__(self, image_array, *args, frame_id=0, timestamp=0, bit_depth=None):
         """
         __init__(self) -> _SWIG_ImgPtr
         __init__(self, other) -> _SWIG_ImgPtr
@@ -1703,9 +1734,12 @@ class ImagePtr(object):
 
         Spinnaker::BasePtr< T, B >::BasePtr(const BasePtr &other)  throw ()
         """
+        debug('Creating image pointer object')
+
         self._image_array = image_array
         self._frame_id = frame_id
         self._timestamp = timestamp
+        self._bit_depth = bit_depth
 
     def __deref__(self):
         """
@@ -1962,7 +1996,7 @@ class ImagePtr(object):
 
         """
 
-        return ImagePtr(self._image_array.copy(), frame_id=self._frame_id, timestamp=self._timestamp)
+        return ImagePtr(self._image_array.copy(), frame_id=self._frame_id, timestamp=self._timestamp, bit_depth=self._bit_depth)
 
     def GetWidth(self):
         """

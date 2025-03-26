@@ -503,14 +503,14 @@ def getPixelFormat(cam=None, camType=None, **kwargs):
     if camType == OTHER_CAM:
         # Quick fix, not sure how to consistently get this from OpenCV across camera backends
         return "BGR8"
-    return getCameraAttribute('PixelFormat', 'enum', cam=cam)[1]
+    return getCameraAttribute('PixelFormat', 'enum', cam=cam, camType=camType)[1]
 
 @handleCam
 def isBayerFiltered(cam=None, camType=None, **kwargs):
     if camType == OTHER_CAM:
         # Quick fix, not sure how to consistently get this from OpenCV across camera backends
         return False
-    name, displayName = getCameraAttribute('PixelFormat', 'enum', nodemap=cam.GetNodeMap())
+    name, displayName = getCameraAttribute('PixelFormat', 'enum', nodemap=cam.GetNodeMap(), camType=camType)
     return pixelFormats[displayName]['bayer']
 
 @handleCam
@@ -522,14 +522,14 @@ def getColorChannelCount(cam=None, camType=None, **kwargs):
     else:
         nm = cam.GetNodeMap()
         # Get max dynamic range, which indicates the maximum value a single color channel can take
-        maxPixelValue = getCameraAttribute('PixelDynamicRangeMax', 'integer', nodemap=nm);
+        maxPixelValue = getCameraAttribute('PixelDynamicRangeMax', 'integer', nodemap=nm, camType=camType);
         if maxPixelValue == 0:
             # For some reason Blackfly USB (not Blackfly S USB3) cameras return zero for this property.
             # We'll try to use the pixel format to determine the # of channels.
             pixelFormat = getPixelFormat(cam=cam)
             return pixelFormats[pixelFormat]['channelCount']
         # Get pixel size (indicating total # of bits per pixel)
-        pixelSizeName, pixelSize = getCameraAttribute('PixelSize', 'enum', nodemap=nm)
+        pixelSizeName, pixelSize = getCameraAttribute('PixelSize', 'enum', nodemap=nm, camType=camType)
         # Convert enum value to an integer
         pixelSize = pixelSizes[pixelSize]
         # Convert max value to # of bits
@@ -570,6 +570,12 @@ def getCameraAttribute(attributeName, attributeType, cam=None, camSerial=None, n
 
     if camType in [OTHER_CAM, APTINA_CAM]:
         return cam.GetAttribute(attributeName)
+
+    print('getCameraAttribute for camtype:', camType)
+    print('FLIR_CAM = 0')
+    print('APTINA_CAM = 1')
+    print('OTHER_CAM = 2')
+
 
     nodeType = typeNameToNodeType[attributeType]
 
@@ -651,7 +657,7 @@ def checkCameraSpeed(cam=None, camType=None, **kwargs):
         return "Unknown speed"
     else:
         try:
-            cameraSpeedValue, cameraSpeed = getCameraAttribute('DeviceCurrentSpeed', 'enum', nodemap=cam.GetTLDeviceNodeMap())
+            cameraSpeedValue, cameraSpeed = getCameraAttribute('DeviceCurrentSpeed', 'enum', nodemap=cam.GetTLDeviceNodeMap(), camType=camType)
             # This causes weird crashes for one of our flea3 cameras...
             #cameraBaudValue, cameraBaud =   getCameraAttribute(cam.GetNodeMap(), 'SerialPortBaudRate', PySpin.CEnumerationPtr)
     #        cameraSpeed = cameraSpeed + ' ' + cameraBaud
