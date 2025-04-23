@@ -177,9 +177,9 @@ def GetAttributeCode(attributeName):
         return attributeCode
 
 CAM_NUM_FILE = Path('.\OpenCV_cam_list.tmp')
-CAM_UPDATE_INTERVAL = 10
+CAM_UPDATE_INTERVAL = 30
 
-def find_valid_ports(max_attempts=5):
+def find_valid_ports(max_attempts=3):
     # Find a list of cameras via OpenCV. Unfortunately, OpenCV does not provide
     #   a function that lists all available cameras, so we have to go through
     #   an irritatingly slow and arbitrary search process.
@@ -198,7 +198,7 @@ def find_valid_ports(max_attempts=5):
             lastUpdateTime = float(cam_record[0])
             timeSinceLastUpdate = time.time() - lastUpdateTime
             if timeSinceLastUpdate < CAM_UPDATE_INTERVAL:
-                valid_port_nums = [int(n) for n in cam_record[1]]
+                valid_port_nums = [int(n) for n in cam_record[1].split(' ')]
                 return valid_port_nums
     except Exception as e:
         # Something went wrong, just update cam list
