@@ -3304,11 +3304,14 @@ class VideoAcquirer(StateMachineProcess):
         StateMachineProcess.__init__(self, **kwargs)
         self.startTimeSharedValue = startTime
         self.camSerial = camSerial
-        self.ID = 'VA_'+self.camSerial
+        self.ID = 'VA_'+str(self.camSerial)
         self.acquireSettings = acquireSettings
         self.requestedFrameRate = requestedFrameRate
         self.frameRateVar = frameRate
         self.camType = camType
+        if self.verbose > 0:
+            self.log('Camera type:', camType)
+            self.log(str(cu.CAM_TYPE_NAMES))
         if self.frameRateVar is None:
             # This must be a software timed camera, so frame rate is not controlled by Sync process
             self.hardwareTimed = False

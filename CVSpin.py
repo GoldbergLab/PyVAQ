@@ -166,6 +166,7 @@ def GetAttributeCode(attributeName):
     # Attempt to translate the attributeName into a valid OpenCV VideoCaptureProperty code
     try:
         attributeCode = CameraAttributes[attributeName]
+        return attributeCode
     except KeyError:
         try:
             # Perhaps this is an alternate attribute name?

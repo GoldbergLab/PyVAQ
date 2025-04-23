@@ -25,6 +25,11 @@ FLIR_CAM = 0
 APTINA_CAM = 1
 OTHER_CAM = 2
 CAM_TYPES = [FLIR_CAM, APTINA_CAM, OTHER_CAM]
+CAM_TYPE_NAMES = {
+    'Flir camera':FLIR_CAM,
+    'Aptina camera':APTINA_CAM,
+    'Other camera':OTHER_CAM
+}
 CamLibs = {FLIR_CAM:PySpin, OTHER_CAM:CVSpin, APTINA_CAM:ApSpin, None:PySpin}
 
 # Information about PySpin pixel formats, with a partial mapping to common ffmpeg pixel formats
@@ -500,7 +505,7 @@ def getFrameSize(cam=None, **kwargs):
 
 @handleCam
 def getPixelFormat(cam=None, camType=None, **kwargs):
-    if camType == OTHER_CAM:
+    if camType in [OTHER_CAM, APTINA_CAM]:
         # Quick fix, not sure how to consistently get this from OpenCV across camera backends
         return "BGR8"
     return getCameraAttribute('PixelFormat', 'enum', cam=cam, camType=camType)[1]
@@ -515,7 +520,7 @@ def isBayerFiltered(cam=None, camType=None, **kwargs):
 
 @handleCam
 def getColorChannelCount(cam=None, camType=None, **kwargs):
-    if camType == OTHER_CAM:
+    if camType in [OTHER_CAM, APTINA_CAM]:
         numChannels = cam.GetAttribute('CHANNEL')
         if numChannels == 0:
             numChannels = 3
@@ -784,10 +789,10 @@ def getAllCameraAttributes(cam=None, camType=None, **kwargs):
             'subcategories':[],
             'children':[]}
 
-        if camType == OTHER_CAM:
+        if camType in [OTHER_CAM, APTINA_CAM]:
             # This is a 3rd party camera - assemble camera info into the same
             #   type of structure native to PySpin
-            for attributeName in CVSpin.CameraAttributes:
+            for attributeName in CamLibs[camType].CameraAttributes:
                 attributeValue = cam.GetAttribute(attributeName)
                 nodeData['children'].append(
                     dict(
@@ -797,33 +802,14 @@ def getAllCameraAttributes(cam=None, camType=None, **kwargs):
                         displayName=attributeName,
                         value=attributeValue,
                         tooltip='',
-                        accessMode=CVSpin.CameraAttributeAccessMode[attributeName],
+                        accessMode=CamLibs[camType].CameraAttributeAccessMode[attributeName],
                         options=[],
                         subcategories=[],
                         children=[],
                     )
                 )
             return nodeData
-        elif camType == APTINA_CAM:
-            # This is a 3rd party camera - assemble camera info into the same
-            #   type of structure native to PySpin
-            for attributeName in ApSpin.CameraAttributes:
-                attributeValue = cam.GetAttribute(attributeName)
-                nodeData['children'].append(
-                    dict(
-                        type='float',
-                        name=attributeName,
-                        symbolic=attributeName,
-                        displayName=attributeName,
-                        value=attributeValue,
-                        tooltip='',
-                        accessMode=ApSpin.CameraAttributeAccessMode[attributeName],
-                        options=[],
-                        subcategories=[],
-                        children=[],
-                    )
-                )
-            return nodeData
+
 
         # This is a FLIR camera
         nodemap_gentl = cam.GetTLDeviceNodeMap()

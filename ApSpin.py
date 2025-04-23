@@ -4,13 +4,14 @@ import numpy as np
 import time
 from pathlib import Path
 
-DEBUG=True
+DEBUG=False
 
 def debug(*args, **kwargs):
     if DEBUG:
         print('*** ApSpin DEBUG ***')
         print(*args, **kwargs)
         print('*** ************ ***')
+        print()
 
 # Load the apbase DLL from Aptina (onsemi)
 p = Path('C:\\')
@@ -97,8 +98,8 @@ CameraAttributes = dict(
     # POS_AVI_RATIO='POS_AVI_RATIO',
     FRAME_WIDTH='FRAME_WIDTH',
     FRAME_HEIGHT='FRAME_HEIGHT',
-    BIT_DEPTH='BIT_DEPTH'
-    # FPS='FPS',
+    BIT_DEPTH='BIT_DEPTH',
+    FPS='FPS',
     # FOURCC='FOURCC',
     # FRAME_COUNT='FRAME_COUNT',
     # FORMAT='FORMAT',
@@ -135,7 +136,7 @@ CameraAttributes = dict(
     # SAR_NUM='SAR_NUM',
     # SAR_DEN='SAR_DEN',
     # BACKEND='BACKEND',
-    # CHANNEL='CHANNEL',
+    CHANNEL='CHANNEL',
     # AUTO_WB='AUTO_WB',
     # WB_TEMPERATURE='WB_TEMPERATURE',
     # CODEC_PIXEL_FORMAT='CODEC_PIXEL_FORMAT',
@@ -152,8 +153,8 @@ CameraAttributeAccessMode = dict(
 #     POS_AVI_RATIO='RW',
     FRAME_WIDTH='R',
     FRAME_HEIGHT='R',
-    BIT_DEPTH='R'
-#     FPS='RW',
+    BIT_DEPTH='R',
+    FPS='R',
 #     FOURCC='RW',
 #     FRAME_COUNT='RW',
 #     FORMAT='RW',
@@ -190,7 +191,7 @@ CameraAttributeAccessMode = dict(
 #     SAR_NUM='RW',
 #     SAR_DEN='RW',
 #     BACKEND='RO',
-#     CHANNEL='RW',
+    CHANNEL='R',
 #     AUTO_WB='RW',
 #     WB_TEMPERATURE='RW',
 #     CODEC_PIXEL_FORMAT='RO',
@@ -223,6 +224,7 @@ def GetAttributeCode(attributeName):
     # Attempt to translate the attributeName into a valid OpenCV VideoCaptureProperty code
     try:
         attributeCode = CameraAttributes[attributeName]
+        return attributeCode
     except KeyError:
         try:
             # Perhaps this is an alternate attribute name?
@@ -1050,20 +1052,26 @@ class Camera:
 
         # Throw error if camera has not been initialized
         if not self.IsInitialized():
-            self.Init(hardware_triggered=True)
+            self.Init(hardware_triggered=False)
             was_initialized = False
         else:
             was_initialized = True
 
-        if attributeName == 'FRAME_WIDTH':
+        attributeCode = GetAttributeCode(attributeName)
+
+        debug('Attribute code:', attributeCode)
+
+        if attributeCode == 'FRAME_WIDTH':
             return self.GetFrameWidth()
-        elif attributeName == 'FRAME_HEIGHT':
+        elif attributeCode == 'FRAME_HEIGHT':
             return self.GetFrameHeight()
-        elif attributeName == 'BIT_DEPTH':
+        elif attributeCode == 'BIT_DEPTH':
             return self.GetFrameDepth()
-        elif attributeName == 'AcquisitionFrameRate':
+        elif attributeCode == 'FPS':
             print('WARNING GIVING DUMMY ACQUISITION FRAME RATE')
             return 50
+        elif attributeCode == 'CHANNEL':
+            return 3
         else:
             raise NameError('Unknown attribute name: {name}'.format(name=attributeName))
 
@@ -1092,6 +1100,8 @@ class Camera:
 
     def _InitBuffers(self):
         # First, call ap_GrabFrame with NULL to get the required buffer size
+        debug('Initializing buffers')
+
         self._buf_size = apbase_dll.ap_GrabFrame(self._camera_pointer, None, 0)
         if self._buf_size == 0:
             last_err = apbase_dll.ap_GetLastError()
@@ -1100,6 +1110,8 @@ class Camera:
 
         # Allocate a buffer of the required size
         self._pBuffer = create_string_buffer(self._buf_size)
+
+        debug('Image buffer size: {b}'.format(b=self._pBuffer))
 
         self._rgbWidth = ap_u32(0)
         self._rgbHeight = ap_u32(0)
@@ -1125,7 +1137,7 @@ class Camera:
             self.DeInit()
             raise IOError("Failed to check camera sensor state. Error code: {e}".format(e=err))
 
-    def Init(self, hardware_triggered=None):
+    def Init(self, hardware_triggered=False):
         """
         Init(self)
 
@@ -1150,6 +1162,9 @@ class Camera:
         See:   GetNextImage()
         """
 
+        if hardware_triggered is None:
+            hardware_triggered = self._hardware_triggered
+
         debug('Initializing camera')
 
         # Create a device handle for the camera
@@ -1170,7 +1185,7 @@ class Camera:
         if hardware_triggered:
             # Turns out we want hardware triggered mode, so re-init camera
             self.DeInit(destroyBuffers=False)
-            self._LoadSWTrigPresetAndCheckSensor(hardware_triggered=True, deinit=False)
+            self._LoadSWTrigPresetAndCheckSensor(hardware_triggered=True)
 
         return
 
@@ -1514,6 +1529,9 @@ class Camera:
         pointer to an Image object
         """
 
+        if not self.IsInitialized():
+            self.Init()
+
         debug('Getting next image')
 
         # Now grab the frame into pBuffer
@@ -1543,7 +1561,8 @@ class Camera:
         c_array_type = c_ubyte * total_bytes
         c_array = ctypes.cast(pRGB, POINTER(c_ubyte * total_bytes)).contents
         image_array = np.array(c_array).reshape([self._height, self._width, 4])
-
+        # 4th channel is a placeholder - get rid of it
+        image_array = image_array[:, :, :3]
 
         frame_num = None
         timestamp = time.time()
