@@ -563,7 +563,6 @@ def getCameraAttribute(attributeName, attributeType, cam=None, camSerial=None, n
     #   cam = None,
     #   camSerial = None
     #   nodemap = PySpin.INodeMap instance
-    #   attributeName = name of attribute
     #
     #   3.
     #   attributeName = name of attribute
@@ -571,15 +570,10 @@ def getCameraAttribute(attributeName, attributeType, cam=None, camSerial=None, n
     #   cam = None
     #   camSerial = Valid serial # of a connected camera
     #   nodemap = string indicating type of nodemap to use
-    #   attributeName = name of attribute
 
     if camType in [OTHER_CAM, APTINA_CAM]:
         return cam.GetAttribute(attributeName)
 
-    print('getCameraAttribute for camtype:', camType)
-    print('FLIR_CAM = 0')
-    print('APTINA_CAM = 1')
-    print('OTHER_CAM = 2')
 
 
     nodeType = typeNameToNodeType[attributeType]
