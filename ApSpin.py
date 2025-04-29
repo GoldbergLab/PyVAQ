@@ -1098,7 +1098,7 @@ class Camera:
 
         self._camera_pointer.set(attributeCode, attributeValue)
 
-    def _InitBuffers(self):
+    def _InitBuffer(self):
         # First, call ap_GrabFrame with NULL to get the required buffer size
         debug('Initializing buffers')
 
@@ -1173,12 +1173,14 @@ class Camera:
             self.DeInit()
             raise IOError('Failed to create camera handle.')
 
-        self._InitBuffers()
-
         # First initialize in software triggered mode so we can grab a frame and
         #   get some attribute information. Later we can reinitiailze in
         #   hardware triggered mode if necessary.
         self._LoadSWTrigPresetAndCheckSensor(hardware_triggered=False)
+
+        # Initialize frame buffer
+        self._InitBuffer()
+
         # Grab and discard an image, just to load camera attributes
         self.GetNextImage()
 
