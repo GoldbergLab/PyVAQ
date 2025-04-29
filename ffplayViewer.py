@@ -4,6 +4,14 @@ import time
 import cv2
 import traceback
 
+DEBUG=False
+
+def debug(*args, **kwargs):
+    if DEBUG:
+        print('*** ApSpin DEBUG ***')
+        print(*args, **kwargs)
+        print('*** ************ ***')
+        print()
 
 class ffplayer:
     def __init__(self, maxFrameRate, windowTitle='ffplayer', pixelFormat='rgb24'):
@@ -42,12 +50,7 @@ class ffplayer:
         """
         self.width = width
         self.height = height
-        print('Initializing ffplayer with:')
-        print('    width', self.width)
-        print('    height', self.height)
-        print('    pixelFormat', self.pixelFormat)
-        print('    maxFrameRate*2', self.maxFrameRate*2)
-        print('    windowTitle', self.windowTitle)
+        debug('Initializing ffplayer with width', self.width, 'height', self.height, 'pixelFormat', self.pixelFormat, 'maxFrameRate*2', self.maxFrameRate*2, 'windowTitle', self.windowTitle)
 
         self.ffplay_cmd = [
             'ffplay',
@@ -83,12 +86,12 @@ class ffplayer:
             self.ffplay_proc.stdin.write(frame.tobytes())
             self.ffplay_proc.stdin.flush()
         except BrokenPipeError:
-            print('ffplayer: Broken pipe')
-            print(traceback.format_exc())
+            debug('ffplayer: Broken pipe')
+            debug(traceback.format_exc())
             self.close()
         except OSError:
-            print('ffplay: other error')
-            print(traceback.format_exc())
+            debug('ffplay: other error')
+            debug(traceback.format_exc())
             self.close()
     def close(self, timeout=2):
         """Close the ffplay process
@@ -99,8 +102,8 @@ class ffplayer:
             try:
                 output, err = self.ffplay_proc.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
-                print('ffplay: failed to close player gracefully:')
-                print(traceback.format_exc())
+                debug('ffplay: failed to close player gracefully:')
+                debug(traceback.format_exc())
                 output = b''
                 err = b'Failed to communicate with ffplay process while closing.'
         else:
@@ -124,7 +127,7 @@ if __name__ == "__main__":
             k = k % 100
     except KeyboardInterrupt:
         output, err = viewer.close()
-        print('output')
-        print(output.decode('utf-8'))
-        print('err')
-        print(err.decode('utf-8'))
+        debug('output')
+        debug(output.decode('utf-8'))
+        debug('err')
+        debug(err.decode('utf-8'))
