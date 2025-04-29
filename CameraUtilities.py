@@ -510,6 +510,7 @@ def get(attributeNames, cam=None, camType=None, **kwargs):
             value = getColorChannelCount(cam=cam, camType=camType, **kwargs)
 
         values.append(value)
+    return values
 
 @handleCam
 def getSoftwareFrameRate(cam=None, camType=None, **kwargs):
