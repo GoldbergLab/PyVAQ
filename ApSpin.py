@@ -1210,8 +1210,6 @@ class Camera:
         # Initialize frame buffer
         self._InitBuffer()
 
-        self._FlushFIFO()
-
         # Grab and discard an image, just to load camera attributes
         self.GetNextImage()
 
@@ -1219,6 +1217,8 @@ class Camera:
             # Turns out we want hardware triggered mode, so re-init camera
             self.DeInit(destroyBuffers=False)
             self._LoadSWTrigPresetAndCheckSensor(hardware_triggered=True)
+
+        self._FlushFIFO()
 
         return
 
