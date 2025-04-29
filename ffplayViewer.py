@@ -96,7 +96,13 @@ class ffplayer:
         if self.ffplay_proc:
             if self.ffplay_proc.stdin:
                 self.ffplay_proc.stdin.close()
-            output, err = self.ffplay_proc.communicate(timeout=timeout)
+            try:
+                output, err = self.ffplay_proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                print('ffplay: failed to close player gracefully:')
+                print(traceback.format_exc())
+                output = b''
+                err = b'Failed to communicate with ffplay process while closing.'
         else:
             output = ''
             err = ''
