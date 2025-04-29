@@ -30,6 +30,7 @@ apbase_dll = ctypes.WinDLL(str(dllPath))
 # Define some return codes and constants if not already defined
 MI_CAMERA_SUCCESS = 0
 MI_INI_SUCCESS = 256
+MI_MEM_CAPTURE_TRIG_NONE = 0
 
 # Define custom ctypes types
 ap_handle = c_void_p
@@ -1137,7 +1138,7 @@ class Camera:
         orig_trig = apbase_dll.ap_GetMode(self._camera_pointer, b"MEM_CAPTURE_TRIG")
 
         # Flush the FIFO instantly
-        apbase_dll.ap_SetMode(self._camera_pointer, b"MEM_CAPTURE_TRIG", apbase_dll.MI_MEM_CAPTURE_TRIG_NONE)
+        apbase_dll.ap_SetMode(self._camera_pointer, b"MEM_CAPTURE_TRIG", MI_MEM_CAPTURE_TRIG_NONE)
 
         # Restore original trigger mode
         apbase_dll.ap_SetMode(self._camera_pointer, b"MEM_CAPTURE_TRIG", orig_trig)
