@@ -3325,7 +3325,7 @@ class VideoAcquirer(StateMachineProcess):
         # self.imageQueue.cancel_join_thread()
         self.bufferSize = int(bufferSizeSeconds * self.requestedFrameRate)
 
-        if self.verbose >= 3: self.log("Temporarily initializing camera to get image size, cahnnel count, and pixel format...")
+        if self.verbose >= 3: self.log("Temporarily initializing camera to get image size, channel count, and pixel format...")
         self.nChannels, videoWidth, videoHeight, self.pixelFormat = cu.get(['ChannelCount', 'Width', 'Height', 'PixelFormat'], camSerial=self.camSerial, camType=self.camType)
         if self.verbose >= 2: print('Camera pixel format is:', self.pixelFormat)
 
