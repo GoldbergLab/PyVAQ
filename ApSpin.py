@@ -23,6 +23,9 @@ dllPath = aptinaRoot / 'bin' / 'apbase.dll'
 if not dllPath.exists():
     raise OSError('Could not find aptina.dll - please make sure Aptina API is installed in the default location.')
 apbase_dll = ctypes.WinDLL(str(dllPath))
+# Should this be
+# ctypes.cdll.LoadLibrary(str(dllPath))
+# ???
 
 # Define some return codes and constants if not already defined
 MI_CAMERA_SUCCESS = 0
@@ -34,6 +37,12 @@ ap_s32 = c_int
 ap_u32 = c_uint32
 
 # Set up argument and return types for the functions we need:
+apbase_dll.ap_GetMode.argtypes = [c_void_p, ctypes.c_char_p]
+apbase_dll.ap_GetMode.restype  = c_int           # return is plain int
+
+apbase_dll.ap_GetPartNumber.argtypes = [c_void_p]   # AP_HANDLE
+apbase_dll.ap_GetPartNumber.restype  = c_char_p     # const char*
+
 apbase_dll.ap_Create.argtypes = [c_int]
 apbase_dll.ap_Create.restype = ap_handle
 
@@ -1098,6 +1107,12 @@ class Camera:
 
         self._camera_pointer.set(attributeCode, attributeValue)
 
+    def _GetHardwareInfo(self):
+        part = apbase_dll.ap_GetPartNumber(self._camera_pointer).decode('ascii')
+        print("Part number reported by ApBase:", part)
+        board_code = apbase_dll.ap_GetMode(self._camera_pointer, b"BOARD_TYPE")
+        print("BOARD_TYPE =", board_code)
+
     def _InitBuffer(self):
         # First, call ap_GrabFrame with NULL to get the required buffer size
         debug('Initializing buffers')
@@ -1116,6 +1131,16 @@ class Camera:
         self._rgbWidth = ap_u32(0)
         self._rgbHeight = ap_u32(0)
         self._rgbBitDepth = ap_u32(0)
+
+    def _FlushFIFO(self):
+        # Store current trigger source
+        orig_trig = apbase_dll.ap_GetMode(h, b"MEM_CAPTURE_TRIG")
+
+        # Flush the FIFO instantly
+        apbase_dll.ap_SetMode(h, b"MEM_CAPTURE_TRIG", dll_apbase.MI_MEM_CAPTURE_TRIG_NONE)
+
+        # Restore original trigger mode
+        dll_apbase.ap_SetMode(h, b"MEM_CAPTURE_TRIG", orig_trig)
 
     def _LoadSWTrigPresetAndCheckSensor(self, hardware_triggered=False):
         # Get the default INI preset name
@@ -1180,6 +1205,8 @@ class Camera:
 
         # Initialize frame buffer
         self._InitBuffer()
+
+        self._FlushFIFO()
 
         # Grab and discard an image, just to load camera attributes
         self.GetNextImage()
