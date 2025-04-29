@@ -41,6 +41,9 @@ ap_u32 = c_uint32
 apbase_dll.ap_GetMode.argtypes = [c_void_p, ctypes.c_char_p]
 apbase_dll.ap_GetMode.restype  = c_int           # return is plain int
 
+apbase_dll.ap_SetMode.argtypes = [c_void_p, c_char_p, c_uint32]
+apbase_dll.ap_SetMode.restype = c_int
+
 apbase_dll.ap_GetPartNumber.argtypes = [c_void_p]   # AP_HANDLE
 apbase_dll.ap_GetPartNumber.restype  = c_char_p     # const char*
 
