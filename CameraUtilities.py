@@ -494,6 +494,24 @@ def initCams(camSerials=None, camList=None, camType=FLIR_CAM, system=None):
     return cams, camList, system
 
 @handleCam
+def get(attributeNames, cam=None, camType=None, **kwargs):
+    # Get multiple attribute from a list of common ones simultaneously, without multiple cam inits/de-inits
+    values = []
+    for attributeName in attributeNames:
+        if attributeName == 'AcquisitionFrameRate':
+            value = getSoftwareFrameRate(cam=cam, camType=camType, **kwargs)
+        elif attributeName == 'Width':
+            value = cam.Width.GetValue()
+        elif attributeName == 'Height':
+            value = cam.Height.GetValue()
+        elif attributeName == 'PixelFormat':
+            value = getPixelFormat(cam=cam, camType=camType, **kwargs)
+        elif attributeName == 'ChannelCount':
+            value = getColorChannelCount(cam=cam, camType=camType, **kwargs)
+
+        values.append(value)
+
+@handleCam
 def getSoftwareFrameRate(cam=None, camType=None, **kwargs):
     return getCameraAttribute('AcquisitionFrameRate', 'float', cam=cam, camType=camType)
 

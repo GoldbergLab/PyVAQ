@@ -177,7 +177,7 @@ def GetAttributeCode(attributeName):
         return attributeCode
 
 CAM_NUM_FILE = Path('.\OpenCV_cam_list.tmp')
-CAM_UPDATE_INTERVAL = 30
+CAM_UPDATE_INTERVAL = 600
 
 def find_valid_ports(max_attempts=3):
     # Find a list of cameras via OpenCV. Unfortunately, OpenCV does not provide
