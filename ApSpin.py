@@ -1137,10 +1137,10 @@ class Camera:
         orig_trig = apbase_dll.ap_GetMode(self._camera_pointer, b"MEM_CAPTURE_TRIG")
 
         # Flush the FIFO instantly
-        apbase_dll.ap_SetMode(self._camera_pointer, b"MEM_CAPTURE_TRIG", dll_apbase.MI_MEM_CAPTURE_TRIG_NONE)
+        apbase_dll.ap_SetMode(self._camera_pointer, b"MEM_CAPTURE_TRIG", apbase_dll.MI_MEM_CAPTURE_TRIG_NONE)
 
         # Restore original trigger mode
-        dll_apbase.ap_SetMode(self._camera_pointer, b"MEM_CAPTURE_TRIG", orig_trig)
+        apbase_dll.ap_SetMode(self._camera_pointer, b"MEM_CAPTURE_TRIG", orig_trig)
 
     def _LoadSWTrigPresetAndCheckSensor(self, hardware_triggered=False):
         # Get the default INI preset name
