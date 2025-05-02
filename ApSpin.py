@@ -1211,7 +1211,7 @@ class Camera:
         self._InitBuffer()
 
         if DEBUG:
-            timeout = apbase_dll.ap_GetMode(h_cam, b"CAMERA_TIMEOUT")
+            timeout = apbase_dll.ap_GetMode(self._camera_pointer, b"CAMERA_TIMEOUT")
             debug("Current grab‑frame timeout =", timeout, "ms")
 
         # Grab and discard an image, just to load camera attributes
