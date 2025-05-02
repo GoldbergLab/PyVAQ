@@ -1024,7 +1024,7 @@ class Camera:
             int: Height of the camera frames in pixels
 
         """
-        debug('Getting width')
+        debug('Getting height')
         if self._height == 0 or self._height is None or forceUpdate:
             imagePtr = self.GetNextImage()
             imagePtr.Release()
@@ -1209,6 +1209,10 @@ class Camera:
 
         # Initialize frame buffer
         self._InitBuffer()
+
+        if DEBUG:
+            timeout = dll_apbase.ap_GetMode(h_cam, b"CAMERA_TIMEOUT")
+            debug("Current grab‑frame timeout =", timeout, "ms")
 
         # Grab and discard an image, just to load camera attributes
         self.GetNextImage()
