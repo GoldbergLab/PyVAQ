@@ -107,8 +107,10 @@ class Param():
                 self.widgets.append(cbutton)
 
             self.selectAllVar = tk.IntVar()
-            self.selectAllButton = ttk.Checkbutton(self.widgetFrame, text="Select all", variable=self.selectAllVar, onvalue=1, offvalue=0)
-            self.selectAllButton.grid(row=0, column=0, sticky=tk.NW)
+            if len(self.options) > 1:
+                # If more than one option is available, add a "select all" button
+                self.selectAllButton = ttk.Checkbutton(self.widgetFrame, text="Select all", variable=self.selectAllVar, onvalue=1, offvalue=0)
+                self.selectAllButton.grid(row=0, column=0, sticky=tk.NW)
             self.selectAllVar.set(0)
             def selectAllOrNoneCallbackFactory(savar, cbuttons, vars):
                 def callback(*args):
