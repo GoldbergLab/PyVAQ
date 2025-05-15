@@ -28,8 +28,56 @@ apbase_dll = ctypes.WinDLL(str(dllPath))
 # ???
 
 # Define some return codes and constants if not already defined
-MI_CAMERA_SUCCESS = 0
-MI_INI_SUCCESS = 256
+MI_CODES = {}
+
+MI_CODES['MI_CAMERA_SUCCESS']          = 0x00         # Success value for midlib routines
+MI_CODES['MI_CAMERA_ERROR']            = 0x01         # General failure for midlib routines
+# Grabframe return codes
+MI_CODES['MI_GRAB_FRAME_ERROR']        = 0x03         # General failure for grab frame routine
+MI_CODES['MI_NOT_ENOUGH_DATA_ERROR']   = 0x04         # Grab frame failed to return enough data
+MI_CODES['MI_EOF_MARKER_ERROR']        = 0x05         # EOF packet not found in grab frame data
+MI_CODES['MI_BUFFER_SIZE_ERROR']       = 0x06         # GrabFrame buffer is too small
+# mi_OpenCameras return codes
+MI_CODES['MI_SENSOR_FILE_PARSE_ERROR'] = 0x07         # There was an error parsing the sdat file
+MI_CODES['MI_SENSOR_DOES_NOT_MATCH']   = 0x08         # Cannot find sdat file which matches sensor
+MI_CODES['MI_SENSOR_NOT_INITIALIZED']  = 0x09         # The sensor structure has not been initialized (call updateFrame)
+MI_CODES['MI_SENSOR_NOT_SUPPORTED']    = 0x0A         # The sensor is no longer supported
+# I2C return codes
+MI_CODES['MI_I2C_BIT_ERROR']           = 0x0B         # I2C bit error
+MI_CODES['MI_I2C_NACK_ERROR']          = 0x0C         # I2C NAC error
+MI_CODES['MI_I2C_TIMEOUT']             = 0x0D         # I2C time out error
+MI_CODES['MI_CAMERA_TIMEOUT']          = 0x0E
+MI_CODES['MI_TOO_MUCH_DATA_ERROR']     = 0x0F         # Grab frame returned more data than expected
+
+MI_CODES['MI_CAMERA_NOT_SUPPORTED']    = 0x10         # The function call is not supported
+MI_CODES['MI_CRC_ERROR']               = 0x11         # Command/response CRC error
+MI_CODES['MI_I2C_DEVICE_OFF']          = 0x12         # The sensor is powered down or in reset
+
+# return codes for parsing sdat file
+MI_CODES['MI_PARSE_SUCCESS']           = 0x20         # Parsing was successful
+MI_CODES['MI_DUPLICATE_DESC_ERROR']    = 0x21         # Duplicate unique descriptor was found
+MI_CODES['MI_PARSE_FILE_ERROR']        = 0x22         # Unable to open sensor data file
+MI_CODES['MI_PARSE_REG_ERROR']         = 0x23         # Error parsing the register descriptors
+MI_CODES['MI_UKNOWN_SECTION_ERROR']    = 0x24         # Unknown Section found in sensor data file
+MI_CODES['MI_CHIP_DESC_ERROR']         = 0x25         # Error parsing the chip descriptor section
+MI_CODES['MI_PARSE_ADDR_SPACE_ERROR']  = 0x26         # Error parsing the address space section
+# Error codes for loading INI presets
+MI_CODES['MI_INI_SUCCESS']             = 0x100        # INI Preset is loaded successfully
+MI_CODES['MI_INI_KEY_NOT_SUPPORTED']   = 0x101        # Key is not supported - will be ignored
+MI_CODES['MI_INI_LOAD_ERROR']          = 0x102        # Error loading INI preset
+MI_CODES['MI_INI_POLLREG_TIMEOUT']     = 0x103        # time out in POLLREG/POLL_VAR/POLL_FIELD command
+MI_CODES['MI_INI_HANDLED_SUCCESS']     = 0x104        # transport handled the command, success
+MI_CODES['MI_INI_HANDLED_ERROR']       = 0x105        # transport handled the command, with error
+MI_CODES['MI_INI_NOT_HANDLED']         = 0x106        # transport did not handle the command
+
+MI_CODES_REVERSE = {v: k for k, v in MI_CODES.items()}
+
+def getMIErrorName(errorCode):
+    if errorCode in MI_CODES_REVERSE:
+        return MI_CODES_REVERSE[errorCode]
+    else:
+        return "Unknown error code {c}".format(c=errorCode)
+
 MI_MEM_CAPTURE_TRIG_NONE = 0
 
 # Define custom ctypes types
@@ -1125,7 +1173,7 @@ class Camera:
         if self._buf_size == 0:
             last_err = apbase_dll.ap_GetLastError()
             self.DeInit()
-            raise IOError("Failed to get buffer size. Error code: {e}".format(e=err))
+            raise IOError("Failed to get buffer size. Error code: {e}, {n}".format(e=err, n=getMIErrorName(err)))
 
         # Allocate a buffer of the required size
         self._pBuffer = create_string_buffer(self._buf_size)
@@ -1137,7 +1185,7 @@ class Camera:
         self._rgbBitDepth = ap_u32(0)
 
     def _FlushFIFO(self):
-        # Store current trigger sourceW
+        # Store current trigger source
         orig_trig = apbase_dll.ap_GetMode(self._camera_pointer, b"MEM_CAPTURE_TRIG")
 
         # Flush the FIFO instantly
@@ -1146,7 +1194,10 @@ class Camera:
         # Restore original trigger mode
         apbase_dll.ap_SetMode(self._camera_pointer, b"MEM_CAPTURE_TRIG", orig_trig)
 
-    def _LoadSWTrigPresetAndCheckSensor(self, hardware_triggered=False):
+    def _LoadPresetAndCheckSensor(self, hardware_triggered=None):
+        if hardware_triggered is None:
+            hardware_triggered = self._hardware_triggered
+
         # Get the default INI preset name
         ini = c_char_p(self._ini_file_path.encode('utf-8'));
 
@@ -1156,17 +1207,19 @@ class Camera:
             preset_name = self._ini_swtrig_preset_name
 
         # Load the specified ini preset
+        print('attempting to load preset', preset_name, 'in', self._ini_file_path.encode('utf-8'))
         err = apbase_dll.ap_LoadIniPreset(self._camera_pointer, ini, preset_name)
-        if err != MI_INI_SUCCESS:
+        if err != MI_CODES['MI_INI_SUCCESS']:
             self.DeInit()
-            raise IOError("Failed to load default INI preset. Error code: {e}".format(e=err))
+            raise IOError("Failed to load default INI preset. Error code: {e}, {n}".format(e=err, n=getMIErrorName(err)))
+        print('preset load success')
 
         err = apbase_dll.ap_CheckSensorState(self._camera_pointer, 0)
-        if err != MI_CAMERA_SUCCESS:
+        if err != MI_CODES['MI_CAMERA_SUCCESS']:
             self.DeInit()
-            raise IOError("Failed to check camera sensor state. Error code: {e}".format(e=err))
+            raise IOError("Failed to check camera sensor state. Error code: {e}, {n}".format(e=err, n=getMIErrorName(err)))
 
-    def Init(self, hardware_triggered=False):
+    def Init(self, hardware_triggered=None):
         """
         Init(self)
 
@@ -1205,7 +1258,7 @@ class Camera:
         # First initialize in software triggered mode so we can grab a frame and
         #   get some attribute information. Later we can reinitiailze in
         #   hardware triggered mode if necessary.
-        self._LoadSWTrigPresetAndCheckSensor(hardware_triggered=False)
+        self._LoadPresetAndCheckSensor(hardware_triggered=False)
 
         # Initialize frame buffer
         self._InitBuffer()
@@ -1219,8 +1272,8 @@ class Camera:
 
         if hardware_triggered:
             # Turns out we want hardware triggered mode, so re-init camera
-            self.DeInit(destroyBuffers=False)
-            self._LoadSWTrigPresetAndCheckSensor(hardware_triggered=True)
+            # self.DeInit(destroyBuffers=False)
+            self._LoadPresetAndCheckSensor(hardware_triggered=True)
 
         self._FlushFIFO()
 
@@ -1573,10 +1626,10 @@ class Camera:
 
         # Now grab the frame into pBuffer
         bytes_returned = apbase_dll.ap_GrabFrame(self._camera_pointer, self._pBuffer, self._buf_size)
-        if bytes_returned == 0 or apbase_dll.ap_GetLastError() != MI_CAMERA_SUCCESS:
+        if bytes_returned == 0 or apbase_dll.ap_GetLastError() != MI_CODES['MI_CAMERA_SUCCESS']:
             last_err = apbase_dll.ap_GetLastError()
             self.DeInit()
-            raise IOError("Failed to grab frame. Error code: {e}".format(e=last_err))
+            raise IOError("Failed to grab frame. Error code: {e}, {n}".format(e=last_err, n=getMIErrorName(last_err)))
 
         pRGB = apbase_dll.ap_ColorPipe(self._camera_pointer,
                                    self._pBuffer,               # Input image
