@@ -1057,7 +1057,6 @@ him know. Otherwise, I had nothing to do with it.
 
         availableFLIRCamSerials, _ = cu.discoverCameras(camType=cu.FLIR_CAM)
         availableAptinaCamSerials, _ = cu.discoverCameras(camType=cu.APTINA_CAM)
-        print('Aptina cams found:', availableAptinaCamSerials)
         availableOtherCamSerials, _ = cu.discoverCameras(camType=cu.OTHER_CAM)
         availableCamSerials = availableFLIRCamSerials + availableOtherCamSerials + availableAptinaCamSerials
 
@@ -1076,13 +1075,14 @@ him know. Otherwise, I had nothing to do with it.
         if len(availableAudioChannels) > 0:
             params.append(Param(name='Audio Channels', widgetType=Param.MULTICHOICE, options=availableAudioChannels, default=defaultAudioDAQChannels))
         if len(availableFLIRCamSerials) > 0:
-            params.append(Param(name='FLIR Cameras', widgetType=Param.MULTICHOICE, options=availableFLIRCamSerials, default=None))
+            params.append(Param(name='FLIR Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableFLIRCamSerials, default=None))
+            params.append(Param(name='FLIR Cameras (hw sync)', widgetType=Param.MULTICHOICE, options=availableFLIRCamSerials, default=None))
         if len(availableAptinaCamSerials) > 0:
-            params.append(Param(name='Aptina Cameras', widgetType=Param.MULTICHOICE, options=availableAptinaCamSerials, default=None))
+            params.append(Param(name='Aptina Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableAptinaCamSerials, default=None))
+            params.append(Param(name='Aptina Cameras (hw sync)', widgetType=Param.MULTICHOICE, options=availableAptinaCamSerials, default=None))
         if len(availableOtherCamSerials) > 0:
-            params.append(Param(name='Other Cameras', widgetType=Param.MULTICHOICE, options=availableOtherCamSerials, default=None))
-        if len(availableCamSerials) > 0:
-            params.append(Param(name='Cameras Requiring Hardware Sync', widgetType=Param.MULTICHOICE, options=availableCamSerials, default=None))
+            params.append(Param(name='Other Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableOtherCamSerials, default=None))
+            params.append(Param(name='Other Cameras (hw sync)', widgetType=Param.MULTICHOICE, options=availableOtherCamSerials, default=None))
         if len(availableClockChannels) > 0:
             params.append(Param(name='Audio Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=defaultAudioSyncTerminal))
             params.append(Param(name='Video Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=defaultVideoSyncTerminal))
@@ -1095,8 +1095,7 @@ him know. Otherwise, I had nothing to do with it.
         if len(params) > 0:
             pd = ParamDialog(self.master, params=params, title="Choose audio/video inputs to use", maxHeight=35, arrangement=ParamDialog.HYBRID)
             choices = pd.results
-            print('choices:')
-            print(choices)
+
             if choices is not None:
                 # We're changing acquisition settings, so stop everything
                 self.stopMonitors()
@@ -1104,42 +1103,46 @@ him know. Otherwise, I had nothing to do with it.
                 self.destroyChildProcesses()
 
                 # Extract chosen parameters from GUI
+                audioDAQChannels = []
                 if 'Audio Channels' in choices:
-                    audioDAQChannels = choices['Audio Channels']
-                else:
-                    audioDAQChannels = []
-                if 'FLIR Cameras' in choices:
-                    FLIRCamSerials = choices['FLIR Cameras']
-                else:
-                    FLIRCamSerials = []
-                if 'Other Cameras' in choices:
-                    otherCamSerials = choices['Other Cameras']
-                else:
-                    otherCamSerials = []
-                if 'Aptina Cameras' in choices:
-                    aptinaCamSerials = choices['Aptina Cameras']
-                else:
-                    aptinaCamSerials = []
-                if 'Cameras Requiring Hardware Sync' in choices:
-                    camHardwareSyncList = choices['Cameras Requiring Hardware Sync']
-                else:
-                    camHardwareSyncList = []
+                    audioDAQChannels.extend(choices['Audio Channels'])
+                FLIRCamSerials = []
+                FLIRCamHWSync = []
+                if 'FLIR Cameras (sw sync)' in choices:
+                    FLIRCamSerials.extend(choices['FLIR Cameras (sw sync)'])
+                    FLIRCamHWSync.extend([False for camSerial in choices['FLIR Cameras (sw sync)']])
+                if 'FLIR Cameras (hw sync)' in choices:
+                    FLIRCamSerials.extend(choices['FLIR Cameras (hw sync)'])
+                    FLIRCamHWSync.extend([True for camSerial in choices['FLIR Cameras (hw sync)']])
+                otherCamSerials = []
+                otherCamHWSync = []
+                if 'Other Cameras (sw sync)' in choices:
+                    otherCamSerials.extend(choices['Other Cameras (sw sync)'])
+                    otherCamHWSync.extend([False for camSerial in choices['Other Cameras (sw sync)']])
+                if 'Other Cameras (hw sync)' in choices:
+                    otherCamSerials.extend(choices['Other Cameras (hw sync)'])
+                    otherCamHWSync.extend([True for camSerial in choices['Other Cameras (hw sync)']])
+                aptinaCamSerials = []
+                aptinaCamHWSync = []
+                if 'Aptina Cameras (sw sync)' in choices:
+                    aptinaCamSerials.extend(choices['Aptina Cameras (sw sync)'])
+                    aptinaCamHWSync.extend([False for camSerial in choices['Aptina Cameras (sw sync)']])
+                if 'Aptina Cameras (hw sync)' in choices:
+                    aptinaCamSerials.extend(choices['Aptina Cameras (hw sync)'])
+                    aptinaCamHWSync.extend([True for camSerial in choices['Aptina Cameras (hw sync)']])
+
+                audioSyncTerminal = None
                 if 'Audio Sync Channel' in choices and choices['Audio Sync Channel'] != "None":
                     audioSyncTerminal = choices['Audio Sync Channel']
-                else:
-                    audioSyncTerminal = None
+                videoSyncTerminal = None
                 if 'Video Sync Channel' in choices and choices['Video Sync Channel'] != "None":
                     videoSyncTerminal = choices['Video Sync Channel']
-                else:
-                    videoSyncTerminal = None
+                audioSyncSource = None
                 if 'Audio Sync PFI Interface' in choices and len(choices['Audio Sync PFI Interface']) > 0:
                     audioSyncSource = choices['Audio Sync PFI Interface']
-                else:
-                    audioSyncSource = None
+                videoSyncSource = None
                 if 'Video Sync PFI Interface' in choices and len(choices['Video Sync PFI Interface']) > 0:
                     videoSyncSource = choices['Video Sync PFI Interface']
-                else:
-                    videoSyncSource = None
                 if 'Acquisition signal channel' in choices and len(choices['Acquisition start trigger channel']) > 0:
                     if choices['Acquisition start trigger channel'] == 'None':
                         acquisitionSignalChannel = None
@@ -1152,7 +1155,7 @@ him know. Otherwise, I had nothing to do with it.
 
                 camSerials = FLIRCamSerials + otherCamSerials + aptinaCamSerials
                 camTypes = [cu.FLIR_CAM for camSerial in FLIRCamSerials] + [cu.OTHER_CAM for camSerial in otherCamSerials] + [cu.APTINA_CAM for camSerial in aptinaCamSerials]
-                camHardwareSync = [camSerial in camHardwareSyncList for camSerial in camSerials]
+                camHardwareSync = FLIRCamHWSync + otherCamHWSync + aptinaCamHWSync
 
                 # Set chosen parameters
                 self.setParams(
