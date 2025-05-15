@@ -198,7 +198,7 @@ def find_valid_ports(max_attempts=3):
             lastUpdateTime = float(cam_record[0])
             timeSinceLastUpdate = time.time() - lastUpdateTime
             if timeSinceLastUpdate < CAM_UPDATE_INTERVAL:
-                valid_port_nums = [int(n) for n in cam_record[1].split(' ')]
+                valid_port_nums = [int(n) for n in cam_record[1].split(' ') if len(n) > 0]
                 return valid_port_nums
     except Exception as e:
         # Something went wrong, just update cam list
