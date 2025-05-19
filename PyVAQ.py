@@ -3395,6 +3395,7 @@ him know. Otherwise, I had nothing to do with it.
                 startTime=startTime,
                 camSerial=camSerial,
                 camType=camType,
+                HWTrigger=p["camHardwareSync"][k],
                 acquireSettings=p["acquireSettings"][camSerial],
                 frameRate=self.actualVideoFrequency,
                 requestedFrameRate=requestedVideoFrequency,

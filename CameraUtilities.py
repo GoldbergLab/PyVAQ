@@ -392,13 +392,13 @@ def handleCam(func):
     #   arg is not passed in.
     # Decorated function should take a cam keyword argument, but can be called
     #   with a camSerial keyword argument instead.
-    def wrapper(*args, cam=None, camSerial=None, camType=FLIR_CAM, **kwargs):
+    def wrapper(*args, cam=None, camSerial=None, camType=FLIR_CAM, HWTrigger=None, **kwargs):
         if cam is None and camSerial is not None:
             cleanup = True
-            cam, camList, system = initCam(camSerial, camType=camType)
+            cam, camList, system = initCam(camSerial, camType=camType, HWTrigger=HWTrigger)
         else:
             cleanup = False
-        returnVal = func(*args, cam=cam, camType=camType, **kwargs)
+        returnVal = func(*args, cam=cam, camType=camType, HWTrigger=HWTrigger, **kwargs)
         if cleanup:
             cam.DeInit()
             del cam
@@ -468,16 +468,19 @@ def discoverOtherCameras():
     camList = system.GetCameras()
     return [cam.Serial for cam in camList]
 
-def initCam(camSerial, camList=None, camType=FLIR_CAM, system=None):
+def initCam(camSerial, camList=None, camType=FLIR_CAM, system=None, **kwargs):
     if system is None and camList is None:
         system = CamLibs[camType].System.GetInstance()
     if camList is None:
         camList = system.GetCameras()
     cam = camList.GetBySerial(camSerial)
-    cam.Init()
+    if camType != APTINA_CAM and 'HWTrigger' in kwargs:
+        # HWTrigger attribute is only relevant to Aptina cameras
+        del kwargs['HWTrigger']
+    cam.Init(**kwargs)
     return cam, camList, system
 
-def initCams(camSerials=None, camList=None, camType=FLIR_CAM, system=None):
+def initCams(camSerials=None, camList=None, camType=FLIR_CAM, system=None, **kwargs):
     if system is None and camList is None:
         system = CamLibs[camType].System.GetInstance()
     if camList is None:
@@ -489,8 +492,11 @@ def initCams(camSerials=None, camList=None, camType=FLIR_CAM, system=None):
             cams.append(cam)
     else:
         cams = [camList.GetBySerial(camSerial) for camSerial in camSerials]
+    if camType != APTINA_CAM and 'HWTrigger' in kwargs:
+        # HWTrigger attribute is only relevant to Aptina cameras
+        del kwargs['HWTrigger']
     for cam in cams:
-        cam.Init()
+        cam.Init(**kwargs)
     return cams, camList, system
 
 @handleCam
@@ -675,7 +681,7 @@ def checkCameraSpeed(cam=None, camType=None, **kwargs):
         return "Unknown speed"
     else:
         try:
-            cameraSpeedValue, cameraSpeed = getCameraAttribute('DeviceCurrentSpeed', 'enum', nodemap=cam.GetTLDeviceNodeMap(), camType=camType)
+            cameraSpeedValue, cameraSpeed = getCameraAttribute('DeviceCurrentSpeed', 'enum', nodemap=cam.GetTLDeviceNodeMap(), camType=camType, **kwargs)
             # This causes weird crashes for one of our flea3 cameras...
             #cameraBaudValue, cameraBaud =   getCameraAttribute(cam.GetNodeMap(), 'SerialPortBaudRate', PySpin.CEnumerationPtr)
     #        cameraSpeed = cameraSpeed + ' ' + cameraBaud

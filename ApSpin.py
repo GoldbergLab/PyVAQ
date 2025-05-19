@@ -1014,7 +1014,7 @@ class Camera:
                 ini_file_path = r'resources/MT9V024-REV4.ini',
                 hwtrig_preset_name = b'EyeCAM-Triggered',
                 swtrig_preset_name = b'EyeCAM',
-                hardware_triggered = True,
+                HWTrigger = True,
                 **kwargs
                 ):
         self._port_number = port_number
@@ -1022,7 +1022,7 @@ class Camera:
         self._ini_file_path = ini_file_path
         self._ini_hwtrig_preset_name = hwtrig_preset_name
         self._ini_swtrig_preset_name = swtrig_preset_name
-        self._hardware_triggered = hardware_triggered
+        self._HWTrigger = HWTrigger
 
         self.Width =  Value(self.GetFrameWidth)
         self.Height = Value(self.GetFrameHeight)
@@ -1113,7 +1113,7 @@ class Camera:
 
         # Throw error if camera has not been initialized
         if not self.IsInitialized():
-            self.Init(hardware_triggered=False)
+            self.Init(HWTrigger=False)
             was_initialized = False
         else:
             was_initialized = True
@@ -1194,14 +1194,14 @@ class Camera:
         # Restore original trigger mode
         apbase_dll.ap_SetMode(self._camera_pointer, b"MEM_CAPTURE_TRIG", orig_trig)
 
-    def _LoadPresetAndCheckSensor(self, hardware_triggered=None):
-        if hardware_triggered is None:
-            hardware_triggered = self._hardware_triggered
+    def _LoadPresetAndCheckSensor(self, HWTrigger=None):
+        if HWTrigger is None:
+            HWTrigger = self._HWTrigger
 
         # Get the default INI preset name
         ini = c_char_p(self._ini_file_path.encode('utf-8'));
 
-        if hardware_triggered:
+        if HWTrigger:
             preset_name = self._ini_hwtrig_preset_name
         else:
             preset_name = self._ini_swtrig_preset_name
@@ -1219,7 +1219,7 @@ class Camera:
             self.DeInit()
             raise IOError("Failed to check camera sensor state. Error code: {e}, {n}".format(e=err, n=getMIErrorName(err)))
 
-    def Init(self, hardware_triggered=None):
+    def Init(self, HWTrigger=None):
         """
         Init(self)
 
@@ -1244,8 +1244,8 @@ class Camera:
         See:   GetNextImage()
         """
 
-        if hardware_triggered is None:
-            hardware_triggered = self._hardware_triggered
+        if HWTrigger is None:
+            HWTrigger = self._HWTrigger
 
         debug('Initializing camera')
 
@@ -1258,7 +1258,7 @@ class Camera:
         # First initialize in software triggered mode so we can grab a frame and
         #   get some attribute information. Later we can reinitiailze in
         #   hardware triggered mode if necessary.
-        self._LoadPresetAndCheckSensor(hardware_triggered=False)
+        self._LoadPresetAndCheckSensor(HWTrigger=False)
 
         # Initialize frame buffer
         self._InitBuffer()
@@ -1270,10 +1270,10 @@ class Camera:
         # Grab and discard an image, just to load camera attributes
         self.GetNextImage()
 
-        if hardware_triggered:
+        if HWTrigger:
             # Turns out we want hardware triggered mode, so re-init camera
             # self.DeInit(destroyBuffers=False)
-            self._LoadPresetAndCheckSensor(hardware_triggered=True)
+            self._LoadPresetAndCheckSensor(HWTrigger=True)
 
         self._FlushFIFO()
 

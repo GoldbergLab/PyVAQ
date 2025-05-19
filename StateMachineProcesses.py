@@ -3291,6 +3291,7 @@ class VideoAcquirer(StateMachineProcess):
                 startTime=None,
                 camSerial='',
                 camType=None,
+                HWTrigger=None,
                 acquireSettings={},
                 frameRate=None,
                 requestedFrameRate=None,
@@ -3312,7 +3313,7 @@ class VideoAcquirer(StateMachineProcess):
         if self.verbose > 0:
             self.log('Camera type:', camType)
             self.log(str(cu.CAM_TYPE_NAMES))
-        if self.frameRateVar is None:
+        if not HWTrigger:
             # This must be a software timed camera, so frame rate is not controlled by Sync process
             self.hardwareTimed = False
             self.frameRate = requestedFrameRate    # The requested frame rate will serve as an approximate frame rate
@@ -3443,7 +3444,8 @@ class VideoAcquirer(StateMachineProcess):
                         if self.hardwareTimed:
                             self.frameRate = self.frameRateVar.value
                         if self.verbose >= 2: self.log("Initializing camera...")
-                        cam, camList, system = cu.initCam(self.camSerial, camType=self.camType)
+                        self.log('Initializing camera with HWTrigger=', self.hardwareTimed)
+                        cam, camList, system = cu.initCam(self.camSerial, camType=self.camType, HWTrigger=self.hardwareTimed)
 
                         cu.applyCameraConfiguration(self.acquireSettings, cam=cam)
                         if self.verbose >= 2: self.log("...camera initialization complete")
