@@ -26,6 +26,9 @@ ap_s32 = c_int
 ap_u32 = c_uint32
 
 # Set up argument and return types for the functions we need:
+apbase_dll.ap_GetFrameData.argtypes = [c_void_p, c_char_p]
+apbase_dll.ap_GetFrameData.restype  = c_int
+
 apbase_dll.ap_Create.argtypes = [c_int]
 apbase_dll.ap_Create.restype = ap_handle
 
@@ -116,6 +119,9 @@ while key == -1:
         apbase_dll.ap_Destroy(camera_handle)
         apbase_dll.ap_Finalize()
         raise SystemExit(1)
+
+    frame_idx = apbase_dll.ap_GetFrameData(camera_handle, b"frameNumber")
+    print("Board frame counter:", frame_idx)
 
     # Only call ap_ColorPipe if we had success grabbing the frame
     if apbase_dll.ap_GetLastError() == MI_CAMERA_SUCCESS:
