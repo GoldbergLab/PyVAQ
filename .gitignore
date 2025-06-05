@@ -1,13 +1,15 @@
 # Ignore compiled python files
 __pycache__/
 # Ignore extra test files and old stuff
-/Cruft/
+/cruft/
 # Ignore log files:
 /logs/
 # Ignore specific files:
 /TODO.txt
 # Ignore wav files to avoid committing recordings
 *.wav
+# Ignore testing code
+/test/
 # Include simulated audio
 !simAudioFeed0.wav
 !simAudioFeed1.wav
