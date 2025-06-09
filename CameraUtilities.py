@@ -507,13 +507,13 @@ def get(attributeNames, cam=None, camType=None, **kwargs):
         if attributeName == 'AcquisitionFrameRate':
             value = getSoftwareFrameRate(cam=cam, camType=camType, **kwargs)
         elif attributeName == 'Width':
-            value = cam.Width.GetValue()
+            value = int(cam.Width.GetValue())
         elif attributeName == 'Height':
-            value = cam.Height.GetValue()
+            value = int(cam.Height.GetValue())
         elif attributeName == 'PixelFormat':
             value = getPixelFormat(cam=cam, camType=camType, **kwargs)
         elif attributeName == 'ChannelCount':
-            value = getColorChannelCount(cam=cam, camType=camType, **kwargs)
+            value = int(getColorChannelCount(cam=cam, camType=camType, **kwargs))
 
         values.append(value)
     return values
@@ -524,8 +524,8 @@ def getSoftwareFrameRate(cam=None, camType=None, **kwargs):
 
 @handleCam
 def getFrameSize(cam=None, **kwargs):
-    width = cam.Width.GetValue()
-    height = cam.Height.GetValue()
+    width = int(cam.Width.GetValue())
+    height = int(cam.Height.GetValue())
     return width, height
 
 @handleCam
@@ -547,7 +547,8 @@ def isBayerFiltered(cam=None, camType=None, **kwargs):
 def getColorChannelCount(cam=None, camType=None, **kwargs):
     if camType in [OTHER_CAM, APTINA_CAM]:
         numChannels = cam.GetAttribute('CHANNEL')
-        if numChannels == 0:
+        if numChannels == 0 or numChannels == -1:
+            # Sigh, some kind of nonsense, let's assume we've got 3 color channels
             numChannels = 3
     else:
         nm = cam.GetNodeMap()
