@@ -57,7 +57,8 @@ class ffplayer:
             '-f', 'rawvideo',
             '-pixel_format', self.pixelFormat,
             '-video_size', f'{self.width}x{self.height}',
-            '-framerate', str(self.maxFrameRate*2),
+            '-framerate', str(self.maxFrameRate*3),
+            '-framedrop',
             '-i', '-',
             # '-vf', f'drawtext=fontfile=\'C\\:/Windows/Fonts/Arial.ttf\':text={text}:fontcolor={color}:fontsize={fontsize}:x={textX}:y={textY}',  # ensure scaling (optional)
             '-window_title', self.windowTitle,             # give a window title
