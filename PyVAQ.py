@@ -3629,6 +3629,38 @@ him know. Otherwise, I had nothing to do with it.
         sendMessage(self.syncProcess, (Messages.EXIT, None))
         #self.StdoutManager.queue.put(Messages.EXIT)
 
+    def ensureChildProcessesDie(self):
+        processes = [
+            self.audioTriggerProcess,
+            self.continuousTriggerProcess,
+            self.audioAcquireProcess,
+            self.audioWriteProcess,
+            self.mergeProcess,
+            self.syncProcess,
+            *self.videoAcquireProcesses.values(),
+            *self.videoWriteProcesses.values()
+        ]
+        processNames = [
+            'audioTriggerProcess',
+            'continuousTriggerProcess',
+            'audioAcquireProcess',
+            'audioWriteProcess',
+            'mergeProcess',
+            'syncProcess',
+            *['videoAcquire_{s}'.format(s=camSerial) for camSerial in self.videoAcquireProcesses],
+            *['videoWrite_{s}'.format(s=camSerial) for camSerial in self.videoWriteProcesses]
+        ]
+        timeout=5
+        for process, name in zip(processes, processNames):
+            if process is None or not process.is_alive():
+                continue
+            try:
+                print('Ensuring {n} process exits...'.format(n=name))
+                process.join(timeout)
+            except mp.TimeoutError:
+                print('{n} process failed to exit, attempting to kill...'.format(n=name))
+                process.kill()
+
     def destroyChildProcesses(self):
         """Exit then dereference all child processes.
 
@@ -3645,6 +3677,8 @@ him know. Otherwise, I had nothing to do with it.
 
         # Give children a chance to register exit message
         time.sleep(0.5)
+
+        self.ensureChildProcessesDie()
 
         # try:
         #     s = io.StringIO()
