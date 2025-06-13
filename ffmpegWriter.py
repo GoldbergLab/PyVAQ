@@ -12,10 +12,19 @@ DEFAULT_GPU_COMPRESSION_ARGS = [
     ]
 
 class ffmpegWriter():
-    def __init__(self, filename, frameType, verbose=1, fps=30, shape=None,
-                input_pixel_format="bayer_rggb8", output_pixel_format="rgb0",
-                gpuVEnc=False, gpuCompressionArgs=DEFAULT_GPU_COMPRESSION_ARGS,
-                cpuCompressionArgs=DEFAULT_CPU_COMPRESSION_ARGS):
+    def __init__(
+        self,
+        filename: str,
+        frameType: str,
+        verbose: int = 1,
+        fps: int = 30,
+        shape = None,
+        input_pixel_format: str = "bayer_rggb8",
+        output_pixel_format: str = "rgb0",
+        gpuVEnc: bool = False,
+        gpuCompressionArgs: list = DEFAULT_GPU_COMPRESSION_ARGS,
+        cpuCompressionArgs: list = DEFAULT_CPU_COMPRESSION_ARGS
+    ):
         # You can specify the image shape at initialization, or when you write
         #   the first frame (the shape parameter is ignored for subsequent
         #   frames), or not at all, and hope we can figure it out.
@@ -92,15 +101,18 @@ class ffmpegWriter():
                 print(ffmpegCommand)
             self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
 
-        if self.frameType == 'image':
-            bytes = frame.tobytes()
+        if self.frameType == 'bytes':
+            buf = frame
+        elif self.frameType == 'image':
+            buf = frame.tobytes()
         elif self.frameType == 'numpy':
-            bytes = frame.tobytes()
-        elif self.frameType == 'bytes':
-            bytes = frame
+            # buf = frame.tobytes()
+            buf = memoryview(frame)
         if self.verbose >= 3:
             print('Sending frame to ffmpeg!')
-        self.ffmpegProc.stdin.write(bytes)    #'raw', 'RGB'))
+
+        self.ffmpegProc.stdin.write(buf)    #'raw', 'RGB'))
+
         self.ffmpegProc.stdin.flush()
 
     def close(self):

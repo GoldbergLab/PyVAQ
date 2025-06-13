@@ -3404,7 +3404,7 @@ him know. Otherwise, I had nothing to do with it.
                 bufferSizeSeconds=p["acquisitionBufferSize"],
                 sendToWriter=createWriters,
                 sendToMonitor=True,
-                ready=ready,
+                ready=ready,  # Will be ignored if HWTrigger is false
                 stdoutQueue=self.StdoutManager.queue)
 
             if camSerial in p['videoWriteEnable']:

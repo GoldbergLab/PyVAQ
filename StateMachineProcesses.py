@@ -3369,7 +3369,10 @@ class VideoAcquirer(StateMachineProcess):
             self.monitorImageSender = None
             self.monitorImageReceiver = None
         self.monitorMasterFrameRate = monitorFrameRate
-        self.ready = ready
+        if self.hardwareTimed:
+            self.ready = ready
+        else:
+            self.ready = None
         self.frameStopwatch = Stopwatch()
         self.monitorStopwatch = Stopwatch()
         self.acquireStopwatch = Stopwatch()
@@ -3581,7 +3584,7 @@ class VideoAcquirer(StateMachineProcess):
                                 # Put the occasional image in the monitor queue for the UI
                                 thisTime = time.time()
                                 actualMonitorFramePeriod = thisTime - lastTime
-                                if (thisTime - lastTime) >= monitorFramePeriod:
+                                if actualMonitorFramePeriod >= monitorFramePeriod:
                                     try:
                                         self.monitorImageSender.put(imageResult, metadata={'pixelFormat':self.pixelFormat})
                                         if self.verbose >= 3: self.log("Sent frame for monitoring")

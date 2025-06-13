@@ -14,7 +14,7 @@ class SharedImageSender():
     def __init__(self,
                 width,
                 height,
-                pixelFormat=PySpin.PixelFormat_BGR8,  #PySpin.PixelFormat_BayerRG8,
+                pixelFormat=PySpin.PixelFormat_BGR8,  #PySpin.PixelFormat_BayerRG8, only matters if outputType is PySpin
                 offsetX=0,
                 offsetY=0,
                 verbose=0,
