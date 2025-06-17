@@ -2309,8 +2309,8 @@ him know. Otherwise, I had nothing to do with it.
             if self.videoWriteProcesses[camSerial] is not None:
                 lines.extend([
                     '   {camSerial} ({PID}):\t{state}'.format(camSerial=camSerial, PID=PIDs['videoWritePIDs'][camSerial], state=stateNames['videoWriteStates'][camSerial]),
-                    '       Image Queue: {qsize}'.format(qsize=queueSizes['videoMonitorQueueSizes'][camSerial]),
-                    '       Monitor Queue: {qsize}'.format(qsize=queueSizes['imageQueueSizes'][camSerial]),
+                    '       Image Queue: {qsize}'.format(qsize=queueSizes['imageQueueSizes'][camSerial]),
+                    '       Monitor Queue: {qsize}'.format(qsize=queueSizes['videoMonitorQueueSizes'][camSerial]),
                     '       Info: {info}'.format(info=info['videoWriteInfo'][camSerial])
                 ])
         lines.extend([
