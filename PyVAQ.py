@@ -2754,29 +2754,32 @@ him know. Otherwise, I had nothing to do with it.
                 params = json.loads(f.read())
             self.log('Loading settings from:')
             self.log('    ', path)
-            if len(params['camSerials']) == 0:
-                # Legacy param file format - camSerials is empty - make placeholder structure
-                params['camSerials'] = dict((camType, []) for camType in cu.CAM_TYPES)
-            elif type(params['camSerials']) == dict and any(camType not in params['camSerials'] for camType in cu.CAM_TYPES):
-                # Legacy param file format - missing a cam type - add in a placeholder
+            if type(params['camSerials']) == dict:
+                # Legacy param file format
+                camSerials = []
+                camTypes = []
                 for camType in cu.CAM_TYPES:
-                    if camType not in params['camSerials']:
-                        params['camSerials'][camType] = []
-            elif type(params['camSerials'][0]) == str:
-                # Legacy param file format - camSerials is a list of strings - convert it to a dict with camtypes as keys
-                # Assume all serials are for FLIR cameras
-                flir_serials = params['camSerials']
-                params['camSerials'] = dict((camType, []) for camType in cu.CAM_TYPES)
-                params['camSerials'][cu.FLIR_CAM] = flir_serials
+                    if camType in params['camSerials']:
+                        camSerials.extend(params['camSerials'][camType])
+                        camTypes.extend([camType for _ in params['camSerials']])
+                params['camSerials'] = camSerials
+                params['camTypes'] = camTypes
+            if 'camTypes' not in params:
+                # Legacy file format, generate dummy cam types
+                params['camTypes'] = [cu.FLIR_CAM for _ in params['camSerials']]
+            if 'camHardwareSync' not in params:
+                # Legacy file format, generate dummy cam hardware sync status
+                params['camHardwareSync'] = [false for _ in params['camSerials']]
 
             if 'scheduleStartTime' in params:
                 params['scheduleStartTime'] = serializableToTime(params['scheduleStartTime'])
             if 'scheduleStopTime' in params:
                 params['scheduleStopTime'] = serializableToTime(params['scheduleStopTime'])
-            self.log("Loaded settings:")
-            self.log(params)
+
             self.setParams(**params)
             self.updateAcquisitionHardwareDisplay()
+            self.log("Loaded settings:")
+            self.log(params)
         self.endLog(inspect.currentframe().f_code.co_name)
 
     def setAudioWriteEnable(self, newAudioWriteEnable, *args, updateGUI=True):
