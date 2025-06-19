@@ -2726,6 +2726,7 @@ him know. Otherwise, I had nothing to do with it.
                 defaultextension = 'pvs',
                 initialdir = '.'
             )
+
         if path is not None and len(path) > 0:
             with open(path, 'w') as f:
                 f.write(json.dumps(params))
@@ -3285,7 +3286,6 @@ him know. Otherwise, I had nothing to do with it.
         else:
             mergeMsgQueue = None
 
-
         if synchronizerRequired:
             # Create sync process
             self.syncProcess = Synchronizer(
@@ -3304,9 +3304,8 @@ him know. Otherwise, I had nothing to do with it.
                 ready=ready,
                 stdoutQueue=self.StdoutManager.queue)
         else:
-            # We're not creating a synchronizer object, so we'll just manually set the actualVideo/AudioFrequency variable
+            # We're not creating a synchronizer object, so we'll just manually set the actualAudioFrequency variable
             self.actualAudioFrequency.value = p["audioFrequency"]
-            self.actualVideoFrequency.value = p["videoFrequency"]
 
         copyToMonitoringQueue = True
         copyToAnalysisQueue = p["triggerMode"] != "SimpleContinuous"
@@ -3388,11 +3387,11 @@ him know. Otherwise, I had nothing to do with it.
             if p["camHardwareSync"][k]:
                 # This camera is hardware synced
                 requestedVideoFrequency = p["videoFrequency"]
-                actualVideoFrequency = self.actualVideoFrequency
             else:
                 # This camera is software synced
                 requestedVideoFrequency = cu.getSoftwareFrameRate(camSerial=camSerial, camType=camType)
-                actualVideoFrequency = None
+                self.actualVideoFrequency.value = p["videoFrequency"]
+            print('requestedVideoFrequency:', requestedVideoFrequency)
 
             videoAcquireProcess = VideoAcquirer(
                 startTime=startTime,
@@ -3660,6 +3659,7 @@ him know. Otherwise, I had nothing to do with it.
             try:
                 print('Ensuring {n} process exits...'.format(n=name))
                 process.join(timeout)
+                print('Process {n} exited with code {c}'.format(n=name, c=process.exitcode))
             except mp.TimeoutError:
                 print('{n} process failed to exit, attempting to kill...'.format(n=name))
                 process.kill()

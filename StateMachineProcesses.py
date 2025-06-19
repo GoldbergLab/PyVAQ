@@ -941,6 +941,9 @@ class StateMachineProcess(mp.Process):
                     print(*args, **kwargs)
         self.stdoutBuffer = []
 
+    def closeStdout(self):
+        self.stdoutQueue = None
+
     def handleError(self, msg=None, arg=None):
         # DO STUFF
         if self.verbose >= 0:
@@ -1371,6 +1374,7 @@ class AVMerger(StateMachineProcess):
         if self.verbose >= 1: self.log("AVMerger process STOPPED")
 
         self.flushStdout()
+        self.closeStdout()
         self.updatePublishedState(States.DEAD)
 
 class Synchronizer(StateMachineProcess):
@@ -1725,6 +1729,7 @@ class Synchronizer(StateMachineProcess):
         clearQueue(self.msgQueue)
         if self.verbose >= 1: self.log("Synchronization process STOPPED")
         self.flushStdout()
+        self.closeStdout()
         self.updatePublishedState(States.DEAD)
 
 class AudioTriggerer(StateMachineProcess):
@@ -2121,6 +2126,7 @@ class AudioTriggerer(StateMachineProcess):
         if self.verbose >= 1: self.log("Audio write process STOPPED")
 
         self.flushStdout()
+        self.closeStdout()
         self.updatePublishedState(States.DEAD)
 
     def updateFilter(self):
@@ -2269,6 +2275,7 @@ class AudioAcquirer(StateMachineProcess):
                         passedBarrier = False
 
                     # Read actual audio frequency from the Synchronizer process
+                    self.log('self.audioFrequencyVar.value =', self.audioFrequencyVar.value)
                     if self.audioFrequencyVar.value == -1:
                         # Wait for shared value audioFrequency to be set by the Synchronizer process
                         time.sleep(0.1)
@@ -2477,6 +2484,7 @@ class AudioAcquirer(StateMachineProcess):
         if self.verbose >= 1: self.log("Audio acquire process STOPPED")
 
         self.flushStdout()
+        self.closeStdout()
         self.updatePublishedState(States.DEAD)
 
 class SimpleAudioWriter(StateMachineProcess):
@@ -2584,15 +2592,17 @@ class SimpleAudioWriter(StateMachineProcess):
                     writeEnabled = True
                     self.audioFrequency = None
 
+                    if self.frameRateVar is not None:
+                        self.frameRate = self.frameRateVar.value
+                    if self.audioFrequencyVar is not None:
+                        self.audioFrequency = self.audioFrequencyVar.value
+
                     # Read actual audio frequency from the Synchronizer process
-                    if self.audioFrequencyVar.value == -1 or self.frameRateVar.value == -1:
+                    if self.audioFrequency == -1 or self.frameRate == -1:
                         # Wait for shared value audioFrequency & frameRate to be set by the Synchronizer process
                         # Wait for shared value frameRate to be set by the Synchronizer process
                         time.sleep(0.1)
                     else:
-                        self.audioFrequency = self.audioFrequencyVar.value
-                        self.frameRate = self.frameRateVar.value
-
                         # Calculate actual exact # of frames per video that SimpleVideoWriter will be recording
                         actualFramesPerVideo = round(self.videoLength * self.frameRate)
                         # Actual video length that SimpleVideoWriter will be using
@@ -2616,7 +2626,7 @@ class SimpleAudioWriter(StateMachineProcess):
                     if self.exitFlag:
                         self.nextState = States.STOPPING
                     elif msg in ['', Messages.START]:
-                        if self.audioFrequency is None or self.frameRate is None:
+                        if self.audioFrequency == -1 or self.frameRate == -1:
                             # Haven't received audio frequency or frame rate from synchronizer - continue waiting
                             self.nextState = States.INITIALIZING
                         else:
@@ -2859,6 +2869,7 @@ class SimpleAudioWriter(StateMachineProcess):
         if self.verbose >= 1: self.log("Audio write process STOPPED")
 
         self.flushStdout()
+        self.closeStdout()
         self.updatePublishedState(States.DEAD)
 
     def getNextChunk(self):
@@ -3245,6 +3256,7 @@ class AudioWriter(StateMachineProcess):
         if self.verbose >= 1: self.log("Audio write process STOPPED")
 
         self.flushStdout()
+        self.closeStdout()
         self.updatePublishedState(States.DEAD)
 
     def updateTriggers(self, triggers, newTrigger):
@@ -3307,20 +3319,14 @@ class VideoAcquirer(StateMachineProcess):
         self.camSerial = camSerial
         self.ID = 'VA_'+str(self.camSerial)
         self.acquireSettings = acquireSettings
-        self.requestedFrameRate = requestedFrameRate
-        self.frameRateVar = frameRate
         self.camType = camType
         if self.verbose > 0:
             self.log('Camera type:', camType)
             self.log(str(cu.CAM_TYPE_NAMES))
-        if not HWTrigger:
-            # This must be a software timed camera, so frame rate is not controlled by Sync process
-            self.hardwareTimed = False
-            self.frameRate = requestedFrameRate    # The requested frame rate will serve as an approximate frame rate
-        else:
-            # This must be a hardware timed camera, so frame rate is controlled by Sync process
-            self.hardwareTimed = True
-            self.frameRate = None
+        self.hardwareTimed = HWTrigger
+        self.requestedFrameRate = requestedFrameRate
+        self.frameRateVar = frameRate
+        self.frameRate = None
         self.pixelFormat = None
         # self.imageQueue = mp.Queue()
         # self.imageQueue.cancel_join_thread()
@@ -3385,6 +3391,7 @@ class VideoAcquirer(StateMachineProcess):
             self.imageQueue.setupBuffers()
         if self.monitorImageSender is not None:
             self.monitorImageSender.setupBuffers()
+            # monitorQueueSizeThreshold = min()
 
         msg = ''; arg = None
 
@@ -3439,13 +3446,13 @@ class VideoAcquirer(StateMachineProcess):
                     lastImageID = None
                     droppedFrameCount = 0
 
+                    self.frameRate = self.frameRateVar.value
+
                     # Read actual frame rate from the Synchronizer process
-                    if self.hardwareTimed and self.frameRateVar.value == -1:
+                    if self.hardwareTimed and self.frameRate == -1:
                         # Wait for shared value frameRate to be set by the Synchronizer process
                         time.sleep(0.1)
                     else:
-                        if self.hardwareTimed:
-                            self.frameRate = self.frameRateVar.value
                         if self.verbose >= 2: self.log("Initializing camera...")
                         self.log('Initializing camera with HWTrigger=', self.hardwareTimed)
                         cam, camList, system = cu.initCam(self.camSerial, camType=self.camType, HWTrigger=self.hardwareTimed)
@@ -3466,6 +3473,7 @@ class VideoAcquirer(StateMachineProcess):
                         self.nextState = States.STOPPING
                     elif msg in ['', Messages.START]:
                         if self.frameRate is None:
+                            self.log('Initializing => Initializing because self.frameRate is None')
                             self.nextState = States.INITIALIZING
                         else:
                             self.nextState = States.READY
@@ -3583,8 +3591,8 @@ class VideoAcquirer(StateMachineProcess):
                             if self.monitorImageSender is not None:
                                 # Put the occasional image in the monitor queue for the UI
                                 thisTime = time.time()
-                                actualMonitorFramePeriod = thisTime - lastTime
-                                if actualMonitorFramePeriod >= monitorFramePeriod:
+                                dt = thisTime - lastTime
+                                if dt >= monitorFramePeriod:
                                     try:
                                         self.monitorImageSender.put(imageResult, metadata={'pixelFormat':self.pixelFormat})
                                         if self.verbose >= 3: self.log("Sent frame for monitoring")
@@ -3655,6 +3663,8 @@ class VideoAcquirer(StateMachineProcess):
                     self.handleError()
 # VideoAcquirer: ****************** EXIT *********************************
                 elif self.state == States.EXITING:
+                    self.monitorImageSender = None
+                    self.imageQueue = None
                     break
                 else:
                     raise KeyError("Unknown state: "+self.stateList[self.state])
@@ -3681,6 +3691,7 @@ class VideoAcquirer(StateMachineProcess):
         #     self.log(s.getvalue())
 
         self.flushStdout()
+        self.closeStdout()
         self.updatePublishedState(States.DEAD)
 
 class SimpleVideoWriter(StateMachineProcess):
@@ -3736,14 +3747,7 @@ class SimpleVideoWriter(StateMachineProcess):
         #     self.imageQueue.cancel_join_thread()
         self.requestedFrameRate = requestedFrameRate
         self.frameRateVar = frameRate
-        if self.frameRateVar is None:
-            # This must be a software timed camera, so frame rate is not controlled by Sync process
-            self.hardwareTimed = False
-            self.frameRate = requestedFrameRate    # The requested frame rate will serve as an approximate frame rate
-        else:
-            # This must be a hardware timed camera, so frame rate is controlled by Sync process
-            self.hardwareTimed = True
-            self.frameRate = None
+        self.frameRate = None
         self.mergeMessageQueue = mergeMessageQueue
         self.videoWriteMethod = 'ffmpeg'   # options are ffmpeg, PySpin, OpenCV
         self.daySubfolders = daySubfolders
@@ -3798,6 +3802,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     writeEnabledPrevious = True
                     writeEnabled = True
 
+                    # Check to see if frame rate has been set by another process yet
                     self.frameRate = self.frameRateVar.value
                     if self.frameRate == -1:
                         # Frame rate var still hasn't been set
@@ -3805,7 +3810,6 @@ class SimpleVideoWriter(StateMachineProcess):
                         time.sleep(0.1)
                     else:
                         # Frame rate has been set by the synchronizer process - continue on
-                        self.frameRate = self.frameRateVar.value
                         self.videoFrameCount = round(self.videoLength * self.frameRate)
                         self.log("Video framerate = {f}".format(f=self.frameRate))
                         self.log("Video length = {L}".format(L=self.videoLength))
@@ -4073,6 +4077,7 @@ class SimpleVideoWriter(StateMachineProcess):
                                     tags=['{videoCount:03d}'.format(videoCount=videoCount)]
                                 )
                             self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
+                            self.mergeMessageQueue = None
                         videoFileInterface = None
 
                     # CHECK FOR MESSAGES
@@ -4097,6 +4102,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     self.handleError()
 # SimpleVideoWriter: ************** EXIT *********************************
                 elif self.state == States.EXITING:
+                    self.imageQueue = None
                     break
                 else:
                     raise KeyError("Unknown state: "+self.stateList[self.state])
@@ -4119,6 +4125,7 @@ class SimpleVideoWriter(StateMachineProcess):
         #     ps.print_stats()
         #     self.log(s.getvalue())
         self.flushStdout()
+        self.closeStdout()
         self.updatePublishedState(States.DEAD)
 
     def getNextimage(self):
@@ -4493,6 +4500,7 @@ class VideoWriter(StateMachineProcess):
         #     ps.print_stats()
         #     self.log(s.getvalue())
         self.flushStdout()
+        self.closeStdout()
         self.updatePublishedState(States.DEAD)
 
     def rotateImageBufferBack(self, im, frameTime, imageID):
@@ -4793,6 +4801,7 @@ class ContinuousTriggerer(StateMachineProcess):
         if self.verbose >= 1: self.log("Audio write process STOPPED")
 
         self.flushStdout()
+        self.closeStdout()
         self.updatePublishedState(States.DEAD)
 
     def cancelTriggers(self, triggers):
