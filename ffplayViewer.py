@@ -1,14 +1,15 @@
 import subprocess
 import numpy as np
 import time
-import cv2
 import traceback
+from PIL import Image
 
 DEBUG=False
+BLANK_IMAGE_PATH = r'.\Resources\NoImages_001.png'
 
 def debug(*args, **kwargs):
     if DEBUG:
-        print('*** ApSpin DEBUG ***')
+        print('*** ffplayViewer DEBUG ***')
         print(*args, **kwargs)
         print('*** ************ ***')
         print()
@@ -22,20 +23,12 @@ class ffplayer:
         self.ffplay_cmd = None
         self.ffplay_proc = None
         self.pixelFormat = pixelFormat
+        with Image.open(BLANK_IMAGE_PATH) as im:
+            self.blankFrame = np.asarray(im)
 
     def blank(self):
         # Display a blank frame indicating lack of image data
-        if self.width is not None and self.height is not None:
-            msg = 'no image data'
-            blankFrame = np.zeros([self.height, self.width, 3], dtype='uint8')
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            fontScale = 1
-            color = (255, 255, 255)
-            thickness = 2
-            (textWidth, textHeight), baseline = cv2.getTextSize(msg, font, fontScale, thickness)
-            origin = ((self.width - textWidth)//2, (self.height + textHeight)//2)
-            blankFrame = cv2.putText(blankFrame, msg, origin, font, fontScale, color, thickness)
-            self.showFrame(blankFrame)
+        self.showFrame(self.blankFrame)
 
     def initialize(self, width, height):
         """Set up the ffplay process.
