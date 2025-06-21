@@ -12,7 +12,6 @@ from tkinter.filedialog import askdirectory, asksaveasfilename, askopenfilename
 from tkinter.messagebox import showinfo, showwarning
 import queue
 from PIL import Image
-import pprint
 import traceback
 from collections import deque
 import re
@@ -21,7 +20,6 @@ import unicodedata
 from TimeInput import TimeVar, TimeEntry
 from ParamDialog import ParamDialog, Param
 from fileWritingEntry import FileWritingEntry
-import warnings
 import cProfile, pstats, io
 # For audio monitor graph embedding:
 from matplotlib.backends.backend_tkagg import (
@@ -32,13 +30,11 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 # from matplotlib.lines import Line2D
-# from pympler import tracker
 try:
     import PySpin
 except ModuleNotFoundError:
     # pip seems to install PySpin as pyspin sometimes...
     import pyspin as PySpin
-
 from MonitorWidgets import AudioMonitor, CameraMonitor
 from DockableFrame import Docker
 from StateMachineProcesses import sendMessage, States, Messages, Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter
@@ -48,7 +44,6 @@ import CameraUtilities as cu
 import ctypes
 from ffmpegWriter import DEFAULT_CPU_COMPRESSION_ARGS, DEFAULT_GPU_COMPRESSION_ARGS
 from CameraConfig import CameraConfigPanel
-import copy
 from collections import OrderedDict as odict
 
 VERSION='0.3.0'
