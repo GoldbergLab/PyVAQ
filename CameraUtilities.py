@@ -17,8 +17,24 @@ else:
     except ModuleNotFoundError:
         # pip seems to install PySpin as pyspin sometimes...
         import pyspin as PySpin
-import CVSpin
-import ApSpin
+    try:
+        # Check if PySpin loaded
+        PySpin
+    except NameError:
+        PySpin = None
+
+try:
+    import CVSpin
+except ModuleNotFoundError:
+    CVSpin = None
+
+try:
+    import ApSpin
+    APSPIN_AVAILABLE = True
+except OSError:
+    # Probably failed to load Aptina cams
+    ApSpin = None
+    APSPIN_AVAILABLE = False
 
 # Camera types
 FLIR_CAM = 0
@@ -26,11 +42,11 @@ APTINA_CAM = 1
 OTHER_CAM = 2
 CAM_TYPES = [FLIR_CAM, APTINA_CAM, OTHER_CAM]
 CAM_TYPE_NAMES = {
-    'Flir camera':FLIR_CAM,
-    'Aptina camera':APTINA_CAM,
-    'Other camera':OTHER_CAM
+    FLIR_CAM:'Flir camera',
+    APTINA_CAM:'Aptina camera',
+    OTHER_CAM:'Other camera'
 }
-CamLibs = {FLIR_CAM:PySpin, OTHER_CAM:CVSpin, APTINA_CAM:ApSpin, None:PySpin}
+CamLibs =      {FLIR_CAM:PySpin, OTHER_CAM:CVSpin, APTINA_CAM:ApSpin, None:PySpin}
 
 # Information about PySpin pixel formats, with a partial mapping to common ffmpeg pixel formats
 pixelFormats = {
@@ -426,17 +442,17 @@ def handleCamList(func):
     return wrapper
 
 def discoverCameras(numFakeCameras=0, camType=None):
-    if camType is None or camType == FLIR_CAM:
+    if (camType is None or camType == FLIR_CAM) and CamLibs[camType] is not None:
         FLIRCamSerials = discoverFLIRCameras(numFakeCameras=numFakeCameras)
     else:
         FLIRCamSerials = []
 
-    if camType is None or camType == OTHER_CAM:
+    if (camType is None or camType == OTHER_CAM) and CamLibs[camType] is not None:
         otherCamSerials = discoverOtherCameras()
     else:
         otherCamSerials = []
 
-    if camType is None or camType == APTINA_CAM:
+    if (camType is None or camType == APTINA_CAM) and CamLibs[camType] is not None:
         aptinaCamSerials = discoverAptinaCameras()
     else:
         aptinaCamSerials = []
@@ -469,6 +485,9 @@ def discoverOtherCameras():
     return [cam.Serial for cam in camList]
 
 def initCam(camSerial, camList=None, camType=FLIR_CAM, system=None, **kwargs):
+    if CamLibs[camType] is None:
+        # Check if the relevant library is available or not
+        raise ModuleNotFoundError(name=CAM_TYPE_NAMES[camType])
     if system is None and camList is None:
         system = CamLibs[camType].System.GetInstance()
     if camList is None:
@@ -481,6 +500,9 @@ def initCam(camSerial, camList=None, camType=FLIR_CAM, system=None, **kwargs):
     return cam, camList, system
 
 def initCams(camSerials=None, camList=None, camType=FLIR_CAM, system=None, **kwargs):
+    if CamLibs[camType] is None:
+        # Check if the relevant library is available or not
+        raise ModuleNotFoundError(name=CAM_TYPE_NAMES[camType])
     if system is None and camList is None:
         system = CamLibs[camType].System.GetInstance()
     if camList is None:
