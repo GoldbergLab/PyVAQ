@@ -30,11 +30,9 @@ except ModuleNotFoundError:
 
 try:
     import ApSpin
-    APSPIN_AVAILABLE = True
 except OSError:
     # Probably failed to load Aptina cams
     ApSpin = None
-    APSPIN_AVAILABLE = False
 
 # Camera types
 FLIR_CAM = 0
@@ -442,17 +440,17 @@ def handleCamList(func):
     return wrapper
 
 def discoverCameras(numFakeCameras=0, camType=None):
-    if (camType is None or camType == FLIR_CAM) and CamLibs[camType] is not None:
+    if (camType is None or camType == FLIR_CAM) and CamLibs[FLIR_CAM] is not None:
         FLIRCamSerials = discoverFLIRCameras(numFakeCameras=numFakeCameras)
     else:
         FLIRCamSerials = []
 
-    if (camType is None or camType == OTHER_CAM) and CamLibs[camType] is not None:
+    if (camType is None or camType == OTHER_CAM) and CamLibs[OTHER_CAM] is not None:
         otherCamSerials = discoverOtherCameras()
     else:
         otherCamSerials = []
 
-    if (camType is None or camType == APTINA_CAM) and CamLibs[camType] is not None:
+    if (camType is None or camType == APTINA_CAM) and CamLibs[APTINA_CAM] is not None:
         aptinaCamSerials = discoverAptinaCameras()
     else:
         aptinaCamSerials = []
