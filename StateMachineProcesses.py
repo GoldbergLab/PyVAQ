@@ -31,8 +31,6 @@ if simulatedHardware:
     # Use simulated harddware instead of physical cameras and DAQs
     import PySpinSim.PySpinSim as PySpin
     import nidaqmxSim as nidaqmx
-    from nidaqmxSim.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
-    from nidaqmxSim.constants import Edge, TriggerType
 else:
     # Use physical cameras/DAQs
     try:
@@ -41,8 +39,27 @@ else:
         # pip seems to install PySpin as pyspin sometimes...
         import pyspin as PySpin
     import nidaqmx
-    from nidaqmx.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
-    from nidaqmx.constants import Edge, TriggerType
+
+from nidaqmx.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
+from nidaqmx.constants import TerminalConfiguration, FrequencyUnits, AcquisitionType, Edge
+
+DEFAULT = TerminalConfiguration.DEFAULT
+try:
+    DIFFERENTIAL = TerminalConfiguration.DIFFERENTIAL
+except AttributeError:
+    # Newer versions of nidaqmx renamed DIFFERENTIAL => DIFF
+    DIFFERENTIAL = TerminalConfiguration.DIFF
+NRSE = TerminalConfiguration.NRSE
+try:
+    PSEUDODIFFERENTIAL = TerminalConfiguration.PSEUDODIFFERENTIAL
+except AttributeError:
+    # Newer versions of nidaqmx renamed PSEUDODIFFERENTIAL => PSEUDO_DIFF
+    PSEUDODIFFERENTIAL = TerminalConfiguration.PSEUDO_DIFF
+RSE = TerminalConfiguration.RSE
+HZ = FrequencyUnits.HZ
+CONTINUOUS = AcquisitionType.CONTINUOUS
+RISING = Edge.RISING
+FINITE = AcquisitionType.FINITE
 
 DATE_FORMAT = '%Y-%m-%d'
 TIME_FORMAT = '%Y-%m-%d-%H-%M-%S-%f'
@@ -1506,7 +1523,7 @@ class Synchronizer(StateMachineProcess):
                         trigTask.co_channels.add_co_pulse_chan_freq(
                             counter=self.videoSyncChannel,
                             name_to_assign_to_channel="videoFrequency",
-                            units=nidaqmx.constants.FrequencyUnits.HZ,
+                            units=HZ,
                             initial_delay=0.0,
                             freq=self.videoFrequency,
                             duty_cycle=self.videoDutyCycle)     # Prepare a counter output channel for the video sync signal
@@ -1516,7 +1533,7 @@ class Synchronizer(StateMachineProcess):
                         trigTask.co_channels.add_co_pulse_chan_freq(
                             counter=self.audioSyncChannel,
                             name_to_assign_to_channel="audioFrequency",
-                            units=nidaqmx.constants.FrequencyUnits.HZ,
+                            units=HZ,
                             initial_delay=0.0,
                             freq=self.audioFrequency,
                             duty_cycle=self.audioDutyCycle)     # Prepare a counter output channel for the audio sync signal
@@ -1527,7 +1544,7 @@ class Synchronizer(StateMachineProcess):
                     #     trigTask.triggers.arm_start_trigger.dig_edge_src=self.signalChannel
                     #     trigTask.triggers.arm_start_trigger.trig_type=TriggerType.DIGITAL_EDGE
                     #     trigTask.triggers.arm_start_trigger.dig_edge_edge=Edge.RISING
-                    trigTask.timing.cfg_implicit_timing(sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS)
+                    trigTask.timing.cfg_implicit_timing(sample_mode=CONTINUOUS)
 
                     # Set shared values so other processes can get actual a/v frequencies
                     if self.audioSyncChannel is not None and self.actualAudioFrequency is not None:
@@ -1540,7 +1557,7 @@ class Synchronizer(StateMachineProcess):
                     if signalTask is not None:
                         # Add dummy write channel to force execute to block until task gets start trigger
 #                        signalTask.do_channels.add_do_chan(lines=self.signalChannel)
-                        # signalTask.timing.cfg_samp_clk_timing(rate=10000, sample_mode=nidaqmx.constants.AcquisitionType.FINITE, samps_per_chan=1)
+                        # signalTask.timing.cfg_samp_clk_timing(rate=10000, sample_mode=FINITE, samps_per_chan=1)
                         # # Configure task to wait for a digital pulse on the specified channel.
                         # signalTask.triggers.arm_start_trigger.dig_edge_src=self.signalChannel
                         # signalTask.triggers.arm_start_trigger.trig_type=TriggerType.DIGITAL_EDGE
@@ -1552,8 +1569,8 @@ class Synchronizer(StateMachineProcess):
 
                         # signalTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
                         #     rate=1000,
-                        #     active_edge=nidaqmx.constants.Edge.RISING,
-                        #     sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
+                        #     active_edge=RISING,
+                        #     sample_mode=FINITE,
                         #     samps_per_chan=1)
 
                     # CHECK FOR MESSAGES
@@ -2212,15 +2229,15 @@ class AudioAcquirer(StateMachineProcess):
         self.chunkSize = chunkSize
         self.inputChannels = channelNames
         if channelConfig == "DEFAULT":
-            self.channelConfig = nidaqmx.constants.TerminalConfiguration.DEFAULT
+            self.channelConfig = DEFAULT
         elif channelConfig == "DIFFERENTIAL":
-            self.channelConfig = nidaqmx.constants.TerminalConfiguration.DIFFERENTIAL
+            self.channelConfig = DIFFERENTIAL
         elif channelConfig == "NRSE":
-            self.channelConfig = nidaqmx.constants.TerminalConfiguration.NRSE
+            self.channelConfig = NRSE
         elif channelConfig == "PSEUDODIFFERENTIAL":
-            self.channelConfig = nidaqmx.constants.TerminalConfiguration.PSEUDODIFFERENTIAL
+            self.channelConfig = PSEUDODIFFERENTIAL
         elif channelConfig == "RSE":
-            self.channelConfig = nidaqmx.constants.TerminalConfiguration.RSE
+            self.channelConfig = RSE
         self.syncChannel = syncChannel
         self.ready = ready
         self.exitFlag = False
@@ -2296,8 +2313,8 @@ class AudioAcquirer(StateMachineProcess):
                         readTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
                             rate=self.audioFrequency,
                             source=self.syncChannel,                            # Specify a timing source!
-                            active_edge=nidaqmx.constants.Edge.RISING,
-                            sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
+                            active_edge=RISING,
+                            sample_mode=CONTINUOUS,
                             samps_per_chan=self.chunkSize)
                         sampleCount = 0
 
@@ -3334,7 +3351,7 @@ class VideoAcquirer(StateMachineProcess):
 
         if self.verbose >= 3: self.log("Temporarily initializing camera to get image size, channel count, and pixel format...")
         self.nChannels, videoWidth, videoHeight, self.pixelFormat = cu.get(['ChannelCount', 'Width', 'Height', 'PixelFormat'], camSerial=self.camSerial, camType=self.camType)
-        if self.verbose >= 2: print('Camera pixel format is:', self.pixelFormat)
+        if self.verbose >= 2: self.log('Camera pixel format is:', self.pixelFormat)
 
         if sendToWriter:
             self.imageQueue = SharedImageSender(
@@ -3456,6 +3473,8 @@ class VideoAcquirer(StateMachineProcess):
                         if self.verbose >= 2: self.log("Initializing camera...")
                         self.log('Initializing camera with HWTrigger=', self.hardwareTimed)
                         cam, camList, system = cu.initCam(self.camSerial, camType=self.camType, HWTrigger=self.hardwareTimed)
+                        self.log('cam:')
+                        self.log(cam)
 
                         cu.applyCameraConfiguration(self.acquireSettings, cam=cam)
                         if self.verbose >= 2: self.log("...camera initialization complete")
@@ -3472,8 +3491,8 @@ class VideoAcquirer(StateMachineProcess):
                     if self.exitFlag:
                         self.nextState = States.STOPPING
                     elif msg in ['', Messages.START]:
-                        if self.frameRate is None:
-                            self.log('Initializing => Initializing because self.frameRate is None')
+                        if self.frameRate == -1:
+                            self.log('Initializing => Initializing because self.frameRateVar is still unset')
                             self.nextState = States.INITIALIZING
                         else:
                             self.nextState = States.READY
@@ -3581,6 +3600,7 @@ class VideoAcquirer(StateMachineProcess):
 
                             # Put image into image queue
                             if self.verbose >= 3: self.log("bytes = "+str(imageResult.GetNDArray()[0:10, 0]))
+                            if self.verbose >= 3: self.log("size: "+str(imageResult.GetNDArray().shape))
 
                             if self.imageQueue is not None:
                                 self.imageQueue.put(imarray=imageResult.GetNDArray(), metadata={'frameTime':frameTime, 'imageID':imageID})
