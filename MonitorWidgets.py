@@ -370,18 +370,22 @@ class CameraMonitor(ttk.LabelFrame):
         # Expects a PIL image object
         self.active()
         if self.viewerEnabled():
-            if cu.pixelFormats[pixelFormat]['bayer']:
-                # Invert bayer filter to get full color image
-                image = cv2.cvtColor(np.asarray(image), cv2.COLOR_BayerRGGB2RGB)
+            # if cu.pixelFormats[pixelFormat]['bayer']:
+            #     # Invert bayer filter to get full color image
+            #     print('debayering. Image before:', image.shape)
+            #     image = cv2.cvtColor(np.asarray(image), cv2.COLOR_BayerRGGB2RGB)
+            #     print('debayering. Image after:', image.shape)
             # newSize = self.getBestImageSize(image.size)
             # image = image.resize(newSize, resample=Image.BILINEAR)
             if pixelFormat is not None:
                 ffmpegPixelFormat = cu.pixelFormats[pixelFormat]['ffmpeg']
+                # breakpoint()
                 if ffmpegPixelFormat is not None and ffmpegPixelFormat[0] != self.viewer.pixelFormat:
                     # There are multiple options for this pixel format  in ffmpeg, just choose the first one.
                     ffmpegPixelFormat = ffmpegPixelFormat[0]
                     self.viewer.close()
                     self.viewer = ffplayer(100, self.infoText, pixelFormat=ffmpegPixelFormat)
+            # print('ffmpeg pixel format:', ffmpegPixelFormat)
 
             self.viewer.showFrame(image)
 
