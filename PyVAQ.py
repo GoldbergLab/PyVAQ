@@ -2765,7 +2765,7 @@ him know. Otherwise, I had nothing to do with it.
                 params['camTypes'] = [cu.FLIR_CAM for _ in params['camSerials']]
             if 'camHardwareSync' not in params:
                 # Legacy file format, generate dummy cam hardware sync status
-                params['camHardwareSync'] = [false for _ in params['camSerials']]
+                params['camHardwareSync'] = [False for _ in params['camSerials']]
 
             if 'scheduleStartTime' in params:
                 params['scheduleStartTime'] = serializableToTime(params['scheduleStartTime'])
