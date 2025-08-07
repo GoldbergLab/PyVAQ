@@ -300,10 +300,10 @@ def find_valid_ports(device_dir, max_attempts=5):
     numAptinaCameras = apbase_dll.ap_NumCameras()
     return list(range(numAptinaCameras))
 
-def portNumToSerial(port):
+def _portNumToSerial(port):
     return 'Camera_{p}'.format(p=port)
 
-def serialToPort(serial):
+def _serialToPortNumber(serial):
     match = re.search('Camera_([0-9]+)', serial)
     if match is None:
         return None
