@@ -1,0 +1,1 @@
+These libraries retrieved from ams OSRAM website on 2025-08-06 (https://ams-osram.com/products/sensor-solutions/cmos-image-sensors/ams-naneye2d-miniature-camera-module)
