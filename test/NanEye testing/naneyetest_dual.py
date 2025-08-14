@@ -1,14 +1,18 @@
 # -*- coding: utf-8 -*-
 # Minimal NanEye2D (FOB 2.0) frame grabber using pythonnet + OpenCV
 # Press ESC to quit.
+import sys
 
-import numpy as np, cv2, threading, time, sys, os
+sys.path.append(r'D:\Dropbox\Documents\Work\Cornell Lab Tech\Projects\Video VI\PyVAQ\Source')
+
+import numpy as np, threading, time, os, queue
 from pathlib import Path
 from collections import deque
 import clr
 from System import IntPtr
 from System.Runtime.InteropServices import Marshal
 from System.Collections.Generic import List
+from ffplayViewer import ffplayer
 
 root = Path(__file__).resolve().parent.parent.parent
 SDK_DIR = root / "lib" / "NanEye"                  # folder containing the Awaiba/ams-OSRAM DLLs
@@ -37,7 +41,7 @@ provider.SetFpgaFile(str(FPGA_BIN))
 # Enable only Sensor 1 (index 0 = True, index 1 = False), like your C#
 sensors = List[bool]()
 sensors.Add(True)   # Sensor 1
-sensors.Add(False)  # Sensor 2
+sensors.Add(True)  # Sensor 2
 provider.Sensors = sensors
 
 print('Created provider:')
@@ -62,71 +66,66 @@ for prop in dir(provider):
 w, h = 250, 250       # or read once from first event
 BPP = 3               # use 1 for 8-bit raw, 2 for 10/16-bit, 3 for RGB
 buflen = w*h*BPP
-RING = 10              # number of prealloc slots
+RING = 20              # number of prealloc slots
+
+recycled_images = queue.Queue(maxsize=RING)
+new_images = queue.Queue(maxsize=RING)
 
 # Preallocate ring of numpy buffers
-ring = [np.empty(buflen, dtype=np.uint8) for _ in range(RING)]
-q = deque(maxlen=RING)
-qlock = threading.Lock()
-lastFrameCount = None
-lastTimeStamp = 0
+for _ in range(RING):
+    recycled_images.put(np.empty(buflen, dtype=np.uint8))
 
-timetampDeque = deque(maxlen=10)
+lastFrameCount = [None, None]
 
 def on_image(sender, e):
-    global lastFrameCount, lastTimeStamp
+    global lastFrameCount, new_images, recycled_images
     # FAST path: copy raw bytes, enqueue index, return
     try:
         # choose one raw source:
         # src = e.GetImageData.GetRawPixels1Byte  # fast 8-bit
         # src = e.GetImageData.GetRawPixels2Byte # 10-bit expanded (2 bytes/px)
         src = e.PixelData                      # RGB processed (3 bytes/px)
+        sensorID = e.SensorID
         frameCount = e.FrameCount
-        if lastFrameCount is not None and frameCount != lastFrameCount + 1:
-            print('Dropped frame! {k} => {j}'.format(k=lastFrameCount, j=frameCount))
-        lastFrame = frameCount
+        if lastFrameCount[sensorID] is not None and frameCount != lastFrameCount[sensorID] + 1 and not (frameCount == 0 and lastFrameCount[sensorID] == 255):
+            print('Sensor {s} dropped frame! {k} => {j}'.format(s=sensorID, k=lastFrameCount[sensorID], j=frameCount))
+        lastFrameCount[sensorID] = frameCount
 
-        timeStamp = e.TimeStamp / 1000000.0
-
-        timetampDeque.append(timeStamp - lastTimeStamp)
-        if len(timetampDeque) > 0:
-            fps = sum([1/t for t in timetampDeque]) / len(timetampDeque)
-
-        print('fps: ', fps)
-        lastTimeStamp = timeStamp
-
-        with qlock:
-            # overwrite the oldest slot (bounded queue)
-            slot = ring[len(q) % RING]
-        Marshal.Copy(src, 0, IntPtr(slot.ctypes.data), src.Length)
-        with qlock:
-            q.append((slot, int(e.Width), int(e.Height)))
+        buf = recycled_images.get(block=False)
+        Marshal.Copy(src, 0, IntPtr(buf.ctypes.data), src.Length)
+        new_images.put((buf, sensorID, int(e.Width), int(e.Height)), block=False)
+    except queue.Empty:
+        print('empty recycled image queue!')
+    except queue.Full:
+        print('full new image queue!')
     except Exception as ex:
+        print('error:')
         print(ex)
         pass  # keep it lean; log elsewhere
+
+viewers = [ffplayer(100, 'sensor 0', pixelFormat='rgb24') for _ in range(2)]
 
 def ui_loop():
     while True:
         item = None
-        with qlock:
-            if q:
-                item = q.pop()
-                q.clear()  # drop older ones
-        if item:
-            buf, W, H = item
-            if BPP == 1:
-                frame = buf.reshape(H, W)
-                cv2.imshow("NanEye RAW", frame)
-            elif BPP == 2:
-                # visualize 10/16-bit as 8-bit for display
-                frame16 = buf.view(np.uint16).reshape(H, W)
-                cv2.imshow("NanEye RAW", (frame16 >> 2).astype(np.uint8))
-            else:
-                frame = buf.reshape(H, W, 3)  # RGB
-                cv2.imshow("NanEye RGB", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-        if (cv2.waitKey(1) & 0xFF) == 27:
-            print('cv waitkey stopping')
-            break
+        print('new images:', new_images.qsize())
+        print('rcy images:', recycled_images.qsize())
+        for k in range(5):
+            try:
+                buf, sensorID, W, H = new_images.get(block=True)
+                recycled_images.put(buf, block=True)
+            except queue.Empty:
+                break
+        if BPP == 1:
+            frame = buf.reshape(H, W)
+            viewers[sensorID].showFrame(frame)
+        elif BPP == 2:
+            # visualize 10/16-bit as 8-bit for display
+            frame16 = buf.view(np.uint16).reshape(H, W)
+            viewers[sensorID].showFrame(frame)
+        else:
+            frame = buf.reshape(H, W, 3)  # RGB
+            viewers[sensorID].showFrame(frame)
         time.sleep(0.001)
 
 provider.ImageProcessed += on_image  # (same event as C#) :contentReference[oaicite:13]{index=13}
@@ -135,7 +134,6 @@ provider.StartCapture()              # :contentReference[oaicite:14]{index=14}
 print('post capturing:', provider.IsCapturing)
 ui_loop()
 provider.StopCapture()
-
 
     # Available image info:
     # e.GetImageData = Awaiba.FrameProcessing.ImageData
