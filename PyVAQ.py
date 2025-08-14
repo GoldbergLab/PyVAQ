@@ -1052,8 +1052,14 @@ him know. Otherwise, I had nothing to do with it.
 
         availableFLIRCamSerials, _ = cu.discoverCameras(camType=cu.FLIR_CAM)
         availableAptinaCamSerials, _ = cu.discoverCameras(camType=cu.APTINA_CAM)
+        availableNanEyeCamSerials, _ = cu.discoverCameras(camType=cu.NE_CAM)
         availableOtherCamSerials, _ = cu.discoverCameras(camType=cu.OTHER_CAM)
-        availableCamSerials = availableFLIRCamSerials + availableOtherCamSerials + availableAptinaCamSerials
+        availableCamSerials = (
+            availableFLIRCamSerials +
+            availableOtherCamSerials +
+            availableAptinaCamSerials +
+            availableNanEyeCamSerials
+        )
 
         camSerials = []
 
@@ -1075,6 +1081,8 @@ him know. Otherwise, I had nothing to do with it.
         if len(availableAptinaCamSerials) > 0:
             params.append(Param(name='Aptina Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableAptinaCamSerials, default=None))
             params.append(Param(name='Aptina Cameras (hw sync)', widgetType=Param.MULTICHOICE, options=availableAptinaCamSerials, default=None))
+        if len(availableNanEyeCamSerials) > 0:
+            params.append(Param(name='NanEye Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableNanEyeCamSerials, default=None))
         if len(availableOtherCamSerials) > 0:
             params.append(Param(name='Other Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableOtherCamSerials, default=None))
             params.append(Param(name='Other Cameras (hw sync)', widgetType=Param.MULTICHOICE, options=availableOtherCamSerials, default=None))
@@ -1125,6 +1133,11 @@ him know. Otherwise, I had nothing to do with it.
                 if 'Aptina Cameras (hw sync)' in choices:
                     aptinaCamSerials.extend(choices['Aptina Cameras (hw sync)'])
                     aptinaCamHWSync.extend([True for camSerial in choices['Aptina Cameras (hw sync)']])
+                nanEyeCamSerials = []
+                nanEyeCamHWSync = []
+                if 'NanEye Cameras (sw sync)' in choices:
+                    nanEyeCamSerials.extend(choices['NanEye Cameras (sw sync)'])
+                    nanEyeCamHWSync.extend([False for camSerial in choices['NanEye Cameras (sw sync)']])
 
                 audioSyncTerminal = None
                 if 'Audio Sync Channel' in choices and choices['Audio Sync Channel'] != "None":
@@ -1148,9 +1161,23 @@ him know. Otherwise, I had nothing to do with it.
                 if 'Audio channel configuration' in choices and len(choices['Audio channel configuration']) > 0:
                     audioChannelConfiguration = choices['Audio channel configuration']
 
-                camSerials = FLIRCamSerials + otherCamSerials + aptinaCamSerials
-                camTypes = [cu.FLIR_CAM for camSerial in FLIRCamSerials] + [cu.OTHER_CAM for camSerial in otherCamSerials] + [cu.APTINA_CAM for camSerial in aptinaCamSerials]
-                camHardwareSync = FLIRCamHWSync + otherCamHWSync + aptinaCamHWSync
+                camSerials = (
+                    FLIRCamSerials +
+                    otherCamSerials +
+                    aptinaCamSerials +
+                    nanEyeCamSerials
+                )
+                camTypes = (
+                    [cu.FLIR_CAM for camSerial in FLIRCamSerials] +
+                    [cu.OTHER_CAM for camSerial in otherCamSerials] +
+                    [cu.APTINA_CAM for camSerial in aptinaCamSerials] +
+                    [cu.NE_CAM for camSerial in nanEyeCamSerials])
+                camHardwareSync = (
+                    FLIRCamHWSync +
+                    otherCamHWSync +
+                    aptinaCamHWSync +
+                    nanEyeCamHWSync
+                )
 
                 # Set chosen parameters
                 self.setParams(
@@ -1202,6 +1229,7 @@ him know. Otherwise, I had nothing to do with it.
 
         FLIRCamSerials =   [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.FLIR_CAM]
         aptinaCamSerials = [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.APTINA_CAM]
+        nanEyeCamSerials = [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.NE_CAM]
         otherCamSerials =  [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.OTHER_CAM]
 
         lines.extend([
@@ -1209,6 +1237,7 @@ him know. Otherwise, I had nothing to do with it.
             '  Audio DAQ channels:   {audioDAQChannels}'.format(audioDAQChannels=', '.join(p['audioDAQChannels'])),
             '  FLIR Cameras:         {camSerials}'.format(camSerials=', '.join(FLIRCamSerials)),
             '  Aptina Cameras:       {camSerials}'.format(camSerials=', '.join(aptinaCamSerials)),
+            '  NanEye Cameras:       {camSerials}'.format(camSerials=', '.join(nanEyeCamSerials)),
             '  Other Cameras:        {camSerials}'.format(camSerials=', '.join(otherCamSerials)),
             '  Audio sync terminal:  {audioSyncTerminal}'.format(audioSyncTerminal=p['audioSyncTerminal']),
             '  Video sync terminal:  {videoSyncTerminal}'.format(videoSyncTerminal=p['videoSyncTerminal']),
