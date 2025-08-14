@@ -5,10 +5,10 @@ from System.Runtime.InteropServices import Marshal
 from System.Collections.Generic import List
 from pathlib import Path
 
-root = Path(__file__).resolve()
+root = Path(__file__).parent.resolve()
 SDK_DIR = root / "lib" / "NanEye"                  # folder containing the Awaiba/ams-OSRAM DLLs
-FW_IMG  = root / "NanEye" / "lib" / "firmware" / "fx3_fw_2EP.img"     # same as C# Form1
-FPGA_BIN = root / "NanEye" / "lib" / "firmware" / "fob_fpga_v08.bin"  # same as C# Form1
+FW_IMG  = root / "lib" / "NanEye" / "firmware" / "fx3_fw_2EP.img"     # same as C# Form1
+FPGA_BIN = root / "lib" / "NanEye" / "firmware" / "fob_fpga_v08.bin"  # same as C# Form1
 
 # Make sure .NET can load the assemblies
 sys.path.append(str(SDK_DIR))
@@ -27,117 +27,146 @@ from Awaiba.Drivers.Grabbers.NanEye2D.FobUsb3 import NanEyeFobProvider
 #   used with mostly the same class/function call signature.
 
 CameraAttributes = dict(
-    POS_MSEC=None,
-    POS_FRAMES=None,
-    POS_AVI_RATIO=None,
-    FRAME_WIDTH=None,
-    FRAME_HEIGHT=None,
-    FPS=None,
-    FOURCC=None,
-    FRAME_COUNT=None,
-    FORMAT=None,
-    MODE=None,
-    BRIGHTNESS=None,
-    CONTRAST=None,
-    SATURATION=None,
-    HUE=None,
-    GAIN=None,
-    EXPOSURE=None,
-    CONVERT_RGB=None,
-    WHITE_BALANCE_BLUE_U=None,
-    RECTIFICATION=None,
-    MONOCHROME=None,
-    SHARPNESS=None,
-    AUTO_EXPOSURE=None,
-    GAMMA=None,
-    TEMPERATURE=None,
-    TRIGGER=None,
-    TRIGGER_DELAY=None,
-    WHITE_BALANCE_RED_V=None,
-    ZOOM=None,
-    FOCUS=None,
-    GUID=None,
-    ISO_SPEED=None,
-    BACKLIGHT=None,
-    PAN=None,
-    TILT=None,
-    ROLL=None,
-    IRIS=None,
-    SETTINGS=None,
-    BUFFERSIZE=None,
-    AUTOFOCUS=None,
-    SAR_NUM=None,
-    SAR_DEN=None,
-    BACKEND=None,
-    CHANNEL=None,
-    AUTO_WB=None,
-    WB_TEMPERATURE=None,
-    CODEC_PIXEL_FORMAT=None,
-    BITRATE=None,
-    ORIENTATION_META=None,
-    ORIENTATION_AUTO=None,
-    OPEN_TIMEOUT_MSEC=None,
-    READ_TIMEOUT_MSEC=None,
+    # POS_MSEC='POS_MSEC',
+    # POS_FRAMES='POS_FRAMES',
+    # POS_AVI_RATIO='POS_AVI_RATIO',
+    FRAME_WIDTH='FRAME_WIDTH',
+    FRAME_HEIGHT='FRAME_HEIGHT',
+    BIT_DEPTH='BIT_DEPTH',
+    FPS='FPS',
+    # FOURCC='FOURCC',
+    # FRAME_COUNT='FRAME_COUNT',
+    # FORMAT='FORMAT',
+    # MODE='MODE',
+    # BRIGHTNESS='BRIGHTNESS',
+    # CONTRAST='CONTRAST',
+    # SATURATION='SATURATION',
+    # HUE='HUE',
+    # GAIN='GAIN',
+    # EXPOSURE='EXPOSURE',
+    # CONVERT_RGB='CONVERT_RGB',
+    # WHITE_BALANCE_BLUE_U='WHITE_BALANCE_BLUE_U',
+    # RECTIFICATION='RECTIFICATION',
+    # MONOCHROME='MONOCHROME',
+    # SHARPNESS='SHARPNESS',
+    # AUTO_EXPOSURE='AUTO_EXPOSURE',
+    # GAMMA='GAMMA',
+    # TEMPERATURE='TEMPERATURE',
+    # TRIGGER='TRIGGER',
+    # TRIGGER_DELAY='TRIGGER_DELAY',
+    # WHITE_BALANCE_RED_V='WHITE_BALANCE_RED_V',
+    # ZOOM='ZOOM',
+    # FOCUS='FOCUS',
+    # GUID='GUID',
+    # ISO_SPEED='ISO_SPEED',
+    # BACKLIGHT='BACKLIGHT',
+    # PAN='PAN',
+    # TILT='TILT',
+    # ROLL='ROLL',
+    # IRIS='IRIS',
+    # SETTINGS='SETTINGS',
+    # BUFFERSIZE='BUFFERSIZE',
+    # AUTOFOCUS='AUTOFOCUS',
+    # SAR_NUM='SAR_NUM',
+    # SAR_DEN='SAR_DEN',
+    # BACKEND='BACKEND',
+    CHANNEL='CHANNEL',
+    # AUTO_WB='AUTO_WB',
+    # WB_TEMPERATURE='WB_TEMPERATURE',
+    # CODEC_PIXEL_FORMAT='CODEC_PIXEL_FORMAT',
+    # BITRATE='BITRATE',
+    # ORIENTATION_META='ORIENTATION_META',
+    # ORIENTATION_AUTO='ORIENTATION_AUTO',
+    # OPEN_TIMEOUT_MSEC='OPEN_TIMEOUT_MSEC',
+    # READ_TIMEOUT_MSEC='READ_TIMEOUT_MSEC'
 )
 
 CameraAttributeAccessMode = dict(
-    POS_MSEC='RW',
-    POS_FRAMES='RW',
-    POS_AVI_RATIO='RW',
-    FRAME_WIDTH='RW',
-    FRAME_HEIGHT='RW',
-    FPS='RW',
-    FOURCC='RW',
-    FRAME_COUNT='RW',
-    FORMAT='RW',
-    MODE='RW',
-    BRIGHTNESS='RW',
-    CONTRAST='RW',
-    SATURATION='RW',
-    HUE='RW',
-    GAIN='RW',
-    EXPOSURE='RW',
-    CONVERT_RGB='RW',
-    WHITE_BALANCE_BLUE_U='RW',
-    RECTIFICATION='RW',
-    MONOCHROME='RW',
-    SHARPNESS='RW',
-    AUTO_EXPOSURE='RW',
-    GAMMA='RW',
-    TEMPERATURE='RW',
-    TRIGGER='RW',
-    TRIGGER_DELAY='RW',
-    WHITE_BALANCE_RED_V='RW',
-    ZOOM='RW',
-    FOCUS='RW',
-    GUID='RW',
-    ISO_SPEED='RW',
-    BACKLIGHT='RW',
-    PAN='RW',
-    TILT='RW',
-    ROLL='RW',
-    IRIS='RW',
-    SETTINGS='RW',
-    BUFFERSIZE='RW',
-    AUTOFOCUS='RW',
-    SAR_NUM='RW',
-    SAR_DEN='RW',
-    BACKEND='RO',
-    CHANNEL='RW',
-    AUTO_WB='RW',
-    WB_TEMPERATURE='RW',
-    CODEC_PIXEL_FORMAT='RO',
-    BITRATE='RO',
-    ORIENTATION_META='RO',
-    ORIENTATION_AUTO='RW',
-    OPEN_TIMEOUT_MSEC='RW',
-    READ_TIMEOUT_MSEC='RW',
+#     POS_MSEC='RW',
+#     POS_FRAMES='RW',
+#     POS_AVI_RATIO='RW',
+    FRAME_WIDTH='R',
+    FRAME_HEIGHT='R',
+    BIT_DEPTH='R',
+    FPS='R',
+#     FOURCC='RW',
+#     FRAME_COUNT='RW',
+#     FORMAT='RW',
+#     MODE='RW',
+#     BRIGHTNESS='RW',
+#     CONTRAST='RW',
+#     SATURATION='RW',
+#     HUE='RW',
+#     GAIN='RW',
+#     EXPOSURE='RW',
+#     CONVERT_RGB='RW',
+#     WHITE_BALANCE_BLUE_U='RW',
+#     RECTIFICATION='RW',
+#     MONOCHROME='RW',
+#     SHARPNESS='RW',
+#     AUTO_EXPOSURE='RW',
+#     GAMMA='RW',
+#     TEMPERATURE='RW',
+#     TRIGGER='RW',
+#     TRIGGER_DELAY='RW',
+#     WHITE_BALANCE_RED_V='RW',
+#     ZOOM='RW',
+#     FOCUS='RW',
+#     GUID='RW',
+#     ISO_SPEED='RW',
+#     BACKLIGHT='RW',
+#     PAN='RW',
+#     TILT='RW',
+#     ROLL='RW',
+#     IRIS='RW',
+#     SETTINGS='RW',
+#     BUFFERSIZE='RW',
+#     AUTOFOCUS='RW',
+#     SAR_NUM='RW',
+#     SAR_DEN='RW',
+#     BACKEND='RO',
+    CHANNEL='R',
+#     AUTO_WB='RW',
+#     WB_TEMPERATURE='RW',
+#     CODEC_PIXEL_FORMAT='RO',
+#     BITRATE='RO',
+#     ORIENTATION_META='RO',
+#     ORIENTATION_AUTO='RW',
+#     OPEN_TIMEOUT_MSEC='RW',
+#     READ_TIMEOUT_MSEC='RW',
 )
 
 # For compatibility with PySpin
 AlternateCameraAttributeNames = dict(
     AcquisitionFrameRate='FPS',
 )
+
+def GetAttributeCode(attributeName):
+    """Attempt to translate a human-readable attribute name into a  code
+
+    This takes a human-readable attribute name and attempts to translate it into
+        a valid OpenCV VideoCaptureProperty code, using the CameraAttributes and
+        AlternateCameraAttributeNames dictionaries.
+
+    Args:
+        attributeName (str): The attribute name to translate into a code
+
+    Returns:
+        int: OpenCV VideoCaptureProperty code
+
+    """
+    # Attempt to translate the attributeName into a valid OpenCV VideoCaptureProperty code
+    try:
+        attributeCode = CameraAttributes[attributeName]
+        return attributeCode
+    except KeyError:
+        try:
+            # Perhaps this is an alternate attribute name?
+            attributeName = AlternateCameraAttributeNames[attributeName]
+            attributeCode = CameraAttributes[attributeName]
+        except KeyError:
+            raise NameError('Attribute name {n} not recognized.'.format(n=attributeName))
+        return attributeCode
 
 class System:
     """
@@ -147,15 +176,24 @@ class System:
     C++ includes: System.h
     """
 
-    def __init__(self, *args, sensor1=True, sensor2=False, **kwargs):
+    _reserved = False
+
+    def __init__(self, *args, sensor1=True, sensor2=True, _safe=False, **kwargs):
         # Create provider
-        self._provider = NanEyeFobProvider()
+        if not _safe:
+            raise RuntimeError('Use GetInstance to create System')
+
+        self._camera_list = None
 
         self._capture_started = False
 
+        self._connection_successful = False
+
+        self._provider = NanEyeFobProvider()
+
         # Point to firmware/FPGA (same as in C#)
-        self._provider.SetFWFile(FW_IMG)
-        self._provider.SetFpgaFile(FPGA_BIN)
+        self._provider.SetFWFile(str(FW_IMG))
+        self._provider.SetFpgaFile(str(FPGA_BIN))
 
         self._sensor1 = sensor1
         self._sensor2 = sensor2
@@ -166,38 +204,37 @@ class System:
         sensors.Add(self._sensor2)
         self._provider.Sensors = sensors
 
+        self._connection_successful = True
+
         self._queue_size = 10              # number of prealloc slots
 
         # Preallocate ring of numpy buffers
         self._buffers = {}
 
-        for camera_port in [0, 1][self._sensor1, self._sensor2]:
+        for camera_port in np.array([0, 1])[[self._sensor1, self._sensor2]]:
             self._buffers[camera_port] = {}
             self._buffers[camera_port]['empty'] = queue.Queue(maxsize=self._queue_size)
             self._buffers[camera_port]['image'] = queue.Queue(maxsize=self._queue_size)
 
-        print('Created provider:')
-        print('\t', self._provider.Width, 'x', self._provider.Height)
-
     def _start_capture(self):
-        self._capture_started = True
         # Register frame ready callback
         self._provider.ImageProcessed += self._frame_ready_callback
         # Initiate camera capture
         if not self._capture_started:
-            provider.StartCapture()              # :contentReference[oaicite:14]{index=14}
+            self._provider.StartCapture()              # :contentReference[oaicite:14]{index=14}
+        self._capture_started = True
 
     def _stop_capture(self):
-        self._capture_started = False
         if self._capture_started:
-            provider.StopCapture()
+            self._provider.StopCapture()
+        self._capture_started = False
 
     def _frame_ready_callback(self, sender, e):
         # FAST path: copy raw bytes, enqueue index, return
         # choose one raw source:
-        src = e.GetImageData.GetRawPixels1Byte  # fast 8-bit
+        # src = e.GetImageData.GetRawPixels1Byte  # fast 8-bit
         # src = e.GetImageData.GetRawPixels2Byte # 10-bit expanded (2 bytes/px)
-        # src = e.PixelData                      # RGB processed (3 bytes/px)
+        src = e.PixelData                      # RGB processed (3 bytes/px)
 
         # Other available fields for "e", the new image:
         # e.GetImageData = Awaiba.FrameProcessing.ImageData
@@ -224,6 +261,8 @@ class System:
         #   a queue.Empty exception will be raised
         buf = self._buffers[sensorID]['empty'].get(block=False)
 
+        print('got image from empty buffer #{s}, qsize={q}'.format(s=sensorID, q=self_buffers[sensorID]['empty'].qsize))
+
         # Copy the new image data into the free buffer
         Marshal.Copy(src, 0, IntPtr(buf.ctypes.data), src.Length)
 
@@ -231,9 +270,22 @@ class System:
         #   queue. If that queue is full, a queue.Full exception will be raised
         self._buffers[sensorID]['image'].put((buf, e.FrameCount, e.FramesTime), block=False)
 
+        print('put image in image buffer #{s}, qsize={q}'.format(s=sensorID, q=self_buffers[sensorID]['image'].qsize))
+
+    def _get_width(self):
+        return self._provider.Width
+
+    def _get_height(self):
+        return self._provider.Height
+
     def GetInstance():
         """GetInstance() -> SystemPtr"""
-        return System()
+        if System._reserved:
+            raise IOError("Only one NanEye System class may exist at once")
+        System._reserved = True
+
+        system = System(_safe=True)
+        return system
 
     def ReleaseInstance(self):
         """
@@ -256,6 +308,9 @@ class System:
 
         See:   GetInstance()
         """
+        self._camera_list.Clear()
+        self._provider.Dispose()
+        System._reserved = False
         return
 
     def GetInterfaces(self, updateInterface=True):
@@ -350,7 +405,8 @@ class System:
         An CameraList object that contains a list of all cameras.
         """
 
-        return CameraList([0, 1][self._sensor1, self._sensor2], buffers=self._buffers, system=self)
+        self._camera_list = CameraList(np.array([0, 1])[[self._sensor1, self._sensor2]], buffers=self._buffers, system=self)
+        return self._camera_list
 
     def UpdateCameras(self, updateInterfaces=True):
         """
@@ -566,8 +622,7 @@ class System:
 
         Returns true if the system is in use and false otherwise.
         """
-        raise NotImplementedError()
-        return
+        return self._provider is not None and self._provider.IsCapturing
 
     def SendActionCommand(self, deviceKey, groupKey, groupMask, actionTime=0, pResultSize=None, results=0):
         """
@@ -809,7 +864,8 @@ class CameraList:
 
         See:   System:ReleaseInstance()
         """
-        # Nothing to do, really
+        for camera in self._cameras:
+            camera.DeInit()
         return
 
     def RemoveByIndex(self, index):
@@ -904,63 +960,48 @@ class Camera:
         self._system = system
         self._port_number = port_number
 
-        self._width, self._height = 250, 250       # or read once from first event
-        self._BPP = 1               # use 1 for 8-bit raw, 2 for 10/16-bit, 3 for RGB
-        self._buflen = w*h*BPP
+        self._width, self._height = self._system._get_width(), self._system._get_height()       # or read once from first event
+        self._BPP = 3               # use 1 for 8-bit raw, 2 for 10/16-bit, 3 for RGB
+        self._buflen = self._width*self._height*self._BPP
 
         self._empty_buffers = buffers['empty']
         self._image_buffers = buffers['image']
 
-        self.Width =  Value(self._width)
-        self.Height = Value(self._height)
+        self.Width =  Value(self.GetFrameWidth)
+        self.Height = Value(self.GetFrameHeight)
 
         self.Serial = str(port_number)
         self._initialized = False
 
     def _create_buf(self):
-        return np.empty((self._height, self._width), dtype=np.uint8)
+        return np.empty((self._height, self._width, 3), dtype=np.uint8)
 
     def GetFrameWidth(self):
         """Get the width of the frames the camera acquires.
-
-        Attempt to do so using the camera attribute from OpenCV. If that results
-            in the default nonsense value of 0, try grabbing one frame to
-            measure the width. If it comes to that, also grab the height and
-            store it so next time we don't have to do it again.
 
         Returns:
             int: Width of the camera frames in pixels
 
         """
-        if self._width == 0:
-            self._width = self.GetAttribute('FRAME_WIDTH')
-        if self._width == 0:
-            imagePtr = self.GetNextImage()
-            self._width = imagePtr.GetWidth()
-            self._height = imagePtr.GetHeight()
-            imagePtr.Release()
         return self._width
 
     def GetFrameHeight(self):
         """Get the height of the frames the camera acquires.
 
-        Attempt to do so using the camera attribute from OpenCV. If that results
-            in the default nonsense value of 0, try grabbing one frame to
-            measure the height. If it comes to that, also grab the width and
-            store it so next time we don't have to do it again.
+        Returns:
+            int: Height of the camera frames in pixels
+
+        """
+        return self._height
+
+    def GetFrameDepth(self):
+        """Get the pixel bit depth of the frames the camera acquires.
 
         Returns:
             int: Height of the camera frames in pixels
 
         """
-        if self._height == 0:
-            self._height = self.GetAttribute('FRAME_HEIGHT')
-        if self._height == 0:
-            imagePtr = self.GetNextImage()
-            self._width = imagePtr.GetWidth()
-            self._height = imagePtr.GetHeight()
-            imagePtr.Release()
-        return self._height
+        return 1
 
     def GetAttribute(self, attributeName):
         """Get a camera attribute.
@@ -979,10 +1020,22 @@ class Camera:
         if not self.IsInitialized():
             raise IOError('Camera must be initialized before getting attribute')
 
-        # # Attempt to translate the attributeName into a valid OpenCV VideoCaptureProperty code
-        # attributeCode = GetAttributeCode(attributeName)
-        #
-        # return self._camera_pointer.get(attributeCode)
+        attributeCode = GetAttributeCode(attributeName)
+
+        if attributeCode == 'FRAME_WIDTH':
+            return self.GetFrameWidth()
+        elif attributeCode == 'FRAME_HEIGHT':
+            return self.GetFrameHeight()
+        elif attributeCode == 'BIT_DEPTH':
+            return self.GetFrameDepth()
+        elif attributeCode == 'FPS':
+            print('WARNING GIVING DUMMY ACQUISITION FRAME RATE')
+            return 45
+        elif attributeCode == 'CHANNEL':
+            return 3
+        else:
+            raise NameError('Unknown attribute name: {name}'.format(name=attributeName))
+
         raise NotImplementedError()
 
     def SetAttribute(self, attributeName, attributeValue):
@@ -1034,7 +1087,7 @@ class Camera:
         """
 
         # Preallocate empty image buffers
-        for _ in self._empty_buffers.maxsize:
+        for _ in range(self._empty_buffers.maxsize):
             self._empty_buffers.put(
                 self._create_buf()
             )
@@ -1067,9 +1120,9 @@ class Camera:
 
         # De-allocate image buffers
         with self._empty_buffers.mutex:
-            self._empty_buffers.clear()
+            self._empty_buffers.queue.clear()
         with self._image_buffers.mutex:
-            self._image_buffers.clear()
+            self._image_buffers.queue.clear()
 
         self._initialized = False
 
@@ -1209,7 +1262,8 @@ class Camera:
 
         See:   Init()
         """
-        self._sytem._start_capture()
+        if not self._system.IsInUse():
+            self._system._start_capture()
         return
 
     def EndAcquisition(self):
@@ -1238,7 +1292,8 @@ class Camera:
 
         See:  Image::Release()
         """
-        self._sytem._stop_capture()
+        if self._system.IsInUse():
+            self._system._stop_capture()
         return
 
     def GetBufferOwnership(self):
@@ -1377,9 +1432,9 @@ class Camera:
 
         # Determine if blocking should happen based on timeout value
         if timeout is None:
-            block = True
-        else:
             block = False
+        else:
+            block = True
 
         # Get the latest image data
         buf, frame_idx, frame_time = self._image_buffers.get(timeout=timeout, block=block)
@@ -1430,7 +1485,7 @@ class Camera:
         returns true if camera is streaming and false otherwise.
         """
 
-        return self._camera_pointer is not None and self._camera_pointer.isOpened()
+        return self._system.IsInUse()
 
     def GetGuiXml(self):
         """
@@ -2047,7 +2102,7 @@ class ImagePtr(object):
 
         """
 
-        return type(self._image_array) != ndarray
+        return type(self._image_array) != np.ndarray
 
     def GetValidPayloadSize(self):
         """
