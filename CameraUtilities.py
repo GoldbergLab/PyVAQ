@@ -1,5 +1,4 @@
-import sys
-import math
+import sys, math, warnings, traceback
 
 simulatedHardware = False
 for arg in sys.argv[1:]:
@@ -34,17 +33,25 @@ except OSError:
     # Probably failed to load Aptina cams
     ApSpin = None
 
+try:
+    import NESpin
+except OSError:
+    # Ok, NanEye infrastructure not available
+    NESpin = None
+
 # Camera types
 FLIR_CAM = 0
 APTINA_CAM = 1
-OTHER_CAM = 2
-CAM_TYPES = [FLIR_CAM, APTINA_CAM, OTHER_CAM]
+NE_CAM = 2
+OTHER_CAM = 3
+CAM_TYPES = [FLIR_CAM, APTINA_CAM, NE_CAM, OTHER_CAM]
 CAM_TYPE_NAMES = {
     FLIR_CAM:'Flir camera',
     APTINA_CAM:'Aptina camera',
+    NE_CAM:'NanEye camera',
     OTHER_CAM:'Other camera'
 }
-CamLibs =      {FLIR_CAM:PySpin, OTHER_CAM:CVSpin, APTINA_CAM:ApSpin, None:PySpin}
+CamLibs =      {FLIR_CAM:PySpin, OTHER_CAM:CVSpin, APTINA_CAM:ApSpin, NE_CAM:NESpin, None:PySpin}
 
 # Information about PySpin pixel formats, with a partial mapping to common ffmpeg pixel formats
 pixelFormats = {
@@ -440,23 +447,51 @@ def handleCamList(func):
     return wrapper
 
 def discoverCameras(numFakeCameras=0, camType=None):
-    if (camType is None or camType == FLIR_CAM) and CamLibs[FLIR_CAM] is not None:
-        FLIRCamSerials = discoverFLIRCameras(numFakeCameras=numFakeCameras)
-    else:
-        FLIRCamSerials = []
+    FLIRCamSerials = []
+    otherCamSerials = []
+    aptinaCamSerials = []
+    nanEyeCamSerials = []
 
-    if (camType is None or camType == OTHER_CAM) and CamLibs[OTHER_CAM] is not None:
-        otherCamSerials = discoverOtherCameras()
-    else:
-        otherCamSerials = []
+    try:
+        if (camType is None or camType == FLIR_CAM) and CamLibs[FLIR_CAM] is not None:
+            FLIRCamSerials = discoverFLIRCameras(numFakeCameras=numFakeCameras)
+    except Exception:
+        warnings.warn('Error during FLIR camera discovery', category=RuntimeWarning)
+        traceback.print_exc()
 
-    if (camType is None or camType == APTINA_CAM) and CamLibs[APTINA_CAM] is not None:
-        aptinaCamSerials = discoverAptinaCameras()
-    else:
-        aptinaCamSerials = []
+    try:
+        if (camType is None or camType == OTHER_CAM) and CamLibs[OTHER_CAM] is not None:
+            otherCamSerials = discoverOtherCameras()
+    except Exception:
+        warnings.warn('Error during other camera discovery', category=RuntimeWarning)
+        traceback.print_exc()
 
-    camSerials = FLIRCamSerials + otherCamSerials + aptinaCamSerials
-    camTypes = [FLIR_CAM for _ in FLIRCamSerials] + [OTHER_CAM for _ in otherCamSerials] + [APTINA_CAM for _ in aptinaCamSerials]
+    try:
+        if (camType is None or camType == APTINA_CAM) and CamLibs[APTINA_CAM] is not None:
+            aptinaCamSerials = discoverAptinaCameras()
+    except Exception:
+        warnings.warn('Error during Aptina camera discovery', category=RuntimeWarning)
+        traceback.print_exc()
+
+    try:
+        if (camType is None or camType == NE_CAM) and CamLibs[NE_CAM] is not None:
+            nanEyeCamSerials = discoverNanEyeCameras()
+    except Exception:
+        warnings.warn('Error during NanEye camera discovery', category=RuntimeWarning)
+        traceback.print_exc()
+
+    camSerials = (
+        FLIRCamSerials +
+        nanEyeCamSerials +
+        otherCamSerials +
+        aptinaCamSerials
+    )
+    camTypes = (
+        [FLIR_CAM for _ in FLIRCamSerials] +
+        [NE_CAM for _ in nanEyeCamSerials] +
+        [OTHER_CAM for _ in otherCamSerials] +
+        [APTINA_CAM for _ in aptinaCamSerials]
+    )
 
     return camSerials, camTypes
 
@@ -475,11 +510,19 @@ def discoverFLIRCameras(camList=None, numFakeCameras=0, **kwargs):
 def discoverAptinaCameras():
     system = ApSpin.System.GetInstance()
     camList = system.GetCameras()
+    system.ReleaseInstance()
+    return [cam.Serial for cam in camList]
+
+def discoverNanEyeCameras():
+    system = NESpin.System.GetInstance()
+    camList = system.GetCameras()
+    system.ReleaseInstance()
     return [cam.Serial for cam in camList]
 
 def discoverOtherCameras():
     system = CVSpin.System.GetInstance()
     camList = system.GetCameras()
+    system.ReleaseInstance()
     return [cam.Serial for cam in camList]
 
 def initCam(camSerial, camList=None, camType=FLIR_CAM, system=None, **kwargs):
@@ -550,7 +593,7 @@ def getFrameSize(cam=None, **kwargs):
 
 @handleCam
 def getPixelFormat(cam=None, camType=None, **kwargs):
-    if camType in [OTHER_CAM, APTINA_CAM]:
+    if camType in [OTHER_CAM, APTINA_CAM, NE_CAM]:
         # Quick fix, not sure how to consistently get this from OpenCV across camera backends
         return "BGR8"
     return getCameraAttribute('PixelFormat', 'enum', cam=cam, camType=camType)[1]
@@ -560,6 +603,9 @@ def isBayerFiltered(cam=None, camType=None, **kwargs):
     if camType == OTHER_CAM:
         # Quick fix, not sure how to consistently get this from OpenCV across camera backends
         return False
+    if camType == NE_CAM:
+        # Fix this: Actually get bayer settings
+        return True
     name, displayName = getCameraAttribute('PixelFormat', 'enum', nodemap=cam.GetNodeMap(), camType=camType)
     return pixelFormats[displayName]['bayer']
 
@@ -570,6 +616,9 @@ def getColorChannelCount(cam=None, camType=None, **kwargs):
         if numChannels == 0 or numChannels == -1:
             # Sigh, some kind of nonsense, let's assume we've got 3 color channels
             numChannels = 3
+    elif camType in [NE_CAM]:
+        # Fix this: get actual channel count
+        numChannels = 3
     else:
         nm = cam.GetNodeMap()
         # Get max dynamic range, which indicates the maximum value a single color channel can take
@@ -617,10 +666,8 @@ def getCameraAttribute(attributeName, attributeType, cam=None, camSerial=None, n
     #   camSerial = Valid serial # of a connected camera
     #   nodemap = string indicating type of nodemap to use
 
-    if camType in [OTHER_CAM, APTINA_CAM]:
+    if camType in [OTHER_CAM, APTINA_CAM, NE_CAM]:
         return cam.GetAttribute(attributeName)
-
-
 
     nodeType = typeNameToNodeType[attributeType]
 
@@ -649,7 +696,7 @@ def getCameraAttribute(attributeName, attributeType, cam=None, camSerial=None, n
 def setCameraAttribute(attributeName, attributeValue, attributeType, cam=None, camType=None, nodemap='NodeMap', **kwargs):
     # Set camera attribute. Return True if successful, False otherwise.
 
-    if camType == OTHER_CAM:
+    if camType in [OTHER_CAM, NE_CAM]:
         cam.SetAttribute(attributeName, attributeValue)
         return True
 
@@ -698,7 +745,7 @@ def setCameraAttributes(attributeValueTriplets, cam=None, camType=None, nodemap=
 
 @handleCam
 def checkCameraSpeed(cam=None, camType=None, **kwargs):
-    if camType == OTHER_CAM:
+    if camType in [OTHER_CAM, NE_CAM]:
         return "Unknown speed"
     else:
         try:
@@ -829,7 +876,7 @@ def getAllCameraAttributes(cam=None, camType=None, **kwargs):
             'subcategories':[],
             'children':[]}
 
-        if camType in [OTHER_CAM, APTINA_CAM]:
+        if camType in [OTHER_CAM, APTINA_CAM, NE_CAM]:
             # This is a 3rd party camera - assemble camera info into the same
             #   type of structure native to PySpin
             for attributeName in CamLibs[camType].CameraAttributes:
