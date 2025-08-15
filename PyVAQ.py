@@ -3557,7 +3557,6 @@ him know. Otherwise, I had nothing to do with it.
             if self.videoWriteProcesses[camSerial] is not None:
                 self.videoWriteProcesses[camSerial].start()
             self.videoAcquireProcesses[camSerial].start()
-            print('starting video acquire', camSerial)
 
         # Start other processes
         if self.syncProcess is not None: self.syncProcess.start()

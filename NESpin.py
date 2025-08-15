@@ -206,15 +206,11 @@ class System:
 
         self._connection_successful = True
 
-        self._queue_size = 10              # number of prealloc slots
+        self._queue_size = 100              # number of prealloc slots
 
-        # Preallocate ring of numpy buffers
-        self._buffers = {}
-
-        for camera_port in np.array([0, 1])[[self._sensor1, self._sensor2]]:
-            self._buffers[camera_port] = {}
-            self._buffers[camera_port]['empty'] = queue.Queue(maxsize=self._queue_size)
-            self._buffers[camera_port]['image'] = queue.Queue(maxsize=self._queue_size)
+        # Preallocate rings of numpy buffers
+        self._empty_buffer = queue.Queue(maxsize=self._queue_size)
+        self._image_buffer = queue.Queue(maxsize=self._queue_size)
 
     def _start_capture(self):
         # Register frame ready callback
@@ -257,20 +253,25 @@ class System:
         # Determine which NanEye camera this came from
         sensorID = e.SensorID
 
-        # Pull a buffer to write the new image data to. If none are availbale,
-        #   a queue.Empty exception will be raised
-        buf = self._buffers[sensorID]['empty'].get(block=False)
-
-        print('got image from empty buffer #{s}, qsize={q}'.format(s=sensorID, q=self_buffers[sensorID]['empty'].qsize))
+        # Pull a recycled buffer to write the new image data to.
+        #   If none are availbale, a queue.Empty exception will be raised
+        try:
+            buf = self._empty_buffer.get(block=False)
+        except queue.Empty:
+            print('No empty buffers available to write new image to!')
+            return
 
         # Copy the new image data into the free buffer
         Marshal.Copy(src, 0, IntPtr(buf.ctypes.data), src.Length)
 
         # Put the buffer containing the new image data into the appropriate image queue
         #   queue. If that queue is full, a queue.Full exception will be raised
-        self._buffers[sensorID]['image'].put((buf, e.FrameCount, e.FramesTime), block=False)
+        try:
+            self._image_buffer.put((buf, e.SensorID, e.FrameCount, e.TimeStamp), block=False)
+        except queue.Empty:
+            print('No room in image buffers available to write new image to!')
+            return
 
-        print('put image in image buffer #{s}, qsize={q}'.format(s=sensorID, q=self_buffers[sensorID]['image'].qsize))
 
     def _get_width(self):
         return self._provider.Width
@@ -405,7 +406,7 @@ class System:
         An CameraList object that contains a list of all cameras.
         """
 
-        self._camera_list = CameraList(np.array([0, 1])[[self._sensor1, self._sensor2]], buffers=self._buffers, system=self)
+        self._camera_list = CameraList(np.array([0, 1])[[self._sensor1, self._sensor2]], self._empty_buffer, self._image_buffer, system=self)
         return self._camera_list
 
     def UpdateCameras(self, updateInterfaces=True):
@@ -731,7 +732,7 @@ class CameraList:
     C++ includes: CameraList.h
     """
 
-    def __init__(self, valid_ports, buffers, system=None):
+    def __init__(self, valid_ports, empty_buffer, image_buffer, system=None):
         """
         __init__(self) -> CameraList
         __init__(self, iface) -> CameraList
@@ -749,7 +750,7 @@ class CameraList:
         #   up to two NanEye cams simultaneously.
         self._valid_ports = valid_ports
         self._system = system
-        self._cameras = [Camera(port, buffers[port], system=self._system) for port in self._valid_ports]
+        self._cameras = [Camera(valid_ports, empty_buffer, image_buffer, system=self._system)]
         self._iteration_number = 0
 
     def __iter__(self):
@@ -956,25 +957,31 @@ class Camera:
 
     """
 
-    def __init__(self, port_number, buffers, *args, system=None, **kwargs):
+    def __init__(self, valid_ports, empty_buffer, image_buffer, *args, system=None, **kwargs):
         self._system = system
-        self._port_number = port_number
+        self._valid_ports = valid_ports
 
         self._width, self._height = self._system._get_width(), self._system._get_height()       # or read once from first event
         self._BPP = 3               # use 1 for 8-bit raw, 2 for 10/16-bit, 3 for RGB
         self._buflen = self._width*self._height*self._BPP
 
-        self._empty_buffers = buffers['empty']
-        self._image_buffers = buffers['image']
+        self._empty_buffer = empty_buffer
+        self._image_buffer = image_buffer
 
         self.Width =  Value(self.GetFrameWidth)
-        self.Height = Value(self.GetFrameHeight)
+        self.Height = Value(self.GetFrameHeight) # Note that this will be the height of the stacked frames
 
-        self.Serial = str(port_number)
+        self.Serial = 'NanEye2D'
         self._initialized = False
 
+        self._pending_images = {}
+        self._stacked_buf = self._create_stacked_buf()
+
     def _create_buf(self):
-        return np.empty((self._height, self._width, 3), dtype=np.uint8)
+        return np.empty(self._buflen, dtype=np.uint8)
+
+    def _create_stacked_buf(self):
+        return np.empty(len(self._valid_ports)*self._buflen, dtype=np.uint8)
 
     def GetFrameWidth(self):
         """Get the width of the frames the camera acquires.
@@ -992,7 +999,7 @@ class Camera:
             int: Height of the camera frames in pixels
 
         """
-        return self._height
+        return self._height * len(self._valid_ports) # Frames will be stacked if there are multiple NanEye cams
 
     def GetFrameDepth(self):
         """Get the pixel bit depth of the frames the camera acquires.
@@ -1086,11 +1093,6 @@ class Camera:
         See:   GetNextImage()
         """
 
-        # Preallocate empty image buffers
-        for _ in range(self._empty_buffers.maxsize):
-            self._empty_buffers.put(
-                self._create_buf()
-            )
         self._initialized = True
 
         return
@@ -1119,10 +1121,10 @@ class Camera:
         """
 
         # De-allocate image buffers
-        with self._empty_buffers.mutex:
-            self._empty_buffers.queue.clear()
-        with self._image_buffers.mutex:
-            self._image_buffers.queue.clear()
+        with self._empty_buffer.mutex:
+            self._empty_buffer.queue.clear()
+        with self._image_buffer.mutex:
+            self._image_buffer.queue.clear()
 
         self._initialized = False
 
@@ -1263,6 +1265,13 @@ class Camera:
         See:   Init()
         """
         if not self._system.IsInUse():
+
+            # Preallocate empty image buffers
+            for _ in range(self._empty_buffer.maxsize):
+                self._empty_buffer.put(
+                    self._create_buf()
+                )
+
             self._system._start_capture()
         return
 
@@ -1426,7 +1435,7 @@ class Camera:
 
         # Check if user wants to specify timeout
         if len(args) > 0:
-            timeout = args[0]
+            timeout = int(args[0]/1000)
         else:
             timeout = None
 
@@ -1436,14 +1445,34 @@ class Camera:
         else:
             block = True
 
-        # Get the latest image data
-        buf, frame_idx, frame_time = self._image_buffers.get(timeout=timeout, block=block)
+        while True:
+            # Loop until we have a pair of images from the two naneye cams
+            #   with matching timestamps and stack them.
+            # Get the latest image data
+            buf, sensor_id, frame_idx, frame_time = self._image_buffer.get(timeout=timeout, block=block)
+
+            if frame_time in self._pending_images:
+                image_pair = self._pending_images[frame_time]
+                image_pair[sensor_id] = buf
+                self._stacked_buf[:self._buflen] = image_pair[0]
+                self._stacked_buf[self._buflen:] = image_pair[1]
+                self._empty_buffer.put(image_pair[0], block=block, timeout=timeout)
+                self._empty_buffer.put(image_pair[1], block=block, timeout=timeout)
+                del image_pair
+                del self._pending_images[frame_time]
+                break
+            else:
+                self._pending_images[frame_time] = [None, None]
+                self._pending_images[frame_time][sensor_id] = buf
 
         # Copy the buffer data into an ImagePtr object
-        img = ImagePtr(np.copy(buf), frame_id=frame_idx, timestamp=frame_time)
-
-        # Return the buffer for reuse
-        self._empty_buffers.put(buf, block=False)
+        img = ImagePtr(
+                self._stacked_buf.copy().reshape(
+                    (self.Height.GetValue(), self.Width.GetValue(), 3)
+                ),
+                frame_id=frame_idx,
+                timestamp=frame_time
+            )
 
         # Return the new ImagePtr object
         return img
@@ -2349,6 +2378,12 @@ class ImagePtr(object):
 
         """
         return self._image_array
+
+
+if __name__ == "__main__":
+    s = System.GetInstance()
+    cs = s.GetCameras()
+
 
 #
 # PixelFormat_Mono8 = cv2.
