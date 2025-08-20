@@ -222,7 +222,6 @@ def splashScreen(root, settingsFilePath=""):
 
     choices = splashScreen.results
 
-
     if choices is not None:
         # Record chosen startup settings to use as defaults next launch
         startupSettings['defaultLibs'] = choices['Camera support']
@@ -234,7 +233,6 @@ def splashScreen(root, settingsFilePath=""):
             print('Error storing startup settings')
 
     return choices
-
 
 LINE_STYLES = [c+'-' for c in 'bykcmgr']
 WIDGET_COLORS = [
@@ -266,7 +264,6 @@ class GeneralVar:
 class PyVAQ:
     def __init__(self, master, settingsFilePath=''):
         self.master = master
-        self.master.withdraw()
         try:
             self.master.wm_iconbitmap(ICON_PATH)
         except:
@@ -313,8 +310,6 @@ class PyVAQ:
             if camName not in choices['Camera support']:
                 # User deselected this library - unload it.
                 cu.CamLibs[camType] = None
-
-        self.master.deiconify()
 
         settingsFilePath = choices['Settings file']
 
