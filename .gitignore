@@ -15,3 +15,5 @@ __pycache__/
 *.avi
 *.pvs
 *.tmp
+# Ignore startup_settings.ini
+startup_settings.ini
