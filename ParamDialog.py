@@ -179,7 +179,15 @@ class ParamDialog(tk.Frame):
     BOX='b'
     HYBRID='y'
 
-    def __init__(self, parent, params=[], title=None, arrangement=HORIZONTAL, maxHeight=None, popup=True):
+    def __init__(
+        self,
+        parent,
+        params=[],
+        title=None,
+        arrangement=HORIZONTAL,
+        maxHeight=None,
+        popup=True,
+        ):
         # params should be a list of Param objects
         # maxHeight is the maximum number of parameter options that can be stacked before wrapping horizontally. Leave as "None" to disable wrapping.
 
