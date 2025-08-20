@@ -52,13 +52,19 @@ sen0 = INanEye2D(provider.CurrentSen)            # ISensor instance for the acti
 provider.SetSensor(1)
 sen1 = INanEye2D(provider.CurrentSen)            # ISensor instance for the active port
 
-supply_voltage = 2200  # Default is 1800 mV, range is 1600 - 2400
+supply_voltage = 1800  # Default is 1800 mV, range is 1600 - 2400
 print('sen0 before:', provider.CurrentSen.ToString)
 sen0.set_Digipot(supply_voltage)
 sen1.set_Digipot(supply_voltage)
 print('sen0 after:', provider.CurrentSen.ToString)
 
+provider.WriteAllSensorRegisters(0)
+provider.WriteAllSensorRegisters(1)
+
 breakpoint()
+
+handler.Initialize(sen0)
+handler.Initialize(sen1)
 
 w, h = 250, 250       # or read once from first event
 BPP = 3               # use 1 for 8-bit raw, 2 for 10/16-bit, 3 for RGB
