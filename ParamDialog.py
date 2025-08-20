@@ -6,11 +6,12 @@ class Param():
     TEXT='text'
     MONOCHOICE='monochoice'
     MULTICHOICE='multichoice'
+    PATH='path'
 
     def __init__(self, name='unnamedParam', widgetType=TEXT, options=[], default=None, parser=lambda x:x, description=None):
         # parent = a tkinter container that widgets should belong to
         # name = the name of the parameter
-        # widgetType = one of Param.TEXT, Param.MONOCHOICE, Param.MULTICHOICE
+        # widgetType = one of Param.TEXT, Param.MONOCHOICE, Param.MULTICHOICE, Param.PATH
         # options = a list of options to select from (not relevant for TEXT types)
         # default = default value. If default is supplied for MONOCHOICE,
         #           default must be one of the options. or none. If default is
@@ -38,7 +39,7 @@ class Param():
         #   if createWidget is called with a maxHeight argument, then this
         #   function will be incorrect. Use min(maxHeight+1, param.getHeight())
         #   to get the actual height
-        if self.widgetType == Param.TEXT:
+        if self.widgetType in [Param.TEXT, Param.PATH]:
             return 2 + self.getLabelHeight()
         elif self.widgetType == Param.MONOCHOICE:
             return len(self.options) + 1 + self.getLabelHeight()
@@ -66,6 +67,27 @@ class Param():
             self.var = tk.StringVar()
             entry = ttk.Entry(self.widgetFrame, textvariable=self.var)
             entry.grid(row=0, column=0, sticky=tk.NW)
+            self.widgets.append(entry)
+            if self.default is None:
+                self.var.set('')
+            else:
+                self.var.set(self.default)
+        elif self.widgetType == Param.PATH:
+            self.var = tk.StringVar()
+            entry = ttk.Entry(self.widgetFrame, textvariable=self.var, width=60)
+            cmd = lambda: self.var.set(
+                tk.filedialog.askopenfilename(
+                    parent=self.widgetFrame,
+                    title='Select PyVAQ settings file',
+                    initialdir='.',
+                    initialfile=None,
+                    multiple=False
+                )
+            )
+            button = ttk.Button(self.widgetFrame, text="📁", command=cmd, default=tk.ACTIVE)
+            button.grid(row=0, column=0, sticky=tk.NW)
+            entry.grid(row=0, column=1, sticky=tk.NW)
+            self.widgets.append(button)
             self.widgets.append(entry)
             if self.default is None:
                 self.var.set('')
@@ -141,7 +163,7 @@ class Param():
 
     def get(self):
         if self.mainFrame is not None:
-            if self.widgetType in [Param.TEXT, Param.MONOCHOICE]:
+            if self.widgetType in [Param.TEXT, Param.PATH]:
                 return self.parser(self.var.get())
             elif self.widgetType in [Param.MULTICHOICE]:
                 return [self.parser(var.get()) for var in self.var if len(var.get()) > 0]

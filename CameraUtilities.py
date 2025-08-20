@@ -51,7 +51,20 @@ CAM_TYPE_NAMES = {
     NE_CAM:'NanEye camera',
     OTHER_CAM:'Other camera'
 }
+CAM_TYPE_DESCRIPTIONS = {
+    FLIR_CAM:'Cameras made by Teledyne FLIR, such as Blackfly S.',
+    APTINA_CAM:'Cameras that use OnSemi Aptina\'s API',
+    NE_CAM:'ams OSRAM NanEye cameras using the \"Fiber Optic Box\" receiver.',
+    OTHER_CAM:'Other cameras such as USB webcams that may be accessed using the OpenCV library.'
+}
 CamLibs =      {FLIR_CAM:PySpin, OTHER_CAM:CVSpin, APTINA_CAM:ApSpin, NE_CAM:NESpin, None:PySpin}
+CAM_LIB_NAMES = {FLIR_CAM:'PySpin', OTHER_CAM:'CVSpin', APTINA_CAM:'ApSpin', NE_CAM:'NESpin'}
+
+# Ensure we're only accessing these from the CamLibs structure
+del PySpin
+del CVSpin
+del ApSpin
+del NESpin
 
 # Information about PySpin pixel formats, with a partial mapping to common ffmpeg pixel formats
 pixelFormats = {
@@ -358,46 +371,47 @@ pixelSizes = {
     '32 Bits/Pixel':32,
 }
 
-nodeAccessorFunctionsToTypeName = {
-    PySpin.intfIString:         'string',
-    PySpin.intfIInteger:        'integer',
-    PySpin.intfIFloat:          'float',
-    PySpin.intfIBoolean:        'boolean',
-    PySpin.intfICommand:        'command',
-    PySpin.intfIEnumeration:    'enum',
-    PySpin.intfICategory:       'category',
-    PySpin.intfIValue:          'value',
-    PySpin.intfIBase:           'base',
-    PySpin.intfIRegister:       'register',
-    PySpin.intfIEnumEntry:      'enumEntry',
-}
+if CamLibs[FLIR_CAM] is not None:
+    nodeAccessorFunctionsToTypeName = {
+        CamLibs[FLIR_CAM].intfIString:         'string',
+        CamLibs[FLIR_CAM].intfIInteger:        'integer',
+        CamLibs[FLIR_CAM].intfIFloat:          'float',
+        CamLibs[FLIR_CAM].intfIBoolean:        'boolean',
+        CamLibs[FLIR_CAM].intfICommand:        'command',
+        CamLibs[FLIR_CAM].intfIEnumeration:    'enum',
+        CamLibs[FLIR_CAM].intfICategory:       'category',
+        CamLibs[FLIR_CAM].intfIValue:          'value',
+        CamLibs[FLIR_CAM].intfIBase:           'base',
+        CamLibs[FLIR_CAM].intfIRegister:       'register',
+        CamLibs[FLIR_CAM].intfIEnumEntry:      'enumEntry',
+    }
 
-typeNameToNodeAccessorFunctions = {
-    'string':       PySpin.intfIString,
-    'integer':      PySpin.intfIInteger,
-    'float':        PySpin.intfIFloat,
-    'boolean':      PySpin.intfIBoolean,
-    'command':      PySpin.intfICommand,
-    'enum':         PySpin.intfIEnumeration,
-    'category':     PySpin.intfICategory,
-    'value':        PySpin.intfIValue,
-    'base':         PySpin.intfIBase,
-    'register':     PySpin.intfIRegister,
-    'enumEntry':    PySpin.intfIEnumEntry,
-}
+    typeNameToNodeAccessorFunctions = {
+        'string':       CamLibs[FLIR_CAM].intfIString,
+        'integer':      CamLibs[FLIR_CAM].intfIInteger,
+        'float':        CamLibs[FLIR_CAM].intfIFloat,
+        'boolean':      CamLibs[FLIR_CAM].intfIBoolean,
+        'command':      CamLibs[FLIR_CAM].intfICommand,
+        'enum':         CamLibs[FLIR_CAM].intfIEnumeration,
+        'category':     CamLibs[FLIR_CAM].intfICategory,
+        'value':        CamLibs[FLIR_CAM].intfIValue,
+        'base':         CamLibs[FLIR_CAM].intfIBase,
+        'register':     CamLibs[FLIR_CAM].intfIRegister,
+        'enumEntry':    CamLibs[FLIR_CAM].intfIEnumEntry,
+    }
 
-typeNameToNodeType = {
-    'string':       PySpin.CStringPtr,
-    'integer':      PySpin.CIntegerPtr,
-    'float':        PySpin.CFloatPtr,
-    'boolean':      PySpin.CBooleanPtr,
-    'command':      PySpin.CEnumerationPtr,
-    'enum':         PySpin.CEnumerationPtr,
-    'category':     PySpin.CCategoryPtr,
-    'value':        PySpin.CValuePtr,
-    'base':         PySpin.CBasePtr,
-    'register':     PySpin.CRegisterPtr,
-    'enumEntry':    PySpin.CEnumEntryPtr,
+    typeNameToNodeType = {
+        'string':       CamLibs[FLIR_CAM].CStringPtr,
+        'integer':      CamLibs[FLIR_CAM].CIntegerPtr,
+        'float':        CamLibs[FLIR_CAM].CFloatPtr,
+        'boolean':      CamLibs[FLIR_CAM].CBooleanPtr,
+        'command':      CamLibs[FLIR_CAM].CEnumerationPtr,
+        'enum':         CamLibs[FLIR_CAM].CEnumerationPtr,
+        'category':     CamLibs[FLIR_CAM].CCategoryPtr,
+        'value':        CamLibs[FLIR_CAM].CValuePtr,
+        'base':         CamLibs[FLIR_CAM].CBasePtr,
+        'register':     CamLibs[FLIR_CAM].CRegisterPtr,
+        'enumEntry':    CamLibs[FLIR_CAM].CEnumEntryPtr,
 }
 
 nodeMapAccessorFunctions = {
@@ -433,8 +447,12 @@ def handleCamList(func):
     # Decorator that automatically gracefully opens and closes system and
     #   camlist objects.
     # Decorated function should take a camList keyword argument
+    if CamLibs[FLIR_CAM] is None:
+        return func
     def wrapper(*args, **kwargs):
-        system = PySpin.System.GetInstance()
+        if CamLibs[FLIR_CAM] is None:
+            return []
+        system = CamLibs[FLIR_CAM].System.GetInstance()
         camList = system.GetCameras()
 
         returnVal = func(*args, camList=camList, **kwargs)
@@ -497,6 +515,8 @@ def discoverCameras(numFakeCameras=0, camType=None):
 
 @handleCamList
 def discoverFLIRCameras(camList=None, numFakeCameras=0, **kwargs):
+    if CamLibs[FLIR_CAM] is None:
+        return []
     camSerials = []
     for cam in camList:
         cam.Init()
@@ -507,23 +527,25 @@ def discoverFLIRCameras(camList=None, numFakeCameras=0, **kwargs):
         camSerials.append('fake_camera_'+str(k))
     return camSerials
 
+def discoverNonFLIRCameras(camType):
+    if CamLibs[camType] is None:
+        return []
+    system = CamLibs[camType].System.GetInstance()
+    try:
+        camList = system.GetCameras()
+        camSerials = [cam.Serial for cam in camList]
+    finally:
+        system.ReleaseInstance()
+    return camSerials
+
 def discoverAptinaCameras():
-    system = ApSpin.System.GetInstance()
-    camList = system.GetCameras()
-    system.ReleaseInstance()
-    return [cam.Serial for cam in camList]
+    return discoverNonFLIRCameras(camType=APTINA_CAM)
 
 def discoverNanEyeCameras():
-    system = NESpin.System.GetInstance()
-    camList = system.GetCameras()
-    system.ReleaseInstance()
-    return [cam.Serial for cam in camList]
+    return discoverNonFLIRCameras(camType=NE_CAM)
 
 def discoverOtherCameras():
-    system = CVSpin.System.GetInstance()
-    camList = system.GetCameras()
-    system.ReleaseInstance()
-    return [cam.Serial for cam in camList]
+    return discoverNonFLIRCameras(camType=OTHER_CAM)
 
 def initCam(camSerial, camList=None, camType=FLIR_CAM, system=None, **kwargs):
     if CamLibs[camType] is None:
@@ -680,7 +702,7 @@ def getCameraAttribute(attributeName, attributeType, cam=None, camSerial=None, n
 
     nodeAttribute = nodeType(nodemap.GetNode(attributeName))
 
-    if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsReadable(nodeAttribute):
+    if not CamLibs[FLIR_CAM].IsAvailable(nodeAttribute) or not CamLibs[FLIR_CAM].IsReadable(nodeAttribute):
         raise AttributeError('Unable to retrieve '+attributeName+'. Aborting...')
         return None
 
@@ -708,14 +730,14 @@ def setCameraAttribute(attributeName, attributeValue, attributeType, cam=None, c
         pass
 
     nodeAttribute = typeNameToNodeType[attributeType](nodemap.GetNode(attributeName))
-    if not PySpin.IsAvailable(nodeAttribute) or not PySpin.IsWritable(nodeAttribute):
+    if not CamLibs[FLIR_CAM].IsAvailable(nodeAttribute) or not CamLibs[FLIR_CAM].IsWritable(nodeAttribute):
         # print('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (enum retrieval). Aborting...')
         return False
 
     if attributeType == 'enum':
         # Retrieve entry node from enumeration node
         nodeAttributeValue = nodeAttribute.GetEntryByName(attributeValue)
-        if not PySpin.IsAvailable(nodeAttributeValue) or not PySpin.IsReadable(nodeAttributeValue):
+        if not CamLibs[FLIR_CAM].IsAvailable(nodeAttributeValue) or not CamLibs[FLIR_CAM].IsReadable(nodeAttributeValue):
             # print('Unable to set '+str(attributeName)+' to '+str(attributeValue)+' (entry retrieval). Aborting...')
             return False
 
@@ -808,7 +830,7 @@ def queryAttributeNode(nodePtr, nodeType):
             tooltip = None
 
         try:
-            accessMode = PySpin.EAccessModeClass_ToString(node.GetAccessMode())
+            accessMode = CamLibs[FLIR_CAM].EAccessModeClass_ToString(node.GetAccessMode())
         except AttributeError:
             accessMode = None
         except:
@@ -830,7 +852,7 @@ def queryAttributeNode(nodePtr, nodeType):
             children = []
             for childNode in node.GetFeatures():
                 # Ensure node is available and readable
-                if not PySpin.IsAvailable(childNode) or not PySpin.IsReadable(childNode):
+                if not CamLibs[FLIR_CAM].IsAvailable(childNode) or not CamLibs[FLIR_CAM].IsReadable(childNode):
                     continue
                 nodeType = childNode.GetPrincipalInterfaceType()
                 if nodeType not in nodeAccessorFunctionsToTypeName:
@@ -855,7 +877,7 @@ def queryAttributeNode(nodePtr, nodeType):
 
         return {'type':nodeTypeName, 'name':name, 'symbolic':symbolic, 'displayName':display_name, 'value':value, 'tooltip':tooltip, 'accessMode':accessMode, 'options':options, 'subcategories':subcategories, 'children':children}
 
-    except PySpin.SpinnakerException as ex:
+    except CamLibs[FLIR_CAM].SpinnakerException as ex:
         print('Error: %s' % ex)
         traceback.print_exc()
         return None
@@ -901,25 +923,25 @@ def getAllCameraAttributes(cam=None, camType=None, **kwargs):
         # This is a FLIR camera
         nodemap_gentl = cam.GetTLDeviceNodeMap()
 
-        nodeDataTL = queryAttributeNode(nodemap_gentl.GetNode('Root'), PySpin.intfICategory)
+        nodeDataTL = queryAttributeNode(nodemap_gentl.GetNode('Root'), CamLibs[FLIR_CAM].intfICategory)
         nodeDataTL['displayName'] = "Transport layer settings"
         nodeData['subcategories'].append(nodeDataTL)
 
         nodemap_tlstream = cam.GetTLStreamNodeMap()
 
-        nodeDataTLStream = queryAttributeNode(nodemap_tlstream.GetNode('Root'), PySpin.intfICategory)
+        nodeDataTLStream = queryAttributeNode(nodemap_tlstream.GetNode('Root'), CamLibs[FLIR_CAM].intfICategory)
         nodeDataTLStream['displayName'] = "Transport layer stream settings"
         nodeData['subcategories'].append(nodeDataTLStream)
 
         nodemap_applayer = cam.GetNodeMap()
 
-        nodeDataAppLayer = queryAttributeNode(nodemap_applayer.GetNode('Root'), PySpin.intfICategory)
+        nodeDataAppLayer = queryAttributeNode(nodemap_applayer.GetNode('Root'), CamLibs[FLIR_CAM].intfICategory)
         nodeDataAppLayer['displayName'] = "Camera settings"
         nodeData['subcategories'].append(nodeDataAppLayer)
 
         return nodeData
 
-    except PySpin.SpinnakerException as ex:
+    except CamLibs[FLIR_CAM].SpinnakerException as ex:
         print('Error: %s' % ex)
         traceback.print_exc()
         return None

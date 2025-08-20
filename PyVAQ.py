@@ -37,7 +37,7 @@ except ModuleNotFoundError:
     import pyspin as PySpin
 from MonitorWidgets import AudioMonitor, CameraMonitor
 from DockableFrame import Docker
-from StateMachineProcesses import sendMessage, States, Messages, Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter
+from StateMachineProcesses import sendMessage, clearDataQueues, States, Messages, Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter
 import inspect
 import CollapsableFrame as cf
 import CameraUtilities as cu
@@ -178,6 +178,64 @@ def getSharedString(sharedString, block=False):
         value = None
     return value
 
+def splashScreen(root, settingsFilePath=""):
+    # Load startup settings to use a defaults for splash screen
+    startupSettingsFile = 'startup_settings.ini'
+    defaultLibs = None
+    try:
+        with open(startupSettingsFile, 'r') as f:
+            startupSettings = json.load(f)
+    except FileNotFoundError:
+        startupSettings = {}
+
+    if 'defaultLibs' in startupSettings:
+        defaultLibs = startupSettings['defaultLibs']
+    if 'defaultSettingsFilePath' in startupSettings:
+        settingsFilePath = startupSettings['defaultSettingsFilePath']
+
+    if defaultLibs is None:
+        defaultLibs = cu.CAM_TYPE_NAMES.values()
+
+    params = []
+    params.append(
+        Param(
+            name="Camera support",
+            widgetType=Param.MULTICHOICE,
+            options=cu.CAM_TYPE_NAMES.values(),
+            default=defaultLibs
+        )
+    )
+    params.append(
+        Param(
+            name="Settings file",
+            widgetType=Param.PATH,
+            default=settingsFilePath
+        )
+    )
+    splashScreen = ParamDialog(
+        root,
+        params=params,
+        title="PyVAQ",
+        maxHeight=35,
+        arrangement=ParamDialog.VERTICAL
+    )
+
+    choices = splashScreen.results
+
+
+    if choices is not None:
+        # Record chosen startup settings to use as defaults next launch
+        startupSettings['defaultLibs'] = choices['Camera support']
+        startupSettings['defaultSettingsFilePath'] = choices['Settings file']
+        try:
+            with open(startupSettingsFile, 'w') as f:
+                json.dump(startupSettings, f)
+        except:
+            print('Error storing startup settings')
+
+    return choices
+
+
 LINE_STYLES = [c+'-' for c in 'bykcmgr']
 WIDGET_COLORS = [
     '#050505', # near black
@@ -206,8 +264,9 @@ class GeneralVar:
             self.readCallback = callback
 
 class PyVAQ:
-    def __init__(self, master, settingsFilePath=None):
+    def __init__(self, master, settingsFilePath=''):
         self.master = master
+        self.master.withdraw()
         try:
             self.master.wm_iconbitmap(ICON_PATH)
         except:
@@ -237,6 +296,27 @@ class PyVAQ:
         self.style.configure('ValidDirectory.TEntry', fieldbackground=WIDGET_COLORS[2])
         self.style.configure('InvalidDirectory.TEntry', fieldbackground=WIDGET_COLORS[3])
 #        self.style.map('Directory.TEntry.label', background=[(('!invalid',), 'green'),(('invalid',), 'red')])
+
+        # Create splash screen
+        choices = splashScreen(
+            self.master,
+            settingsFilePath=settingsFilePath,
+        )
+        if choices is None:
+            # User pressed "cancel" or "x"
+            self.master.destroy()
+            self.master.quit()
+            return
+
+        for camType in cu.CAM_TYPES:
+            camName = cu.CAM_TYPE_NAMES[camType]
+            if camName not in choices['Camera support']:
+                # User deselected this library - unload it.
+                cu.CamLibs[camType] = None
+
+        self.master.deiconify()
+
+        settingsFilePath = choices['Settings file']
 
         self.ID = 'GUI'
         self.stdoutBuffer = []
@@ -681,7 +761,7 @@ class PyVAQ:
         self.master.update_idletasks()
 
         # If provided, load settings file
-        if settingsFilePath is not None:
+        if len(settingsFilePath) == 0:
             self.loadSettings(path=settingsFilePath)
 
     def log(self, msg, *args, **kwargs):
@@ -3654,6 +3734,27 @@ him know. Otherwise, I had nothing to do with it.
         sendMessage(self.syncProcess, (Messages.EXIT, None))
         #self.StdoutManager.queue.put(Messages.EXIT)
 
+    def clearChildQueues(self):
+        """If any child processes have registered data queues that need clearing
+        before the process exits, clear them now.
+
+
+        Returns:
+            None
+
+        """
+        clearDataQueues(self.audioTriggerProcess)
+        clearDataQueues(self.continuousTriggerProcess)
+        for camSerial in self.videoAcquireProcesses:
+            clearDataQueues(self.videoAcquireProcesses[camSerial])
+        for camSerial in self.videoWriteProcesses:
+            clearDataQueues(self.videoWriteProcesses[camSerial])
+        clearDataQueues(self.audioAcquireProcess)
+        clearDataQueues(self.audioWriteProcess)
+        clearDataQueues(self.mergeProcess)
+        clearDataQueues(self.syncProcess)
+
+
     def ensureChildProcessesDie(self):
         processes = [
             self.audioTriggerProcess,
@@ -3703,6 +3804,8 @@ him know. Otherwise, I had nothing to do with it.
 
         # Give children a chance to register exit message
         time.sleep(0.5)
+
+        self.clearChildQueues()
 
         self.ensureChildProcessesDie()
 
@@ -3952,7 +4055,7 @@ him know. Otherwise, I had nothing to do with it.
 
 if __name__ == "__main__":
     simulatedHardware = False
-    settingsFilePath = None
+    settingsFilePath = ''
     for arg in sys.argv[1:]:
         if arg == '-s' or arg == '--sim':
             # Use simulated harddware instead of physical cameras and DAQs

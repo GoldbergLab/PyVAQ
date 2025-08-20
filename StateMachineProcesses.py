@@ -125,11 +125,20 @@ def clearQueue(q):
 
     """
     if q is not None:
+        count = 0
         while True:
             try:
                 stuff = q.get(block=True, timeout=0.1)
+                count += 1
             except queue.Empty:
                 break
+    print('cleared {n} item(s)'.format(n=count))
+
+def clearDataQueues(smp):
+    """Clear all data queues for a StateMachineProcess"""
+    if smp is not None:
+        for q in smp.dataQueues:
+            clearQueue(q)
 
 class Stopwatch:
     """A class holding timing information.
@@ -880,6 +889,7 @@ class StateMachineProcess(mp.Process):
         self.lastState = None
         self.nextState = None
         self.verbose = verbose
+        self.dataQueues = []                            # A list of data queues that need to be flushed before process can die
 
     def run(self):
         # Start run by recording this process's PID
@@ -888,6 +898,9 @@ class StateMachineProcess(mp.Process):
         self.state = States.STOPPED
         self.nextState = States.STOPPED
         self.lastState = -1
+
+    def registerDataQueue(self, dataQueue):
+        self.dataQueues.append(dataQueue)
 
     def updatePublishedInfo(self, info):
         if self.publishedInfoVar is not None and self.state != self.lastState:
@@ -2222,10 +2235,10 @@ class AudioAcquirer(StateMachineProcess):
             self.audioQueue.cancel_join_thread()
         if sendToMonitor:
             self.monitorQueue = mp.Queue()      # A multiprocessing queue to send data to the UI to monitor the audio
+            self.registerDataQueue(self.monitorQueue)
         if sendToAnalysis:
             self.analysisQueue = mp.Queue()    # A multiprocessing queue to send data to the audio triggerer process for analysis
-        # if len(self.monitorQueue) > 0:
-        #     self.monitorQueue.cancel_join_thread()
+            self.registerDataQueue(self.analysisQueue)
         self.chunkSize = chunkSize
         self.inputChannels = channelNames
         if channelConfig == "DEFAULT":
@@ -2551,6 +2564,7 @@ class SimpleAudioWriter(StateMachineProcess):
         self.audioQueue = audioQueue
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
+            self.registerDataQueue(self.audioQueue)
         self.audioFrequencyVar = audioFrequency
         self.audioFrequency = None
         self.frameRateVar = frameRate
@@ -2938,6 +2952,7 @@ class AudioWriter(StateMachineProcess):
         self.audioQueue = audioQueue
         if self.audioQueue is not None:
             self.audioQueue.cancel_join_thread()
+            self.registerDataQueue(self.audioQueue)
         self.audioFrequencyVar = audioFrequency
         self.audioFrequency = None
         self.numChannels = numChannels
@@ -3763,8 +3778,6 @@ class SimpleVideoWriter(StateMachineProcess):
         self.videoDirectory=videoDirectory
         self.videoBaseFileName = videoBaseFileName
         self.imageQueue = imageQueue
-        # if self.imageQueue is not None:
-        #     self.imageQueue.cancel_join_thread()
         self.requestedFrameRate = requestedFrameRate
         self.frameRateVar = frameRate
         self.frameRate = None
