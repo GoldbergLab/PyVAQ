@@ -1310,10 +1310,10 @@ him know. Otherwise, I had nothing to do with it.
         lines.extend([
             'Acquisition hardware selections:',
             '  Audio DAQ channels:   {audioDAQChannels}'.format(audioDAQChannels=', '.join(p['audioDAQChannels'])),
-            '  FLIR Cameras:         {camSerials}'.format(camSerials=', '.join(FLIRCamSerials)),
-            '  Aptina Cameras:       {camSerials}'.format(camSerials=', '.join(aptinaCamSerials)),
-            '  NanEye Cameras:       {camSerials}'.format(camSerials=', '.join(nanEyeCamSerials)),
-            '  Other Cameras:        {camSerials}'.format(camSerials=', '.join(otherCamSerials)),
+            '  FLIR Cameras:         {camSerials}'.format(camSerials=', '.join(FLIRCamSerials)) if len(FLIRCamSerials) > 0 else None,
+            '  Aptina Cameras:       {camSerials}'.format(camSerials=', '.join(aptinaCamSerials)) if len(aptinaCamSerials) > 0 else None,
+            '  NanEye Cameras:       {camSerials}'.format(camSerials=', '.join(nanEyeCamSerials)) if len(nanEyeCamSerials) > 0 else None,
+            '  Other Cameras:        {camSerials}'.format(camSerials=', '.join(otherCamSerials)) if len(otherCamSerials) > 0 else None,
             '  Audio sync terminal:  {audioSyncTerminal}'.format(audioSyncTerminal=p['audioSyncTerminal']),
             '  Video sync terminal:  {videoSyncTerminal}'.format(videoSyncTerminal=p['videoSyncTerminal']),
             '  Audio sync source:    {audioSyncSource}'.format(audioSyncSource=p['audioSyncSource']),
@@ -1322,6 +1322,8 @@ him know. Otherwise, I had nothing to do with it.
             '  Audio channel config: {audioChannelConfiguration}'.format(audioChannelConfiguration=p['audioChannelConfiguration']),
             '  (* = hardware synchronized)'
         ])
+
+        lines = [line for line in lines if line is not None]
 
         self.acquisitionHardwareText.delete('0.0', tk.END)
         self.acquisitionHardwareText['height'] = len(lines)
