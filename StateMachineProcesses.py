@@ -2282,7 +2282,7 @@ class AudioAcquirer(StateMachineProcess):
             self.registerDataQueue(self.analysisQueue)
         self.chunkSize = chunkSize
         self.inputChannels = channelNames
-        if channelConfig == "DEFAULT":
+        if channelConfig == "DEFAULT" or channelConfig is None:
             self.channelConfig = DEFAULT
         elif channelConfig == "DIFFERENTIAL":
             self.channelConfig = DIFFERENTIAL
@@ -2292,6 +2292,8 @@ class AudioAcquirer(StateMachineProcess):
             self.channelConfig = PSEUDODIFFERENTIAL
         elif channelConfig == "RSE":
             self.channelConfig = RSE
+        else:
+            NameError('Invalid audio channel configuration: {c}'.format(c=channelConfig))
         self.syncChannel = syncChannel
         self.ready = ready
         self.exitFlag = False
