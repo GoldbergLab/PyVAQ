@@ -683,7 +683,7 @@ class PyVAQ:
 
         # Actual a/v frequency shared vars
         self.actualVideoFrequency = None
-        self.actualAudioFrequency = None
+        self.actualDataFrequency = None
 
         # Verbosity of child processes
         #   0=Errors, 1=Occasional important status updates
@@ -3698,7 +3698,7 @@ him know. Otherwise, I had nothing to do with it.
         #   once when the Synchronizer is initialized, and not again until
         #   all child processes are stopped and restarted.
         self.actualVideoFrequency = mp.Value('d', -1)
-        self.actualAudioFrequency = mp.Value('d', -1)
+        self.actualDataFrequency = mp.Value('d', -1)
 
         synchronizerRequired = p["dataSyncTerminal"] is not None or p["videoSyncTerminal"] is not None
 
@@ -3729,7 +3729,7 @@ him know. Otherwise, I had nothing to do with it.
             # Create sync process
             self.syncProcess = Synchronizer(
                 actualVideoFrequency=self.actualVideoFrequency,
-                actualAudioFrequency=self.actualAudioFrequency,
+                actualDataFrequency=self.actualDataFrequency,
                 startTime=startTime,
                 signalChannel=p['acquisitionSignalChannel'],
                 startOnHWSignal=p['startOnHWSignal'],
@@ -3743,8 +3743,8 @@ him know. Otherwise, I had nothing to do with it.
                 ready=ready,
                 stdoutQueue=self.StdoutManager.queue)
         else:
-            # We're not creating a synchronizer object, so we'll just manually set the actualAudioFrequency variable
-            self.actualAudioFrequency.value = p["audioFrequency"]
+            # We're not creating a synchronizer object, so we'll just manually set the actualDataFrequency variable
+            self.actualDataFrequency.value = p["audioFrequency"]
 
         copyToMonitoringQueue = True
         copyToAnalysisQueue = p["triggerMode"] != "SimpleContinuous"
@@ -3758,7 +3758,7 @@ him know. Otherwise, I had nothing to do with it.
                 startTime=startTime,
                 audioQueue=audioQueue,
                 chunkSize=p["chunkSize"],
-                audioFrequency=self.actualAudioFrequency,
+                audioFrequency=self.actualDataFrequency,
                 bufferSize=None,
                 channelNames=p["audioDAQChannels"],
                 channelConfig=p["audioChannelConfiguration"],
@@ -3782,7 +3782,7 @@ him know. Otherwise, I had nothing to do with it.
                         audioBaseFileName=p["audioBaseFileName"],
                         channelNames=p["audioDAQChannels"],
                         audioQueue=audioQueue,
-                        audioFrequency=self.actualAudioFrequency,
+                        audioFrequency=self.actualDataFrequency,
                         frameRate=self.actualVideoFrequency,
                         numChannels=len(p["audioDAQChannels"]),
                         videoLength=p["recordTime"],
@@ -3802,7 +3802,7 @@ him know. Otherwise, I had nothing to do with it.
                         mergeMessageQueue=mergeMsgQueue,
                         chunkSize=p["chunkSize"],
                         bufferSizeSeconds=p["bufferSizeSeconds"],
-                        audioFrequency=self.actualAudioFrequency,
+                        audioFrequency=self.actualDataFrequency,
                         numChannels=len(p["audioDAQChannels"]),
                         daySubfolders=p['daySubfolders'],
                         verbose=self.audioWriteVerbose,
@@ -3994,7 +3994,7 @@ him know. Otherwise, I had nothing to do with it.
                 len(p["audioDAQChannels"]) > 0:
             self.audioTriggerProcess = AudioTriggerer(
                 audioQueue=self.audioAcquireProcess.analysisQueue,
-                audioFrequency=self.actualAudioFrequency,
+                audioFrequency=self.actualDataFrequency,
                 chunkSize=p["chunkSize"],
                 triggerHighLevel=p["triggerHighLevel"],
                 triggerLowLevel=p["triggerLowLevel"],
@@ -4211,7 +4211,7 @@ him know. Otherwise, I had nothing to do with it.
         self.exitChildProcesses()
 
         self.actualVideoFrequency = None
-        self.actualAudioFrequency = None
+        self.actualDataFrequency = None
 
         # Give children a chance to register exit message
         time.sleep(0.5)
