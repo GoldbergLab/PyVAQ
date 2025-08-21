@@ -3346,17 +3346,17 @@ him know. Otherwise, I had nothing to do with it.
         self.digitalBaseFileName.set(newDigitalBaseFileName)
         if updateGUI and self.digitalMonitor is not None:
             # Update text field
-            self.digitalMonitor.fileWidget.setBaseFileName(newAudioBaseFileName)
+            self.digitalMonitor.fileWidget.setBaseFileName(newDigitalBaseFileName)
         # Notify DigitalWriter child process of new write base filename
         sendMessage(self.digitalWriteProcess, (Messages.SETPARAMS, dict(digitalBaseFileName=newDigitalBaseFileName)))
     def setDigitalDirectory(self, newDigitalDirectory, *args, updateGUI=True):
-        """Send message to digital writer process to change audio directory
+        """Send message to digital writer process to change digital directory
 
         Args:
             newDigitalDirectory (str): A string indicating a new directory to use
                 to save digital files
             *args (any): Dummy variable to hold unused event data
-            updateGUI (bool): Should this method update the audio directory GUI
+            updateGUI (bool): Should this method update the digital directory GUI
                 textbox? Set to False when called by the textbox itself to
                 prevent an infinite event loop where the textbox triggers this
                 method, and the method triggers the textbox.
