@@ -37,12 +37,32 @@ except ModuleNotFoundError:
     import pyspin as PySpin
 from MonitorWidgets import AudioMonitor, CameraMonitor, DigitalMonitor
 from DockableFrame import Docker
-from StateMachineProcesses import sendMessage, clearDataQueues, States, Messages, Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter
+from StateMachineProcesses import (
+    sendMessage,
+    clearDataQueues,
+    States,
+    Messages,
+    Trigger,
+    StdoutManager,
+    AVMerger,
+    Synchronizer,
+    AudioTriggerer,
+    AudioAcquirer,
+    AudioWriter,
+    DigitalAcquirer,
+    DigitalWriter,
+    VideoAcquirer,
+    VideoWriter,
+    ContinuousTriggerer,
+    syncPrint,
+    SimpleVideoWriter,
+    SimpleAudioWriter
+)
 import inspect
 import CollapsableFrame as cf
 import CameraUtilities as cu
 import ctypes
-from ffmpegWriter import DEFAULT_CPU_COMPRESSION_ARGS, DEFAULT_GPU_COMPRESSION_ARGS
+from ffmpegWriter import DEFAULT_CPU_COMPRESSION_ARGS,  DEFAULT_GPU_COMPRESSION_ARGS
 from CameraConfig import CameraConfigPanel
 from collections import OrderedDict as odict
 
