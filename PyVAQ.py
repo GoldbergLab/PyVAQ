@@ -800,7 +800,7 @@ class PyVAQ:
         self.master.update_idletasks()
 
         # If provided, load settings file
-        if len(settingsFilePath) == 0:
+        if len(settingsFilePath) >= 0:
             self.loadSettings(path=settingsFilePath)
 
     def log(self, msg, *args, **kwargs):
