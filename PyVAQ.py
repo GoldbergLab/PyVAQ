@@ -3817,7 +3817,7 @@ him know. Otherwise, I had nothing to do with it.
             self.digitalAcquireProcess = DigitalAcquirer(
                 startTime=startTime,
                 dataQueue=digitalQueue,
-                chunkSize=p['dataChunkSizeSamples'],
+                chunkSize=p['chunkSize'],
                 sampleRate=self.actualDataFrequency,
                 bufferSize=None,
                 channelNames=p["digitalDAQChannels"],
