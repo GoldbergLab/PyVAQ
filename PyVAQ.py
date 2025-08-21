@@ -704,7 +704,7 @@ class PyVAQ:
 
         # the params dict defines how to access and set all the parameters in the GUI
         self.paramInfo = {
-            'audioFrequency':                   dict(get=lambda:int(self.audioFrequencyVar.get()),              set=self.audioFrequencyVar.set),
+            'dataFrequency':                   dict(get=lambda:int(self.audioFrequencyVar.get()),              set=self.audioFrequencyVar.set),
             'videoFrequency':                   dict(get=lambda:int(self.videoFrequencyVar.get()),              set=self.videoFrequencyVar.set),
             'chunkSize':                        dict(get=lambda:int(self.chunkSizeVar.get()),                   set=self.chunkSizeVar.set),
             "maxGPUVEnc":                       dict(get=lambda:int(self.maxGPUVEncVar.get()),                  set=self.maxGPUVEncVar.set),
@@ -1066,7 +1066,7 @@ him know. Otherwise, I had nothing to do with it.
             return
 
         p = self.getParams()
-        audioMonitorSampleLength = round(self.audioMonitor.historyLength / p['audioFrequency'], 2)
+        audioMonitorSampleLength = round(self.audioMonitor.historyLength / p['dataFrequency'], 2)
         params = [
             Param(name='Audio autoscale', widgetType=Param.MONOCHOICE, options=['Auto', 'Manual'], default=('Auto' if self.audioMonitor.autoscale else 'Manual')),
             Param(name='Audio range', widgetType=Param.TEXT, options=None, default=str(self.audioMonitor.displayAmplitude)),
@@ -1090,7 +1090,7 @@ him know. Otherwise, I had nothing to do with it.
                     pass
             if 'Audio history length' in choices and len(choices['Audio history length']) > 0:
                 try:
-                    self.audioMonitor.historyLength = float(choices['Audio history length']) * p['audioFrequency']
+                    self.audioMonitor.historyLength = float(choices['Audio history length']) * p['dataFrequency']
                 except ValueError:
                     pass
 
@@ -2084,8 +2084,8 @@ him know. Otherwise, I had nothing to do with it.
                     # Plot high level trigger level demarcation
                     self.audioAnalysisWidgets['volumeTraceAxes'].plot(t, triggerHighLevelTrace, 'g-', linewidth=1)
                     try:
-                        tLow  = t[-1] - (analysisSummary['triggerLowChunks'] -1)*analysisSummary['chunkSize']/analysisSummary['audioFrequency']
-                        tHigh = t[-1] - (analysisSummary['triggerHighChunks']-1)*analysisSummary['chunkSize']/analysisSummary['audioFrequency']
+                        tLow  = t[-1] - (analysisSummary['triggerLowChunks'] -1)*analysisSummary['chunkSize']/analysisSummary['dataFrequency']
+                        tHigh = t[-1] - (analysisSummary['triggerHighChunks']-1)*analysisSummary['chunkSize']/analysisSummary['dataFrequency']
                     except TypeError:
                         self.log('weird analysis monitoring error:')
                         traceback.print_exc()
@@ -3528,8 +3528,8 @@ him know. Otherwise, I had nothing to do with it.
         return preTriggerTime * 2 + 1    # Twice the pretrigger time to make sure we don't miss stuff, plus one second for good measure
     def getBufferSizeAudioChunks(self):
         """Calculate the number of chunks in the audio buffer - not in use"""
-        p = self.getParams('bufferSizeSeconds', 'audioFrequency', 'chunkSize')
-        return p['bufferSizeSeconds'] * p['audioFrequency'] / p['chunkSize']   # Will be rounded up to nearest integer
+        p = self.getParams('bufferSizeSeconds', 'dataFrequency', 'chunkSize')
+        return p['bufferSizeSeconds'] * p['dataFrequency'] / p['chunkSize']   # Will be rounded up to nearest integer
     def getNumStreams(self):
         """Get # of audio/video streams in the current configuration."""
         audioDAQChannels = self.getParams('audioDAQChannels')
@@ -3737,14 +3737,14 @@ him know. Otherwise, I had nothing to do with it.
                 audioSyncChannel=p["dataSyncTerminal"],
                 videoSyncChannel=p["videoSyncTerminal"],
                 videoDutyCycle=convertExposureTimeToDutyCycle(p["videoExposureTime"]/1000, p["videoFrequency"]),
-                requestedAudioFrequency=p["audioFrequency"],
+                requestedAudioFrequency=p["dataFrequency"],
                 requestedVideoFrequency=p["videoFrequency"],
                 verbose=self.syncVerbose,
                 ready=ready,
                 stdoutQueue=self.StdoutManager.queue)
         else:
             # We're not creating a synchronizer object, so we'll just manually set the actualDataFrequency variable
-            self.actualDataFrequency.value = p["audioFrequency"]
+            self.actualDataFrequency.value = p["dataFrequency"]
 
         copyToMonitoringQueue = True
         copyToAnalysisQueue = p["triggerMode"] != "SimpleContinuous"
