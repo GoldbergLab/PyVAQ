@@ -1585,7 +1585,7 @@ class Synchronizer(StateMachineProcess):
                             units=HZ,
                             initial_delay=0.0,
                             freq=self.dataFrequency,
-                            duty_cycle=self.dataDutyCycle     # Prepare a counter output channel for the data sync signal
+                            duty_cycle=self.dataDutyCycle)     # Prepare a counter output channel for the data sync signal
                         if self.verbose >= 2:
                             self.log('Added data sync channel to task')
                     # if (self.signalChannel is not None) and ((self.videoSyncChannel is not None) or (self.audioSyncChannel is not None)):
