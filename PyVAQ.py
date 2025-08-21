@@ -50,7 +50,7 @@ from StateMachineProcesses import (
     AudioAcquirer,
     AudioWriter,
     DigitalAcquirer,
-    DigitalWriter,
+    SimpleDigitalWriter,
     VideoAcquirer,
     VideoWriter,
     ContinuousTriggerer,
