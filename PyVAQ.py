@@ -763,6 +763,7 @@ class PyVAQ:
 
         # Start automatic updating of video and audio monitors
         self.audioMonitorUpdateJob = None
+        self.digitalMonitorUpdateJob = None
         self.videoMonitorUpdateJob = None
         self.audioAnalysisMonitorUpdateJob = None
         self.triggerIndicatorUpdateJob = None
@@ -2161,6 +2162,12 @@ him know. Otherwise, I had nothing to do with it.
 
             if newDigitalData is not None:
                 self.digitalMonitor.addDigitalData(newDigitalData.transpose())
+
+        if beginAuto:
+            # Schedule another automatic call to autoUpdateAudioMonitors
+            self.digitalMonitorUpdateJob = self.master.after(100, self.autoUpdateDigitalMonitors)
+
+        self.endLog(inspect.currentframe().f_code.co_name)
 
     def autoUpdateVideoMonitors(self, beginAuto=True):
         """Begin updating video monitors
