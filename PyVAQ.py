@@ -3172,7 +3172,7 @@ him know. Otherwise, I had nothing to do with it.
         self.audioWriteEnable.set(newAudioWriteEnable)
         if updateGUI:
             # Update text field
-            self.audioMonitors.setWriteEnable(newAudioWriteEnable)
+            self.audioMonitor.setWriteEnable(newAudioWriteEnable)
         # Notify AudioWriter child process of new write enable state
         sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(enableWrite=newAudioWriteEnable)))
 
@@ -3195,7 +3195,7 @@ him know. Otherwise, I had nothing to do with it.
         self.digitalWriteEnable.set(newDigitalWriteEnable)
         if updateGUI:
             # Update text field
-            self.digitalMonitors.setWriteEnable(newDigitalWriteEnable)
+            self.digitalMonitor.setWriteEnable(newDigitalWriteEnable)
         # Notify AudioWriter child process of new write enable state
         sendMessage(self.digitalWriteProcess, (Messages.SETPARAMS, dict(enableWrite=newDigitalWriteEnable)))
 
