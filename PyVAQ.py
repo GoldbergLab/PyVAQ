@@ -3700,7 +3700,7 @@ him know. Otherwise, I had nothing to do with it.
         self.actualVideoFrequency = mp.Value('d', -1)
         self.actualDataFrequency = mp.Value('d', -1)
 
-        synchronizerRequired = p['dataSyncTerminal"] is not None or p["videoSyncTerminal'] is not None
+        synchronizerRequired = p['dataSyncTerminal'] is not None or p['videoSyncTerminal'] is not None
 
         self.log('synchronizerRequired:', synchronizerRequired)
 
@@ -3708,7 +3708,7 @@ him know. Otherwise, I had nothing to do with it.
         if not synchronizerRequired:
             startTime.value = time.time_ns()
 
-        if p['mergeFiles"] and p["numStreams'] >= 2:
+        if p['mergeFiles'] and p['numStreams'] >= 2:
             # Create merge process
             self.mergeProcess = AVMerger(
                 directory=p['mergeDirectory'],
@@ -3736,7 +3736,7 @@ him know. Otherwise, I had nothing to do with it.
                 writeEnableOnHWSignal=p['writeEnableOnHWSignal'],
                 audioSyncChannel=p['dataSyncTerminal'],
                 videoSyncChannel=p['videoSyncTerminal'],
-                videoDutyCycle=convertExposureTimeToDutyCycle(p['videoExposureTime"]/1000, p["videoFrequency']),
+                videoDutyCycle=convertExposureTimeToDutyCycle(p['videoExposureTime']/1000, p['videoFrequency']),
                 requestedAudioFrequency=p['dataFrequency'],
                 requestedVideoFrequency=p['videoFrequency'],
                 verbose=self.syncVerbose,
@@ -4081,11 +4081,11 @@ him know. Otherwise, I had nothing to do with it.
             # Start VideoAcquirer
             sendMessage(self.videoAcquireProcesses[camSerial], (Messages.START, None))
 
-        if len(p['audioDAQChannels"]) + len(p["camSerials']) >= 1:
+        if len(p['audioDAQChannels']) + len(p['camSerials']) >= 1:
             # Start sync process
             sendMessage(self.syncProcess, (Messages.START, None))
 
-        if len(p['audioDAQChannels"]) + len(p["camSerials']) >= 2:
+        if len(p['audioDAQChannels']) + len(p['camSerials']) >= 2:
             # Start merge process
             self.updateAVMergerState()
 
