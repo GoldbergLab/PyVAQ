@@ -1221,20 +1221,28 @@ him know. Otherwise, I had nothing to do with it.
                 if 'Video Sync Channel' in choices and choices['Video Sync Channel'] != "None":
                     videoSyncTerminal = choices['Video Sync Channel']
                 audioSyncSource = None
-                if 'Audio Sync PFI Interface' in choices and len(choices['Audio Sync PFI Interface']) > 0:
+                if 'Audio Sync PFI Interface' in choices and \
+                        choices['Audio Sync PFI Interface'] is not None and \
+                        len(choices['Audio Sync PFI Interface']) > 0:
                     audioSyncSource = choices['Audio Sync PFI Interface']
                 videoSyncSource = None
-                if 'Video Sync PFI Interface' in choices and len(choices['Video Sync PFI Interface']) > 0:
+                if 'Video Sync PFI Interface' in choices and \
+                        choices['Video Sync PFI Interface'] is not None and \
+                        len(choices['Video Sync PFI Interface']) > 0:
                     videoSyncSource = choices['Video Sync PFI Interface']
-                if 'Acquisition signal channel' in choices and len(choices['Acquisition start trigger channel']) > 0:
+                if 'Acquisition signal channel' in choices and \
+                        choices['Acquisition start trigger channel'] is not None and \
+                        len(choices['Acquisition start trigger channel']) > 0:
                     if choices['Acquisition start trigger channel'] == 'None':
                         acquisitionSignalChannel = None
                     else:
                         acquisitionSignalChannel = choices['Acquisition start trigger channel']
                 else:
                     acquisitionSignalChannel = None
-                if 'Audio channel configuration' in choices and len(choices['Audio channel configuration']) > 0:
+                if 'Audio channel configuration' in choices:
                     audioChannelConfiguration = choices['Audio channel configuration']
+                else:
+                    audioChannelConfiguration = None
 
                 camSerials = (
                     FLIRCamSerials +

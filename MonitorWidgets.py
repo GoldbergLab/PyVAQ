@@ -400,13 +400,15 @@ class AudioMonitor(BaseMonitor):
 class CameraMonitor(BaseMonitor):
     def __init__(self, *args, displaySize=(400, 300),
                     camSerial='Unknown camera', speedText='Unknown speed',
-                    text="Camera Monitor", collapsed=False, **kwargs):
+                    text="Camera Monitor", collapsed=False, pixelFormat='rgb8',
+                    **kwargs):
         self.camSerial = camSerial
         fileText = "Video Writing - {camSerial}".format(camSerial=self.camSerial)
         BaseMonitor.__init__(self, *args, filePurposeText='video writing',
             fileText=fileText, **kwargs)
         self.setText("{serial} ({speed})".format(serial=self.camSerial, speed=speedText))
         self.displaySize = displaySize
+        self.infoText = "{serial} ({speed})".format(serial=self.camSerial, speed=speedText)
         self.viewer = ffplayer(100, self.infoText, pixelFormat=pixelFormat)
 
         self.isIdle = False  # Boolean flag indicating whether the monitor is actively sending images or not

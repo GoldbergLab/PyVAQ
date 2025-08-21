@@ -24,7 +24,7 @@ def config_descendants(widget, ignoreTclErrors=True, collapsableInner=None, **pa
 class CollapsableFrame(tk.Frame):
     def __init__(self, parent, *args, collapseSymbol='/\\', collapseText=None,
         expandSymbol='\\/', expandText=None, collapseFunction=None,
-        expandFunction=None, collapsed=True, padx=0, pady=0, ipadx=0,
+        expandFunction=None, text=None, collapsed=True, padx=0, pady=0, ipadx=0,
         ipady=0, **kwargs):
         # CollapsableFrame: A class that provides a "collapsable" frame, meaning
         #   a Tkinter frame that can be "collapsed" such that all its children
@@ -68,8 +68,12 @@ class CollapsableFrame(tk.Frame):
 
         # Store text to display on button when frame is collapsed or expanded
         if collapseText is None and expandText is None:
-            collapseText = ''
-            expandText = ''
+            if text is None:
+                collapseText = ''
+                expandText = ''
+            else:
+                collapseText = text
+                expandText = text
         elif collapseText is None and expandText is not None:
             collapseText = expandText
         elif collapseText is not None and expandText is None:
