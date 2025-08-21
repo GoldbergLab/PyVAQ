@@ -20,6 +20,7 @@ from ctypes import c_wchar
 import CameraUtilities as cu
 import sys
 from math import floor
+from NCFileUtilities import NCFile, extractBooleanDataFromDigitalArray
 
 simulatedHardware = False
 for arg in sys.argv[1:]:
@@ -31,6 +32,8 @@ if simulatedHardware:
     # Use simulated harddware instead of physical cameras and DAQs
     import PySpinSim.PySpinSim as PySpin
     import nidaqmxSim as nidaqmx
+    from nidaqmxSim.stream_readers import AnalogMultiChannelReader, DigitalMultiChannelReader, DigitalSingleChannelReader
+    from nidaqmxSim.constants import Edge, TriggerType
 else:
     # Use physical cameras/DAQs
     try:
@@ -39,9 +42,8 @@ else:
         # pip seems to install PySpin as pyspin sometimes...
         import pyspin as PySpin
     import nidaqmx
-
-from nidaqmx.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
-from nidaqmx.constants import TerminalConfiguration, FrequencyUnits, AcquisitionType, Edge
+    from nidaqmx.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
+    from nidaqmx.constants import TerminalConfiguration, FrequencyUnits, AcquisitionType, Edge
 
 DEFAULT = TerminalConfiguration.DEFAULT
 try:
@@ -359,69 +361,69 @@ class Trigger():
         overlap = self.overlap(otherTrigger)
         return (overlap[0] * overlap[1]) <= 0 and self.isValid() and otherTrigger.isValid()
 
-class AudioChunk():
-    """A class that can contain and manipulate a chunk of audio data
+class DataChunk():
+    """A class that can contain and manipulate a chunk of data
 
-    AudioChunk conveniently bundles audio data with timing statistics about the
+    DataChunk conveniently bundles data with timing statistics about the
         data, and functions for manipulating and querying time info about the
         data
 
     Args:
-        chunkStartTime (float): Start time of the audio chunk in seconds since
+        chunkStartTime (float): Start time of the data chunk in seconds since
             epoch. Defaults to None.
-        audioFrequency (float): Audio sampling frequency in Hz. Defaults to
+        sampleRate (float): Data sampling frequency in Hz. Defaults to
             None.
-        data (numpy.ndarray): Audio data as a CxN numpy array, C=# of channels,
+        data (numpy.ndarray): Data as a CxN numpy array, C=# of channels,
             N=# of samples
         idspace (str): A parameter designed to make IDs unique across processes.
             Pass a different idspace for calls from different processes.
             Defaults to None.
 
     Attributes:
-        data (numpy.ndarray): Audio chunk data
+        data (numpy.ndarray): Chunk of data
         id (int): A unique identifier
-        channelNumber (int): Number of audio channels in data
-        chunkSize (int): Number of audio samples in data
-        chunkStartTime (float): Start time of audio chunk, in seconds since
+        channelNumber (int): Number of channels in data
+        chunkSize (int): Number of data samples in data
+        chunkStartTime (float): Start time of data chunk, in seconds since
             epoch
-        chunkEndTime (float): End time of audio chunk, in seconds since epoch
-        audioFrequency (float): Audio sampling rate in Hz
+        chunkEndTime (float): End time of data chunk, in seconds since epoch
+        sampleRate (float): Data sampling rate in Hz
 
     """
     newid = itertools.count().__next__
     # Source of this clever little idea: https://stackoverflow.com/a/1045724/1460057
     def __init__(self,
-                chunkStartTime=None, audioFrequency=None, data=None, idspace=None):
-        self.id = (AudioChunk.newid(), idspace)
+                chunkStartTime=None, sampleRate=None, data=None, idspace=None):
+        self.id = (DataChunk.newid(), idspace)
         self.data = data
         self.chunkStartTime = chunkStartTime
-        self.audioFrequency = audioFrequency
+        self.sampleRate = sampleRate
         self.channelNumber, self.chunkSize = self.data.shape
         self.chunkEndTime = self.calculateChunkEndTime()
 
     def __str__(self):
-        """Create a string reprentation of the AudioChunk object for debugging.
+        """Create a string reprentation of the DataChunk object for debugging.
 
         Returns:
-            str: A string representation of the AudioChunk object
+            str: A string representation of the DataChunk object
 
         """
-        return 'Audio chunk {id}: {start} ---- {samples} samp x {n} ch ----> {end} @ {freq} Hz'.format(start=self.chunkStartTime, end=self.chunkEndTime, samples=self.chunkSize, n=self.channelNumber, freq=self.audioFrequency, id=self.id)
+        return 'Data chunk {id}: {start} ---- {samples} samp x {n} ch ----> {end} @ {freq} Hz'.format(start=self.chunkStartTime, end=self.chunkEndTime, samples=self.chunkSize, n=self.channelNumber, freq=self.sampleRate, id=self.id)
 
     def calculateChunkEndTime(self):
-        """Calculate the ending time of the AudioChunk.
+        """Calculate the ending time of the DataChunk.
 
         Returns:
-            float: The end time of the AudioChunk in seconds since epoch.
+            float: The end time of the DataChunk in seconds since epoch.
 
         """
-        return self.chunkStartTime + (self.chunkSize / self.audioFrequency)
+        return self.chunkStartTime + (self.chunkSize / self.sampleRate)
 
     def addChunkToEnd(self, nextChunk):
         """Append the given chunk to the end of this chunk.
 
         Args:
-            nextChunk (AudioChunk): Another AudioChunk object to append to the
+            nextChunk (DataChunk): Another DataChunk object to append to the
                 end of this one.
 
         """
@@ -432,7 +434,7 @@ class AudioChunk():
         """Prepend the given chunk to the beginning of this chunk.
 
         Args:
-            nextChunk (AudioChunk): Another AudioChunk object to prepend to the
+            nextChunk (DataChunk): Another DataChunk object to prepend to the
                 beginning of this one.
 
         """
@@ -444,29 +446,29 @@ class AudioChunk():
         """Return the number of audio channels in the audio data.
 
         Returns:
-            int: The number of channels in the audio data
+            int: The number of channels in the data
 
         """
         return self.data.shape[0]
 
     def getSampleCount(self):
-        """Return the number of samples in the audio data.
+        """Return the number of samples in the data.
 
         Returns:
-            int: The number of samples in the audio data
+            int: The number of samples in the data
 
         """
         return self.data.shape[1]
 
     def getTriggerState(self, trigger):
-        """Check whether and how the given trigger overlaps w/ the audio chunk.
+        """Check whether and how the given trigger overlaps w/ the data chunk.
 
         Args:
             trigger (Trigger): A Trigger object
 
         Returns:
             list of floats: A 2-list of floats indicating the "state" of the
-                beginning and end of the audio chunk with respect to the given
+                beginning and end of the data chunk with respect to the given
                 trigger. See "Trigger.state" for more info.
 
         """
@@ -475,9 +477,9 @@ class AudioChunk():
         return chunkStartTriggerState, chunkEndTriggerState
 
     def splitAtSample(self, sampleSplitNum):
-        """Split the Audio chunk into two AudioChunks.
+        """Split the DataChunk into two DataChunks.
 
-        Split audio chunk into two so the first chunk has sampleSplitNum
+        Split data chunk into two so the first chunk has sampleSplitNum
           samples in it, and the second chunk has the rest.
           Returns the two resultant chunks in a tuple
         Note that in addition to returning the 2nd part of the chunk, the
@@ -485,10 +487,10 @@ class AudioChunk():
 
         Args:
             sampleSplitNum (int): The sample number at which to split the
-                AudioChunk.
+                DataChunk.
 
         Returns:
-            list of AudioChunks: A 2-list of AudioChunks
+            list of DataChunks: A 2-list of DataChunks
 
         """
 
@@ -498,24 +500,24 @@ class AudioChunk():
             sampleSplitNum = self.getSampleCount()
 
         # Construct the pre-chunk
-        preChunk = AudioChunk(
+        preChunk = DataChunk(
             chunkStartTime=self.chunkStartTime,
-            audioFrequency=self.audioFrequency,
+            sampleRate=self.sampleRate,
             data=np.copy(self.data[:, :sampleSplitNum]),
             idspace=self.id[1])
 
         # Modify this chunk so it's the post-chunk
         self.data = self.data[:, sampleSplitNum:]
-        self.chunkStartTime = self.chunkStartTime + (sampleSplitNum / self.audioFrequency)
+        self.chunkStartTime = self.chunkStartTime + (sampleSplitNum / self.sampleRate)
         self.channelNumber, self.chunkSize = self.data.shape
         self.chunkEndTime = self.calculateChunkEndTime()
         return preChunk, self
 
     def trimToTrigger(self, trigger, returnOtherPieces=False): # padStart=False):
-        """Trim this AudioChunk so it lies entirely within the given trigger.
+        """Trim this DataChunk so it lies entirely within the given trigger.
 
-        Trim audio chunk so it lies entirely within the trigger period, and
-            update AudioChunk timing accordingly
+        Trim data chunk so it lies entirely within the trigger period, and
+            update DataChunk timing accordingly
         If returnOtherPieces is  True, returns the pre-chunk before the trim
             and the post-chunk after the trim, or None for one or both if there
             is no trim before and/or after
@@ -523,12 +525,12 @@ class AudioChunk():
         Args:
             trigger (Trigger): A Trigger object to trim to
             returnOtherPieces (bool): A boolean indicating whether or not to
-                return the leftover bits of the AudioChunk after trimming
+                return the leftover bits of the DataChunk after trimming
 
         Returns:
-            list of AudioChunks or None: If returnOtherPieces is False, this
-                AudioChunk is trimmed in place, and None is returned. Otherwise,
-                The leftover trimmed pieces of the AudioChunk are returned.
+            list of DataChunks or None: If returnOtherPieces is False, this
+                DataChunk is trimmed in place, and None is returned. Otherwise,
+                The leftover trimmed pieces of the DataChunk are returned.
 
         """
         chunkStartTriggerState, chunkEndTriggerState = self.getTriggerState(trigger)
@@ -536,7 +538,7 @@ class AudioChunk():
         # Trim chunk start:
         if chunkStartTriggerState < 0:
             # Start of chunk is before start of trigger - truncate start of chunk.
-            startSample = abs(int(chunkStartTriggerState * self.audioFrequency))
+            startSample = abs(int(chunkStartTriggerState * self.sampleRate))
             newChunkStartTime = trigger.startTime
         elif chunkStartTriggerState == 0:
             # Start of chunk is in trigger period, do not trim start of chunk, pad if padStart=True
@@ -558,7 +560,7 @@ class AudioChunk():
             newChunkEndTime = self.chunkEndTime
         else:
             # End of chunk is after trigger period - trim chunk to end of trigger period
-            endSample = self.chunkSize - (chunkEndTriggerState * self.audioFrequency)
+            endSample = self.chunkSize - (chunkEndTriggerState * self.sampleRate)
             newChunkEndTime = trigger.endTime
 
         startSample = round(startSample)
@@ -566,16 +568,16 @@ class AudioChunk():
 #        print("Trim samples: {first}|{start} --> {end}|{last}".format(start=startSample, end=endSample, first=0, last=self.chunkSize))
         if returnOtherPieces:
             if startSample > 0:
-                preChunk = AudioChunk(
+                preChunk = DataChunk(
                     chunkStartTime=self.chunkStartTime,
-                    audioFrequency=self.audioFrequency,
+                    sampleRate=self.sampleRate,
                     data=np.copy(self.data[:, :startSample]))
             else:
                 preChunk = None
             if endSample < self.chunkSize:
-                postChunk = AudioChunk(
-                    chunkStartTime=self.chunkStartTime + (endSample / self.audioFrequency),
-                    audioFrequency=self.audioFrequency,
+                postChunk = DataChunk(
+                    chunkStartTime=self.chunkStartTime + (endSample / self.sampleRate),
+                    sampleRate=self.sampleRate,
                     data=np.copy(self.data[:, endSample:]))
             else:
                 postChunk = None
@@ -590,7 +592,7 @@ class AudioChunk():
         return parts
 
         # if padStart is True and startSample == 0:
-        #     padLength = round((self.chunkStartTime - trigger.startTime) * self.audioFrequency)
+        #     padLength = round((self.chunkStartTime - trigger.startTime) * self.sampleRate)
         #     pad = np.zeros((self.channelNumber, padLength), dtype='int16')
         #     self.data = np.concatenate((pad, self.data), axis=1)
         # self.chunkSize = self.data.shape[1]
@@ -645,6 +647,22 @@ def getDaySubfolder(root, trigger=None, timestamp=None):
         timestamp = trigger.triggerTime
     dateString = dt.datetime.fromtimestamp(timestamp).strftime(DATE_FORMAT)
     return os.path.join(root, dateString)
+
+def getTimeVector(timestamp):
+    """Convert a scalar timestamp into a 7-element time vector.
+
+    The elements of the vector are [year, month, day, hour, minute, second, microsecond]
+
+    Args:
+        timestamp (float): A timestamp in seconds since epoch.
+
+    Returns:
+        list: A list of seven time elements in the order [year, month, day,
+            hour, minute, second, microsecond]
+
+    """
+    time = dt.datetime.fromtimestamp(timestamp)
+    return [time.year, time.month, time.day, time.hour, time.minute, time.second, time.microsecond]
 
 def ensureDirectoryExists(directory):
     """Ensure that a directory exists; create it if it does not
@@ -758,6 +776,14 @@ def sendMessage(process, msg):
             process.msgQueue.put(msg)
             return True
 
+def getLineNumberFromChannelString(channelString):
+    match = re.search('[a-z0-9]+/port[0-9]+/line([0-9]+)', channelString.lower())
+    try:
+        lineNumber = int(match.group(1))
+    except (IndexError, AttributeError, ValueError):
+        raise NameError('Not a properly formatted NI channel string: ' + channelString)
+    return lineNumber
+
 class StdoutManager(mp.Process):
     # A process for printing output to stdout from other processes.
     # Expects the following messageBundle format from queues:
@@ -832,11 +858,11 @@ class States:
     SYNCHRONIZING = 200
     WAITING =       300
     ANALYZING =     301
-    AUDIOINIT =     501
+    FILEINIT =     501
     WRITING =       600
     BUFFERING =     601
     ACQUIRING =     700
-    VIDEOINIT =     801
+    FILEINIT =     801
     TRIGGERING =    1000
 
 class Messages:
@@ -956,6 +982,14 @@ class StateMachineProcess(mp.Process):
         timestamp = dt.datetime.now().strftime(TIME_FORMAT)
         self.log('| {timestamp} | '.format(timestamp=timestamp), *args, **kwargs)
 
+    def logError(self):
+        self.errorMessages.append("Error in "+self.stateList[self.state]+" state")
+        self.errorMessages.append('\n')
+        for line in traceback.format_exc().split('\n'):
+            self.errorMessages.append(line)
+        self.errorMessages.append('\n')
+        self.errorMessages.append('\n')
+
     def logEnd(self):
         timestamp = dt.datetime.now().strftime(TIME_FORMAT)
         self.log(r'*** {timestamp} *** lastState={lastState}, state={state}, nextState={nextState} *** exitFlag={exitFlag}'.format(timestamp=timestamp, exitFlag=self.exitFlag, lastState=self.stateList[self.lastState], state=self.stateList[self.state], nextState=self.stateList[self.nextState]))
@@ -978,7 +1012,8 @@ class StateMachineProcess(mp.Process):
         # DO STUFF
         if self.verbose >= 0:
             self.log("ERROR STATE. Error messages:\n\n")
-            self.log("\n\n".join(self.errorMessages))
+            for line in self.errorMessages:
+                self.log(line)
 
         self.updatePublishedInfo("\n".join(self.errorMessages))
 
@@ -1395,7 +1430,7 @@ class AVMerger(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -1404,7 +1439,6 @@ class AVMerger(StateMachineProcess):
         if self.verbose >= 1: self.log("AVMerger process STOPPED")
 
         self.flushStdout()
-        self.closeStdout()
         self.updatePublishedState(States.DEAD)
 
 class Synchronizer(StateMachineProcess):
@@ -1429,19 +1463,19 @@ class Synchronizer(StateMachineProcess):
     # List of params that can be set externally with the 'msg_setParams' message
     settableParams = [
         'verbose',
-        'requestedAudioFrequency',  # Will only take effect when INITIALIZING
-        'requestedVideoFrequency'   # Will only take effect when INITIALIZING
+        'dataFrequency',  # Will only take effect when INITIALIZING
+        'videoFrequency',   # Will only take effect when INITIALIZING
     ]
 
     def __init__(self,
         actualVideoFrequency=None,          # A shared value for publishing the actual video frequencies obtained from DAQ
-        actualAudioFrequency=None,          # A shared value for publishing the actual audio frequencies obtained from DAQ
+        actualDataFrequency=None,           # A shared value for publishing the actual audio frequencies obtained from DAQ
         requestedVideoFrequency=120,        # The frequency in Hz of the video sync signal
-        requestedAudioFrequency=44100,      # The frequency in Hz of the audio sync signal
+        requestedDataFrequency=44100,       # The frequency in Hz of the audio sync signal
         videoSyncChannel=None,              # The counter channel on which to generate the video sync signal Dev3/ctr0
-        videoDutyCycle=0.5,
-        audioSyncChannel=None,              # The counter channel on which to generate the audio sync signal Dev3/ctr1
-        audioDutyCycle=0.5,
+        videoDutyCycle=0.5,                 # Duty cycle of video sync signal
+        dataSyncChannel=None,               # The counter channel on which to generate the audio sync signal Dev3/ctr1
+        dataDutyCycle=0.5,                  # Duty cycle of data sync signal
         signalChannel=None,                 # A digital channel which can be used for various purposes, including hardware triggering sync pulse train start, and enabling/disabling writing.
         startOnHWSignal=False,              # Should synchronizer pulses wait for a rising edge on the signal channel to start?
         writeEnableOnHWSignal=False,        # Should Synchronizer signal Audio/Video writers to only write when signal channel is high?
@@ -1452,15 +1486,15 @@ class Synchronizer(StateMachineProcess):
         StateMachineProcess.__init__(self, **kwargs)
         # Store inputs in instance variables for later access
         self.ID = "S"
-        self.actualAudioFrequency = actualAudioFrequency
+        self.actualDataFrequency = actualDataFrequency
         self.actualVideoFrequency = actualVideoFrequency
         self.startTime = startTime
         self.videoFrequency = requestedVideoFrequency
-        self.audioFrequency = requestedAudioFrequency
+        self.dataFrequency = requestedDataFrequency
         self.videoSyncChannel = videoSyncChannel
-        self.audioSyncChannel = audioSyncChannel
+        self.dataSyncChannel = dataSyncChannel
         self.videoDutyCycle = videoDutyCycle
-        self.audioDutyCycle = audioDutyCycle
+        self.dataDutyCycle = dataDutyCycle
         self.signalChannel = signalChannel
         self.startOnHWSignal = startOnHWSignal
         self.writeEnableOnHWSignal = writeEnableOnHWSignal
@@ -1469,7 +1503,7 @@ class Synchronizer(StateMachineProcess):
 
     def setParams(self, **params):
         super().setParams(**params)
-        if "requestedAudioFrequency" in params or "requestedVideoFrequency" in params:
+        if "dataFrequency" in params or "videoFrequency" in params:
             self.log('Warning: requested frequency won\'t take ' + \
                      'effect until Synchronizer passes through the ' + \
                      'INITIALIZING state.')
@@ -1521,7 +1555,7 @@ class Synchronizer(StateMachineProcess):
                         self.ready.reset()
 
                     # Configure and generate synchronization signal
-                    if self.audioSyncChannel is None and self.videoSyncChannel is None:
+                    if self.dataSyncChannel is None and self.videoSyncChannel is None:
                         trigTask = None
                         signalTask = None
                         raise IOError("At least one audio or video sync channel must be specified.")
@@ -1533,6 +1567,7 @@ class Synchronizer(StateMachineProcess):
                             signalTask = None
 
                     if self.videoSyncChannel is not None:
+                        # Prepare a counter output channel for the video sync signal
                         trigTask.co_channels.add_co_pulse_chan_freq(
                             counter=self.videoSyncChannel,
                             name_to_assign_to_channel="videoFrequency",
@@ -1542,16 +1577,17 @@ class Synchronizer(StateMachineProcess):
                             duty_cycle=self.videoDutyCycle)     # Prepare a counter output channel for the video sync signal
                         if self.verbose >= 2:
                             self.log('Added video sync channel to task')
-                    if self.audioSyncChannel is not None:
+                    if self.dataSyncChannel is not None:
+                        # Prepare a counter output channel for the data sync signal
                         trigTask.co_channels.add_co_pulse_chan_freq(
-                            counter=self.audioSyncChannel,
-                            name_to_assign_to_channel="audioFrequency",
+                            counter=self.dataSyncChannel,
+                            name_to_assign_to_channel="dataFrequency",
                             units=HZ,
                             initial_delay=0.0,
-                            freq=self.audioFrequency,
-                            duty_cycle=self.audioDutyCycle)     # Prepare a counter output channel for the audio sync signal
+                            freq=self.dataFrequency,
+                            duty_cycle=self.dataDutyCycle     # Prepare a counter output channel for the data sync signal
                         if self.verbose >= 2:
-                            self.log('Added audio sync channel to task')
+                            self.log('Added data sync channel to task')
                     # if (self.signalChannel is not None) and ((self.videoSyncChannel is not None) or (self.audioSyncChannel is not None)):
                     #     # Configure task to wait for a digital pulse on the specified channel.
                     #     trigTask.triggers.arm_start_trigger.dig_edge_src=self.signalChannel
@@ -1560,9 +1596,9 @@ class Synchronizer(StateMachineProcess):
                     trigTask.timing.cfg_implicit_timing(sample_mode=CONTINUOUS)
 
                     # Set shared values so other processes can get actual a/v frequencies
-                    if self.audioSyncChannel is not None and self.actualAudioFrequency is not None:
-                        self.actualAudioFrequency.value = trigTask.co_channels['audioFrequency'].co_pulse_freq
-                        if self.verbose > 0: self.log('Requested audio frequency: ', self.audioFrequency, ' | actual audio frequency: ', self.actualAudioFrequency.value);
+                    if self.dataSyncChannel is not None and self.actualDataFrequency is not None:
+                        self.actualDataFrequency.value = trigTask.co_channels['dataFrequency'].co_pulse_freq
+                        if self.verbose > 0: self.log('Requested data frequency: ', self.dataFrequency, ' | actual data frequency: ', self.actualDataFrequency.value);
                     if self.videoSyncChannel is not None and self.actualVideoFrequency is not None:
                         self.actualVideoFrequency.value = trigTask.co_channels['videoFrequency'].co_pulse_freq
                         if self.verbose > 0: self.log('Requested video frequency: ', self.videoFrequency, ' | actual video frequency: ', self.actualVideoFrequency.value);
@@ -1634,8 +1670,13 @@ class Synchronizer(StateMachineProcess):
                         if self.ready is not None:
                             if self.verbose >= 2: self.log('Barrier: {n} others waiting, broken={b}'.format(n=self.ready.n_waiting, b=self.ready.broken))
                             if self.ready.broken:
+                                # Reset the barrier for all processes
                                 self.ready.reset()
+                            # Wait for other processes to pass barrier.
+                            #   If other processes timeout and break the
+                            #   barrier, jump to except block below.
                             self.ready.wait()
+                            if self.verbose >= 2: self.log('Passed barrier!')
                         passedBarrier = True
 
                         # To give audio and video processes a chance to get totally set up for acquiring, wait a second.
@@ -1751,7 +1792,7 @@ class Synchronizer(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -2146,7 +2187,7 @@ class AudioTriggerer(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -2310,20 +2351,32 @@ class AudioAcquirer(StateMachineProcess):
                         # Wait for shared value audioFrequency to be set by the Synchronizer process
                         time.sleep(0.1)
                     else:
+                        # audioFrequency shared value has been set by Synchronizer process
                         self.audioFrequency = self.audioFrequencyVar.value
 
-                        data = np.zeros((len(self.inputChannels), self.chunkSize), dtype='float')   # A pre-allocated array to receive audio data
+                        # A pre-allocated array to receive audio data
+                        data = np.zeros((len(self.inputChannels), self.chunkSize), dtype='float')
+
+                        if self.verbose >= 2:
+                            self.log('Created data buffer with size {c} x {n}'.format(c=len(self.inputChannels), n=self.chunkSize))
 
                         processedData = data.copy()
-                        readTask = nidaqmx.Task(new_task_name="audioTask")                            # Create task
-                        reader = AnalogMultiChannelReader(readTask.in_stream)  # Set up an analog stream reader
+
+                        # Create task
+                        readTask = nidaqmx.Task(new_task_name="audioTask")
+
+                        # Set up an analog stream reader
+                        reader = AnalogMultiChannelReader(readTask.in_stream)
                         for inputChannel in self.inputChannels:
-                            readTask.ai_channels.add_ai_voltage_chan(               # Set up analog input channel
+                            # Set up analog input channel
+                            readTask.ai_channels.add_ai_voltage_chan(
                                 inputChannel,
                                 terminal_config=self.channelConfig,
                                 max_val=10,
                                 min_val=-10)
-                        readTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
+
+                        # Configure clock source for triggering each analog read
+                        readTask.timing.cfg_samp_clk_timing(
                             rate=self.audioFrequency,
                             source=self.syncChannel,                            # Specify a timing source!
                             active_edge=RISING,
@@ -2340,6 +2393,8 @@ class AudioAcquirer(StateMachineProcess):
                     elif msg in ['', Messages.START]:
                         if self.audioFrequency is None:
                             self.nextState = States.INITIALIZING
+                            if self.verbose >= 3:
+                                self.log('No audio frequency yet.')
                         else:
                             self.nextState = States.READY
                     elif msg == Messages.STOP:
@@ -2359,7 +2414,7 @@ class AudioAcquirer(StateMachineProcess):
                             if self.ready is not None:
                                 self.ready.wait()
                             passedBarrier = True
-                            if self.verbose >= 2: self.log('Passed barrier.')
+                            if self.verbose >= 2: self.log('Passed barrier!')
                         except BrokenBarrierError:
                             passedBarrier = False
                             if self.verbose >= 2: self.log("No simultaneous start - retrying")
@@ -2405,7 +2460,7 @@ class AudioAcquirer(StateMachineProcess):
                         sampleCount += self.chunkSize
                         if self.verbose >= 3: self.log('# samples:'+str(sampleCount))
                         processedData = AudioAcquirer.rescaleAudio(data)
-                        audioChunk = AudioChunk(chunkStartTime = chunkStartTime, audioFrequency = self.audioFrequency, data = processedData, idspace=self.ID)
+                        audioChunk = DataChunk(chunkStartTime=chunkStartTime, sampleRate=self.audioFrequency, data=processedData, idspace=self.ID)
                         if self.sendToWriter and self.audioQueue is not None:
                             self.audioQueue.put(audioChunk)              # If a data queue is provided, queue up the new data
                         else:
@@ -2503,7 +2558,7 @@ class AudioAcquirer(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -2521,7 +2576,7 @@ class SimpleAudioWriter(StateMachineProcess):
     # Human-readable states
     stateList = {
         States.WRITING :'WRITING',
-        States.AUDIOINIT:'AUDIOINIT',
+        States.FILEINIT:'FILEINIT',
     }
 
     # Include common states from parent class
@@ -2662,7 +2717,7 @@ class SimpleAudioWriter(StateMachineProcess):
                             self.nextState = States.INITIALIZING
                         else:
                             # Ready to go
-                            self.nextState = States.AUDIOINIT
+                            self.nextState = States.FILEINIT
                     elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
                     elif msg == Messages.EXIT:
@@ -2670,8 +2725,8 @@ class SimpleAudioWriter(StateMachineProcess):
                         self.nextState = States.STOPPING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
-# SimpleAudioWriter: ************** AUDIOINIT ********************************
-                elif self.state == States.AUDIOINIT:
+# SimpleAudioWriter: ************** FILEINIT ********************************
+                elif self.state == States.FILEINIT:
                     # Start a new audio file
                     # DO STUFF
 
@@ -2802,7 +2857,7 @@ class SimpleAudioWriter(StateMachineProcess):
                     elif msg in ['', Messages.START]:
                         if (numSamplesPerFile - numSamplesInCurrentFile) > -1 and (numSamplesPerFile - numSamplesInCurrentFile) < 1:
                             # We've reached the desired sample count. Start a new audio file.
-                            self.nextState = States.AUDIOINIT
+                            self.nextState = States.FILEINIT
                             # If requested, merge with video
                             if self.mergeMessageQueue is not None:
                                 # Send file for AV merging:
@@ -2815,7 +2870,7 @@ class SimpleAudioWriter(StateMachineProcess):
                                         id=audioFileCount, idspace='SimpleAVFiles'), #triggers[0],
                                     streamID='audio',
                                     startTime=audioFileStartTime,
-                                    tags=['{audioFileCount:03d}'.format(audioFileCount=audioFileCount)]
+                                    tags=['{audioFileCount:04d}'.format(audioFileCount=audioFileCount)]
                                     )
                                 if self.verbose >= 1: self.log("Sending audio filename to merger")
                                 self.mergeMessageQueue.put((Messages.MERGE, fileEvent))
@@ -2887,7 +2942,7 @@ class SimpleAudioWriter(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -3279,7 +3334,7 @@ class AudioWriter(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -3710,7 +3765,7 @@ class VideoAcquirer(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -3733,7 +3788,7 @@ class SimpleVideoWriter(StateMachineProcess):
     # Human-readable states
     stateList = {
         States.WRITING :'WRITING',
-        States.VIDEOINIT : 'VIDEOINIT',
+        States.FILEINIT : 'FILEINIT',
     }
 
     # Include common states from parent class
@@ -3860,7 +3915,7 @@ class SimpleVideoWriter(StateMachineProcess):
                             self.nextState = States.INITIALIZING
                         else:
                             # Frame rate has been set by synchronizer
-                            self.nextState = States.VIDEOINIT
+                            self.nextState = States.FILEINIT
                     elif msg == Messages.STOP:
                         self.nextState = States.STOPPING
                     elif msg == Messages.EXIT:
@@ -3868,8 +3923,8 @@ class SimpleVideoWriter(StateMachineProcess):
                         self.nextState = States.STOPPING
                     else:
                         raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
-# SimpleVideoWriter: ************** VIDEOINIT *********************************
-                elif self.state == States.VIDEOINIT:
+# SimpleVideoWriter: ************** FILEINIT *********************************
+                elif self.state == States.FILEINIT:
                     # Start a new video file
                     # DO STUFF
 
@@ -4038,7 +4093,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     elif msg in ['', Messages.START]:
                         if numFramesInCurrentVideo == self.videoFrameCount:
                             # We've reached desired video frame count. Start a new video.
-                            self.nextState = States.VIDEOINIT
+                            self.nextState = States.FILEINIT
                             # If requested, merge with audio.
                             #   This doesn't really work with SimpleVideoWriter right now. For potential future use.
                             if self.mergeMessageQueue is not None and videoFileInterface is not None:
@@ -4146,7 +4201,7 @@ class SimpleVideoWriter(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -4521,7 +4576,7 @@ class VideoWriter(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -4825,7 +4880,7 @@ class ContinuousTriggerer(StateMachineProcess):
                 self.nextState = States.STOPPING
             except:
                 # HANDLE UNKNOWN ERROR
-                self.errorMessages.append("Error in "+self.stateList[self.state]+" state\n\n"+traceback.format_exc())
+                self.logError()
                 self.nextState = States.ERROR
 
             self.endLoop(msg=msg)
@@ -4895,3 +4950,686 @@ class ContinuousTriggerer(StateMachineProcess):
                     self.log("Resending trigger {t}".format(t=activeTrigger))
                     self.log("  with updated tags: " + ','.join(tags))
                 self.sendTrigger(activeTrigger)
+
+class DigitalAcquirer(StateMachineProcess):
+    # Class for acquiring digital signals at a rate that
+    #   is synchronized to the rising edges on the specified synchronization
+    #   channel.
+
+    # Human-readable states
+    stateList = {
+        States.ACQUIRING :'ACQUIRING',
+        States.READY :'ACQUIRE_READY',
+    }
+
+    # Include common states from parent class
+    stateList.update(StateMachineProcess.stateList)
+
+    # List of params that can be set externally with the 'msg_setParams' message
+    settableParams = [
+        'verbose',
+        # 'copyToMonitoringQueue',
+        # 'copyToAnalysisQueue'
+    ]
+
+    def __init__(self,
+                startTime=None,
+                dataQueue = None,                  # A multiprocessing queue to send data to another proces for writing to disk
+                chunkSize = 4410,                   # Size of the read chunk in samples
+                sampleRate = 44100,               # Maximum expected rate of the specified synchronization channel
+                bufferSize = None,                  # Size of device buffer. Defaults to 1 second's worth of data
+                channelNames = [],                  # Channel name for analog input (microphone signal)
+                syncChannel = None,                 # Channel name for synchronization source
+                sendToWriter=True,
+                sendToMonitor=True,
+                sendToAnalysis=True,
+                ready=None,                         # Synchronization barrier to ensure everyone's ready before beginning
+                copyToMonitoringQueue=True,         # Should data be also sent to the monitoring queue?
+                copyToAnalysisQueue=True,           # Should data be also sent to the analysis queue?
+                **kwargs):
+        StateMachineProcess.__init__(self, **kwargs)
+        # Store inputs in instance variables for later access
+        self.ID = "DA"
+        self.copyToMonitoringQueue = copyToMonitoringQueue
+        self.copyToAnalysisQueue = copyToAnalysisQueue
+        self.startTimeSharedValue = startTime
+        self.sampleRateVar = sampleRate
+        self.sampleRate = None
+        self.acquireTimeout = 2 #2*chunkSize / self.sampleRate
+        self.dataQueue = dataQueue
+        self.monitorQueue = None
+        self.analysisQueue = None
+        self.sendToWriter = sendToWriter
+        self.sendToMonitor = sendToMonitor
+        if self.dataQueue is not None:
+            self.dataQueue.cancel_join_thread()
+        if self.sendToMonitor:
+            self.monitorQueue = mp.Queue()      # A multiprocessing queue to send data to the UI to monitor the digital signals
+        if sendToAnalysis:
+            self.analysisQueue = mp.Queue()     # A multiprocessing queue to send data to the audio triggerer process for analysis
+        # if len(self.monitorQueue) > 0:
+        #     self.monitorQueue.cancel_join_thread()
+        self.chunkSize = chunkSize
+        self.inputChannels = channelNames
+        self.syncChannel = syncChannel
+        self.ready = ready
+        self.exitFlag = False
+
+        self.inputLineNumbers = [getLineNumberFromChannelString(channelName) for channelName in self.inputChannels]
+
+    def run(self):
+        super().run()
+        msg = ''; arg = None
+
+        while True:
+            # Publish updated state
+            self.updatePublishedState()
+
+            try:
+# DigitalAcquirer: ***************** STOPPED *********************************
+                if self.state == States.STOPPED:
+                    # DO STUFF
+
+                    # CHECK FOR MESSAGES
+                    msg, arg = self.checkMessages(block=True)
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        self.nextState = States.EXITING
+                    elif msg == '':
+                        self.nextState = self.state
+                    elif msg == Messages.STOP:
+                        self.nextState = States.STOPPED
+                    elif msg == Messages.START:
+                        self.nextState = States.INITIALIZING
+                    elif msg == Messages.EXIT:
+                        self.exitFlag = True
+                        self.nextState = States.EXITING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+# DigitalAcquirer: ****************** INITIALIZING *********************************
+                elif self.state == States.INITIALIZING:
+                    # DO STUFF
+                    self.sampleRate = None
+                    if self.startTimeSharedValue is None:
+                        # no need to get start time
+                        gotStartTime = True
+                    else:
+                        gotStartTime = False
+                        startTime = -1
+                    if self.ready is None:
+                        # No barrier to pass
+                        passedBarrier = True
+                    else:
+                        passedBarrier = False
+
+                    # Read actual data frequency from the Synchronizer process
+                    if self.sampleRateVar.value == -1:
+                        # Wait for shared value sampleRate to be set by the Synchronizer process
+                        time.sleep(0.1)
+                    else:
+                        self.sampleRate = self.sampleRateVar.value
+
+                        data = np.zeros((1, self.chunkSize), dtype='uint32')   # A pre-allocated array to receive audio data
+
+                        readTask = nidaqmx.Task(new_task_name="digitalTask")                            # Create task
+                        reader = DigitalMultiChannelReader(readTask.in_stream)  # Set up an analog stream reader
+                        readTask.di_channels.add_di_chan(               # Set up digital input channel
+                            ','.join(self.inputChannels),
+                            )
+                        readTask.timing.cfg_samp_clk_timing(                    # Configure clock source for triggering each analog read
+                            rate=self.sampleRate,
+                            source=self.syncChannel,                            # Specify a timing source!
+                            active_edge=nidaqmx.constants.Edge.RISING,
+                            sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
+                            samps_per_chan=self.chunkSize)
+
+                        try:
+                            # Set DAQ buffer overwrite mode to "do not overwrite"
+                            readTask.in_stream.overwrite = nidaqmx.constants.OverwriteMode.DO_NOT_OVERWRITE_UNREAD_SAMPLES
+                        except:
+                            try:
+                                # For nidaqmx library backwards compatibility
+                                # over_write property deprecated in 0.7.0
+                                readTask.in_stream.over_write = nidaqmx.constants.OverwriteMode.DO_NOT_OVERWRITE_UNREAD_SAMPLES
+                            except:
+                                self.log('Warning, could not set read task overwrite mode to "do not overwrite"')
+
+                        sampleCount = 0
+
+                    # CHECK FOR MESSAGES
+                    msg, arg = self.checkMessages(block=False)
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        self.nextState = States.STOPPING
+                    elif msg in ['', Messages.START]:
+                        if self.sampleRate is None:
+                            self.nextState = States.INITIALIZING
+                        else:
+                            self.nextState = States.READY
+                    elif msg == Messages.STOP:
+                        self.nextState = States.STOPPING
+                    elif msg == Messages.EXIT:
+                        self.exitFlag = True
+                        self.nextState = States.STOPPING
+                    else:
+                        raise SyntaxError("AA - Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+# DigitalAcquirer: ****************** READY *********************************
+                elif self.state == States.READY:
+                    # DO STUFF
+
+                    # Check if other processes are synced by waiting for barrier
+                    if not passedBarrier:
+                        try:
+                            if self.ready is not None:
+                                self.ready.wait()
+                            passedBarrier = True
+                            if self.verbose >= 2: self.log('Passed barrier.')
+                        except BrokenBarrierError:
+                            passedBarrier = False
+                            if self.verbose >= 2: self.log("No simultaneous start - retrying")
+                            time.sleep(0.1)
+
+                    # Get timestamp of first digital chunk acquisition
+                    if not gotStartTime:
+                        if self.verbose >= 2: self.log("Getting start time from sync process...")
+                        startTime = self.startTimeSharedValue.value
+                        if startTime == -1:
+                            gotStartTime = False
+                            if self.verbose >= 2: self.log('No start time from sync process yet.')
+                        else:
+                            gotStartTime = True
+                            if self.verbose >= 2: self.log("Got start time from sync process: "+str(startTime))
+
+                    # CHECK FOR MESSAGES
+                    msg, arg = self.checkMessages(block=True, timeout=0.1)
+
+                    # CHOOSE NEXT STATE
+                    if msg in ['', Messages.START]:
+                        if not passedBarrier or not gotStartTime:
+                            self.nextState = States.READY
+                        else:
+                            self.nextState = States.ACQUIRING
+                    elif msg == Messages.STOP:
+                        self.nextState = States.STOPPING
+                    elif msg == Messages.EXIT:
+                        self.exitFlag = True
+                        self.nextState = States.STOPPING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+# DigitalAcquirer: ****************** ACQUIRING *********************************
+                elif self.state == States.ACQUIRING:
+                    # DO STUFF
+                    try:
+                        reader.read_many_sample_port_uint32(                            # Read a chunk of digital data
+                            data,
+                            number_of_samples_per_channel=self.chunkSize,
+                            timeout=self.acquireTimeout)
+
+                        chunkStartTime = startTime + sampleCount / self.sampleRate
+                        sampleCount += self.chunkSize
+                        if self.verbose >= 3: self.log('# samples:'+str(sampleCount))
+                        dataChunk = DataChunk(chunkStartTime=chunkStartTime, sampleRate=self.sampleRate, data=data, idspace=self.ID)
+                        if self.sendToWriter and self.dataQueue is not None:
+                            self.dataQueue.put(dataChunk)              # If a data queue is provided, queue up the new data
+                        else:
+                            if self.verbose >= 2: self.log('' + data)
+
+                        if (self.copyToMonitoringQueue and self.monitorQueue is not None) or (self.copyToAnalysisQueue and self.analysisQueue is not None):
+                            # Copy data for monitoring queues
+                            monitorDataCopy = extractBooleanDataFromDigitalArray(data.squeeze(), self.inputLineNumbers)
+
+                            if self.copyToMonitoringQueue and self.monitorQueue is not None:
+                                self.monitorQueue.put((self.inputChannels, chunkStartTime, monitorDataCopy))      # If a monitoring queue is provided, queue up the data
+                            if self.copyToAnalysisQueue and self.analysisQueue is not None:
+                                self.analysisQueue.put((chunkStartTime, monitorDataCopy))
+
+                        if self.verbose >= 3:
+                            if self.dataQueue is None:
+                                dataQueueSize = None
+                            else:
+                                dataQueueSize = self.dataQueue.qsize()
+                            if self.monitorQueue is None:
+                                dataQueueSize = None
+                            else:
+                                dataQueueSize = self.monitorQueue.qsize()
+                            if self.analysisQueue is None:
+                                dataQueueSize = None
+                            else:
+                                dataQueueSize = self.analysisQueue.qsize()
+                            self.log('Queue sizes:')
+                            self.log('        Main:', dataQueueSize)
+                            self.log('  Monitoring:', monitorQueueSize)
+                            self.log('    Analysis:', analysisQueueSize)
+                    except nidaqmx.errors.DaqError as error:
+                        if self.verbose >= 0:
+                            if error.error_type == nidaqmx.error_codes.DAQmxErrors.OPERATION_TIMED_OUT:
+                                self.log("Digital chunk acquisition timed out.")
+                                self.log(str(error))
+                            if error.error_type == nidaqmx.error_codes.DAQmxErrors.SAMPLES_NOT_YET_AVAILABLE:
+                                self.log("DAQ not ready with digital samples.")
+                                self.log(str(error))
+                            else:
+                                self.log("Unrecognized DAQ error encountered during digital acquisition:")
+                                self.log(str(error))
+                                raise(error)
+
+                    # CHECK FOR MESSAGES
+                    msg, arg = self.checkMessages(block=False)
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        self.nextState = States.STOPPING
+                    elif msg in ['', Messages.START]:
+                        self.nextState = States.ACQUIRING
+                    elif msg == Messages.STOP:
+                        self.nextState = States.STOPPING
+                    elif msg == Messages.EXIT:
+                        self.exitFlag = True
+                        self.nextState = States.STOPPING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+# DigitalAcquirer: ****************** STOPPING *********************************
+                elif self.state == States.STOPPING:
+                    # DO STUFF
+                    if readTask is not None:
+                        readTask.close()
+
+                    # CHECK FOR MESSAGES
+                    msg, arg = self.checkMessages(block=False)
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        self.nextState = States.STOPPED
+                    elif msg == '':
+                        self.nextState = States.STOPPED
+                    elif msg == Messages.STOP:
+                        self.nextState = States.STOPPED
+                    elif msg == Messages.EXIT:
+                        self.exitFlag = True
+                        self.nextState = States.STOPPED
+                    elif msg == Messages.START:
+                        self.nextState = States.INITIALIZING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+# DigitalAcquirer: ****************** ERROR *********************************
+                elif self.state == States.ERROR:
+                    self.handleError()
+# DigitalAcquirer: ****************** EXIT *********************************
+                elif self.state == States.EXITING:
+                    if self.verbose >= 1: self.log('Exiting!')
+                    break
+                else:
+                    raise KeyError("Unknown state: "+self.stateList[self.state])
+            except KeyboardInterrupt:
+                # Handle user using keyboard interrupt
+                if self.verbose >= 1: self.log("Keyboard interrupt received - exiting")
+                self.exitFlag = True
+                self.nextState = States.STOPPING
+            except:
+                # HANDLE UNKNOWN ERROR
+                self.logError()
+                self.nextState = States.ERROR
+
+            self.endLoop(msg=msg)
+
+        clearQueue(self.msgQueue)
+        clearQueue(self.monitorQueue)
+        clearQueue(self.analysisQueue)
+        if self.verbose >= 1: self.log("Digital acquire process STOPPED")
+
+        self.flushStdout()
+        self.updatePublishedState(States.DEAD)
+
+class SimpleDigitalWriter(StateMachineProcess):
+    # Human-readable states
+    stateList = {
+        States.WRITING :'WRITING',
+        States.FILEINIT:'FILEINIT',
+    }
+
+    # Include common states from parent class
+    stateList.update(StateMachineProcess.stateList)
+
+    # List of params that can be set externally with the 'msg_setParams' message
+    settableParams = [
+        'verbose',
+        'digitalBaseFileName',
+        'digitalDirectory',
+        'daySubfolders',
+        'enableWrite',
+        'scheduleEnabled',
+        'scheduleStartTime',
+        'scheduleStopTime'
+        ]
+
+    def __init__(self,
+                digitalDirectory='.',
+                digitalBaseFileName='digitalFile',
+                channelNames=[],
+                dataQueue=None,
+                sampleRate=None,            # A shared variable for sampleRate
+                frameRate=None,             # A shared variable for video framerate (needed to ensure data sync)
+                videoLength=None,           # Requested time in seconds of each video.
+                daySubfolders=True,         # Create and write to subfolders labeled by day?
+                enableWrite=True,
+                scheduleEnabled=False,
+                scheduleStartTime=None,
+                scheduleStopTime=None,
+                **kwargs):
+        StateMachineProcess.__init__(self, **kwargs)
+        self.ID = "SDW"
+        self.digitalDirectory = digitalDirectory
+        self.digitalBaseFileName = digitalBaseFileName
+        self.channelNames = channelNames
+        self.dataQueue = dataQueue
+        if self.dataQueue is not None:
+            self.dataQueue.cancel_join_thread()
+        self.sampleRateVar = sampleRate
+        self.sampleRate = None
+        self.frameRateVar = frameRate
+        self.frameRate = None
+        self.numChannels = len(channelNames)
+        self.videoLength = videoLength
+        self.daySubfolders = daySubfolders
+        self.enableWrite = enableWrite
+        self.scheduleEnabled = scheduleEnabled
+        self.scheduleStartTime = scheduleStartTime
+        self.scheduleStopTime = scheduleStopTime
+
+    def run(self):
+        super().run()
+        msg = ''; arg = None
+
+        while True:
+            # Publish updated state
+            self.updatePublishedState()
+
+            try:
+# SimpleDigitalWriter: **************** STOPPED *********************************
+                if self.state == States.STOPPED:
+                    # DO STUFF
+
+                    # CHECK FOR MESSAGES
+                    msg, arg = self.checkMessages(block=True)
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        self.nextState = States.EXITING
+                    elif msg == '':
+                        self.nextState = States.STOPPED
+                    elif msg == Messages.STOP:
+                        self.nextState = States.STOPPED
+                    elif msg == Messages.START:
+                        self.nextState = States.INITIALIZING
+                    elif msg == Messages.EXIT:
+                        self.exitFlag = True
+                        self.nextState = States.EXITING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+# SimpleDigitalWriter: ************** INITIALIZING *****************************
+                elif self.state == States.INITIALIZING:
+                    # DO STUFF
+                    digitalFile = None
+                    seriesStartTime = time.time()   # Record approximate start time (in seconds since epoch) of series for filenaming purposes
+                    digitalFileCount = 0
+                    numSamplesInCurrentSeries = 0
+                    dataChunk = None
+                    dataChunkLeftover = None
+                    timeWrote = 0
+                    writeEnabledPrevious = True
+                    writeEnabled = True
+                    self.sampleRate = None
+                    numSamplesPerFile = 0
+
+                    # Read actual data frequency from the Synchronizer process
+                    if self.sampleRateVar.value == -1 or self.frameRateVar.value == -1:
+                        # Wait for shared value sampleRate & frameRate to be set by the Synchronizer process
+                        # Wait for shared value frameRate to be set by the Synchronizer process
+                        time.sleep(0.1)
+                    else:
+                        self.sampleRate = self.sampleRateVar.value
+                        self.frameRate = self.frameRateVar.value
+
+                        # Calculate actual exact # of frames per video that SimpleVideoWriter will be recording
+                        actualFramesPerVideo = round(self.videoLength * self.frameRate)
+                        # Actual video length that SimpleVideoWriter will be using
+                        actualVideoLength = actualFramesPerVideo / self.frameRate
+                        # Actual # of samples per video we should record. If
+                        #   this is not an integer, the # of samples per file
+                        #   will vary by 1 sample, but over time the error will
+                        #   not accumulate.
+                        numSamplesPerFile = actualVideoLength * self.sampleRate
+
+                        if self.verbose >= 1:
+                            self.log('Digital writer initialized:')
+                            self.log('\tSample rate = {af} Hz'.format(af=self.sampleRate))
+                            self.log('\tSamples per file = {spf}'.format(spf=numSamplesPerFile))
+                            self.log('\tTime per file = {t} s'.format(t=actualVideoLength))
+
+                    # CHECK FOR MESSAGES
+                    msg, arg = self.checkMessages(block=False)
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        self.nextState = States.STOPPING
+                    elif msg in ['', Messages.START]:
+                        if self.sampleRate is None or self.frameRate is None:
+                            # Haven't received data frequency or frame rate from synchronizer - continue waiting
+                            self.nextState = States.INITIALIZING
+                        else:
+                            # Ready to go
+                            self.nextState = States.FILEINIT
+                    elif msg == Messages.STOP:
+                        self.nextState = States.STOPPING
+                    elif msg == Messages.EXIT:
+                        self.exitFlag = True
+                        self.nextState = States.STOPPING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+# SimpleDigitalWriter: ************** FILEINIT ********************************
+                elif self.state == States.FILEINIT:
+                    # Start a new digital file
+                    # DO STUFF
+
+                    scheduledOn = inSchedule(self.scheduleStartTime, self.scheduleStopTime)
+
+                    writeEnabledPrevious = writeEnabled
+                    writeEnabled = (self.enableWrite and (not self.scheduleEnabled or scheduledOn))
+
+                    if self.verbose >= 1:
+                        if writeEnabled and not writeEnabledPrevious:
+                            self.logTime('Digital write now enabled.')
+                        elif not writeEnabled and writeEnabledPrevious:
+                            self.logTime('Digital write now disabled')
+
+                    if digitalFile is not None:
+                        # Close file
+                        digitalFile.close()
+                        digitalFile = None
+
+                    digitalFileStartTime = seriesStartTime + numSamplesInCurrentSeries / self.sampleRate
+                    numSamplesInCurrentFile = 0
+
+                    if writeEnabled:
+                        # Generate new digital file path
+                        digitalFileNameTags = ['digital', generateTimeString(timestamp=seriesStartTime), '{digitalFileCount:04d}'.format(digitalFileCount=digitalFileCount)]
+                        if self.daySubfolders:
+                            digitalDirectory = getDaySubfolder(self.digitalDirectory, timestamp=digitalFileStartTime)
+                        else:
+                            digitalDirectory = self.digitalDirectory
+                        digitalFileName = generateFileName(directory=digitalDirectory, baseName=self.digitalBaseFileName, extension='.nc', tags=digitalFileNameTags)
+                        ensureDirectoryExists(digitalDirectory)
+
+                        # Open and initialize digital file
+                        timeVector = getTimeVector(digitalFileStartTime)
+                        metaData = 'Digital input channels: ' + ','.join(self.channelNames)
+                        digitalFile = NCFile(digitalFileName, timeVector, 1/self.sampleRate, 0, metaData, dataType='i4')
+
+                        newFileInfo = 'Opened digital file #{num:04d}: {n} channels, {f:.2f} Hz'.format(num=digitalFileCount, n=self.numChannels, f=self.sampleRate);
+                        self.updatePublishedInfo(newFileInfo)
+
+                        if self.verbose >= 2:
+                            self.log(newFileInfo)
+
+                    digitalFileCount += 1
+
+                    # CHECK FOR MESSAGES
+                    msg, arg = self.checkMessages(block=False)
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        self.nextState = States.STOPPING
+                    elif msg == Messages.STOP:
+                        self.nextState = States.STOPPING
+                    elif msg == Messages.EXIT:
+                        self.exitFlag = True
+                        self.nextState = States.STOPPING
+                    elif msg in ['', Messages.START]:
+                        self.nextState = States.WRITING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+# SimpleDigitalWriter: ************** WRITING *********************************
+                elif self.state == States.WRITING:
+                    # DO STUFF
+                    if self.verbose >= 3:
+                        self.log("Digital queue size: ", self.dataQueue.qsize())
+
+                    # Calculate how many more samples needed to complete the file
+                    samplesUntilEOF = floor(numSamplesPerFile - (numSamplesInCurrentSeries % numSamplesPerFile))
+
+                    dataChunk = self.getNextChunk()
+
+                    # Write all or part of last digital chunk to file
+                    if dataChunk is None:
+                        # No data chunk yet
+                        pass
+                    else:
+                        # We have a data chunk to write.
+
+                        # Tack on data chunk leftover, if there is one
+                        if dataChunkLeftover is not None:
+                            if dataChunkLeftover.getSampleCount() != 0:
+                                # There are leftover samples. Include those at the start of this chunk.
+                                if self.verbose >= 3:
+                                    self.log('Prepending leftover chunk to new chunk:')
+                                    self.log('Leftover: ', dataChunkLeftover)
+                                    self.log('New:      ', dataChunk)
+                                dataChunk.addChunkToStart(dataChunkLeftover)
+                                dataChunkLeftover = None
+
+                        # Split chunk to part before end of file, and part after end of file.
+                        #   If the whole chunk is needed in this file, the leftover will be
+                        #   None
+                        if samplesUntilEOF > 0:
+                            [dataChunk, dataChunkLeftover] = dataChunk.splitAtSample(samplesUntilEOF)
+                        if self.verbose >= 3:
+                            self.log("Pre chunk:", dataChunk)
+                            self.log("Post chunk:", dataChunkLeftover)
+
+                        # Write chunk of digital to file that was previously retrieved from the buffer
+                        if writeEnabled:
+                            digitalFile.addData(dataChunk.data.transpose())
+                        numSamplesInCurrentFile += dataChunk.getSampleCount()
+                        numSamplesInCurrentSeries += dataChunk.getSampleCount()
+
+                        if self.verbose >= 3:
+                            self.log('digital file num: {num}'.format(num=digitalFileCount))
+                            self.log('  pre-chunk samplesUntilEOF   = {ns}'.format(ns=samplesUntilEOF))
+                            self.log('  chunk size                  = {ns}'.format(ns=dataChunk.getSampleCount()))
+                            self.log('  numSamplesInCurrentFile     = {ns}'.format(ns=numSamplesInCurrentFile))
+                            self.log('  numSamplesInCurrentSeries   = {ns}'.format(ns=numSamplesInCurrentSeries))
+                            self.log("Wrote data chunk {id}".format(id=dataChunk.id))
+                            timeWrote += (dataChunk.getSampleCount() / dataChunk.sampleRate)
+                            self.log("Data time wrote: {time}".format(time=timeWrote))
+
+                    # CHECK FOR MESSAGES
+                    msg, arg = self.checkMessages(block=False)
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        self.nextState = States.STOPPING
+                    elif msg == Messages.STOP:
+                        self.nextState = States.STOPPING
+                    elif msg == Messages.EXIT:
+                        self.exitFlag = True
+                        self.nextState = States.STOPPING
+                    elif msg in ['', Messages.START]:
+                        if (numSamplesPerFile - numSamplesInCurrentFile) > -1 and (numSamplesPerFile - numSamplesInCurrentFile) < 1:
+                            # We've reached the desired sample count. Start a new data file.
+                            self.nextState = States.FILEINIT
+                        elif (numSamplesPerFile - numSamplesInCurrentFile) >= 1:
+                            # Not enough data samples written to this file yet. Keep writing.
+                            self.nextState = States.WRITING
+                        else:
+                            # Uh oh, too many data samples in this file? Something went wrong.
+                            raise IOError('More data samples ({k}) than requested ({n}) in file!'.format(k=numSamplesInCurrentFile, n=numSamplesPerFile))
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+# SimpleDigitalWriter: ************** STOPPING *********************************
+                elif self.state == States.STOPPING:
+                    # DO STUFF
+                    if digitalFile is not None:
+                        digitalFile.close()
+                        digitalFile = None
+                    else:
+                        if self.verbose >= 3:
+                            self.log('No merge message queue available, cannot send to AVMerger')
+
+                    # CHECK FOR MESSAGES
+                    msg, arg = self.checkMessages(block=False)
+
+                    # CHOOSE NEXT STATE
+                    if self.exitFlag:
+                        self.nextState = States.STOPPED
+                    elif msg == '':
+                        self.nextState = States.STOPPED
+                    elif msg == Messages.STOP:
+                        self.nextState = States.STOPPED
+                    elif msg == Messages.EXIT:
+                        self.exitFlag = True
+                        self.nextState = States.STOPPED
+                    elif msg == Messages.START:
+                        self.nextState = States.INITIALIZING
+                    else:
+                        raise SyntaxError("Message \"" + msg + "\" not relevant to " + self.stateList[self.state] + " state")
+# SimpleDigitalWriter: ************** ERROR *********************************
+                elif self.state == States.ERROR:
+                    self.handleError()
+# SimpleDigitalWriter: ************** EXIT *********************************
+                elif self.state == States.EXITING:
+                    break
+                else:
+                    raise KeyError("Unknown state: "+self.stateList[self.state])
+            except KeyboardInterrupt:
+                # Handle user using keyboard interrupt
+                if self.verbose >= 0: self.log("Keyboard interrupt received - exiting")
+                self.exitFlag = True
+                self.nextState = States.STOPPING
+            except:
+                # HANDLE UNKNOWN ERROR
+                self.logError()
+                self.nextState = States.ERROR
+
+            self.endLoop(msg=msg)
+
+            # Prepare to advance to next state
+            self.lastState = self.state
+            self.state = self.nextState
+
+        clearQueue(self.msgQueue)
+        if self.verbose >= 1: self.log("Digital write process STOPPED")
+
+        self.flushStdout()
+        self.updatePublishedState(States.DEAD)
+
+    def getNextChunk(self):
+        try:
+            # Get new digital chunk and return it
+            newDataChunk = self.dataQueue.get(block=True, timeout=0.1)
+            if self.verbose >= 3: self.log("Got digital chunk {id} from acquirer.".format(id=newDataChunk.id))
+        except queue.Empty: # None available
+            newDataChunk = None
+            if self.verbose >= 3: self.log("No digital chunk available.")
+        return newDataChunk

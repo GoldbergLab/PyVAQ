@@ -2750,16 +2750,27 @@ him know. Otherwise, I had nothing to do with it.
         stateList.append(states['continuousTriggerState']); isAcquirer.append(False); isWriter.append(False); isAux.append(True)
 
         # Define human readable state names
-        allStates = {States.UNKNOWN:'UNKNOWN', States.STOPPED:'STOPPED',
-            States.INITIALIZING:'INITIALIZING', States.READY:'READY',
-            States.STOPPING:'STOPPING', States.ERROR:'ERROR',
-            States.EXITING:'EXITING', States.DEAD:'DEAD',
-            States.IGNORING:'IGNORING', States.MERGING:'MERGING',
-            States.SYNCHRONIZING:'SYNCHRONIZING', States.WAITING:'WAITING',
-            States.ANALYZING:'ANALYZING', States.AUDIOINIT:'AUDIOINIT',
-            States.WRITING:'WRITING', States.BUFFERING:'BUFFERING',
-            States.ACQUIRING:'ACQUIRING', States.VIDEOINIT:'VIDEOINIT',
-            States.TRIGGERING:'TRIGGERING', None:'None'}
+        allStates = {
+            States.UNKNOWN:'UNKNOWN',
+            States.STOPPED:'STOPPED',
+            States.INITIALIZING:'INITIALIZING',
+            States.READY:'READY',
+            States.STOPPING:'STOPPING',
+            States.ERROR:'ERROR',
+            States.EXITING:'EXITING',
+            States.DEAD:'DEAD',
+            States.IGNORING:'IGNORING',
+            States.MERGING:'MERGING',
+            States.SYNCHRONIZING:'SYNCHRONIZING',
+            States.WAITING:'WAITING',
+            States.ANALYZING:'ANALYZING',
+            States.WRITING:'WRITING',
+            States.BUFFERING:'BUFFERING',
+            States.ACQUIRING:'ACQUIRING',
+            States.FILEINIT:'FILEINIT',
+            States.TRIGGERING:'TRIGGERING',
+            None:'None'
+        }
 
         # Tally up the various types of states processes are in
         for state, acquirer, aux, writer in zip(stateList, isAcquirer, isAux, isWriter):
