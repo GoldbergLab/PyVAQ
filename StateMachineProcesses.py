@@ -1755,8 +1755,8 @@ class Synchronizer(StateMachineProcess):
                     if signalTask is not None:
                         signalTask.stop()
                         signalTask.close()
-                    if self.actualAudioFrequency is not None:
-                        self.actualAudioFrequency.value = -1
+                    if self.actualDataFrequency is not None:
+                        self.actualDataFrequency.value = -1
                     if self.actualVideoFrequency is not None:
                         self.actualVideoFrequency.value = -1
 
