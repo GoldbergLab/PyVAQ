@@ -163,7 +163,7 @@ class Param():
 
     def get(self):
         if self.mainFrame is not None:
-            if self.widgetType in [Param.TEXT, Param.PATH]:
+            if self.widgetType in [Param.TEXT, Param.PATH, Param.MONOCHOICE]:
                 return self.parser(self.var.get())
             elif self.widgetType in [Param.MULTICHOICE]:
                 return [self.parser(var.get()) for var in self.var if len(var.get()) > 0]
