@@ -217,7 +217,7 @@ def splashScreen(root, settingsFilePath=""):
 
     if 'defaultLibs' in startupSettings:
         defaultLibs = startupSettings['defaultLibs']
-    if 'defaultSettingsFilePath' in startupSettings:
+    if len(settingsFilePath) == 0 and 'defaultSettingsFilePath' in startupSettings:
         settingsFilePath = startupSettings['defaultSettingsFilePath']
 
     if defaultLibs is None:
