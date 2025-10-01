@@ -3660,7 +3660,7 @@ class VideoAcquirer(StateMachineProcess):
                                     raise IOError('DROPPED FRAMES!!!')
                                 else:
                                     # We're gonna chill about dropped frames unless this is a triggered FLIR camera or aptina camera
-                                    if self.verbose > 2: self.log('WARNING - DROPPED FRAMES! Image ID {a} was followed by image ID {b}. {k} dropped frames total'.format(a=lastImageID, b=imageID, k=droppedFrameCount))
+                                    if self.verbose > 1: self.log('WARNING - DROPPED FRAMES! Image ID {a} was followed by image ID {b}. {k} dropped frames total'.format(a=lastImageID, b=imageID, k=droppedFrameCount))
                             if self.verbose >= 3:
                                 self.log('# frames:'+str(imageCount))
                                 self.log('Frame ID:'+str(imageID))
