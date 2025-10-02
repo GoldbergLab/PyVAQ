@@ -21,6 +21,7 @@ import CameraUtilities as cu
 import sys
 from math import floor
 from NCFileUtilities import NCFile, extractBooleanDataFromDigitalArray
+from pathlib import Path
 
 simulatedHardware = False
 for arg in sys.argv[1:]:
@@ -3653,6 +3654,12 @@ class VideoAcquirer(StateMachineProcess):
                             imageCount += 1
                             lastImageID = imageID
                             imageID = imageResult.GetFrameID()
+
+                            if self.verbose >= 3:
+                                self.log('# frames:'+str(imageCount))
+                                self.log('Frame ID:'+str(imageID))
+                            frameTime = startTime + imageCount / self.frameRate
+
                             if lastImageID is not None and imageID != lastImageID + 1 and self.verbose >= 0:
                                 droppedFrameCount += 1
                                 if self.camType in [cu.FLIR_CAM, cu.APTINA_CAM]:
@@ -3660,14 +3667,11 @@ class VideoAcquirer(StateMachineProcess):
                                     raise IOError('DROPPED FRAMES!!!')
                                 elif self.camType == cu.NE_CAM:
                                     # Issue warning if NE cam drops frame but don't crash
+                                    notes = ['{t} - frame_drop: {a}=>{b}'.format(t=str(frameTime), a=lastImageID, b=imageID)]
                                     if self.verbose > 0: self.log('WARNING - DROPPED FRAMES! Image ID {a} was followed by image ID {b}. {k} dropped frames total'.format(a=lastImageID, b=imageID, k=droppedFrameCount))
                                 else:
                                     # We're gonna chill about dropped frames for other cameras
                                     if self.verbose > 2: self.log('WARNING - DROPPED FRAMES! Image ID {a} was followed by image ID {b}. {k} dropped frames total'.format(a=lastImageID, b=imageID, k=droppedFrameCount))
-                            if self.verbose >= 3:
-                                self.log('# frames:'+str(imageCount))
-                                self.log('Frame ID:'+str(imageID))
-                            frameTime = startTime + imageCount / self.frameRate
 
                             if self.verbose >= 3: self.log("Got image from camera, t="+str(frameTime))
 
@@ -3678,7 +3682,7 @@ class VideoAcquirer(StateMachineProcess):
                             if self.verbose >= 3: self.log("size: "+str(imageResult.GetNDArray().shape))
 
                             if self.imageQueue is not None:
-                                self.imageQueue.put(imarray=imageResult.GetNDArray(), metadata={'frameTime':frameTime, 'imageID':imageID})
+                                self.imageQueue.put(imarray=imageResult.GetNDArray(), metadata={'frameTime':frameTime, 'imageID':imageID, 'notes':notes})
                                 if self.verbose >= 3:
                                     self.log("Pushed image into buffer")
                                     self.log('Queue size={qsize}, maxsize={maxsize}'.format(qsize=self.imageQueue.qsize(), maxsize=self.imageQueue.maxBufferSize))
@@ -3894,6 +3898,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     numFramesInCurrentSeries = 0    # Initialize series-wide frame count, for estimating subsequent video times
                     writeEnabledPrevious = True
                     writeEnabled = True
+                    fileNotes = []
 
                     # Check to see if frame rate has been set by another process yet
                     self.frameRate = self.frameRateVar.value
@@ -3965,9 +3970,20 @@ class SimpleVideoWriter(StateMachineProcess):
                             if self.verbose >= 2: self.log('Closing pre-existing video file interface.')
                             # Close file
                             if self.videoWriteMethod == "PySpin":
+                                videoPath = videoFileInterface.videoFileName
                                 videoFileInterface.Close()
                             elif self.videoWriteMethod == "ffmpeg":
+                                videoPath = videoFileInterface.filename
                                 videoFileInterface.close()
+
+                            if len(fileNotes) > 0:
+                                # If there are any notes from the last file, write them
+                                notesFileName = Path(videoPath).with_suffix('.txt')
+                                with open(notesFileName, 'w') as f:
+                                    f.writelines(fileNotes)
+                                # Clear filenotes for next video
+                                fileNotes = []
+
                             videoFileInterface = None
 
                         # Generate new video file path
@@ -4038,7 +4054,7 @@ class SimpleVideoWriter(StateMachineProcess):
                     if self.verbose >= 3:
                         self.logTime("Image queue size: ", self.imageQueue.qsize(), ". Getting next image...")
 
-                    im, frameTime, imageID, frameShape = self.getNextimage()
+                    im, frameTime, imageID, frameShape, notes = self.getNextimage()
 
                     if im is None:
                         # No images available.
@@ -4078,6 +4094,9 @@ class SimpleVideoWriter(StateMachineProcess):
                                 if self.verbose >= 3: self.log("bytes=", str(im[0:10]))
                             if self.verbose >= 3:
                                 self.logTime("...wrote image ID " + str(imageID))
+
+                            # If video writer has notes to record about this file, record them here
+                            fileNotes.extend(notes)
                         elif self.verbose >= 3:
                             self.log('Skipped writing a frame because video write is disabled.')
 
@@ -4229,6 +4248,7 @@ class SimpleVideoWriter(StateMachineProcess):
             frameTime = metadata['frameTime']
             imageID = metadata['imageID']
             frameShape = self.imageQueue.frameShape;
+            notes = metadata['notes']
             if self.verbose >= 3: self.log("Got video frame from acquirer. ID={ID}, t={t}".format(t=metadata['frameTime'], ID=imageID))
         except queue.Empty:
             # No frames available from acquirer
@@ -4237,7 +4257,8 @@ class SimpleVideoWriter(StateMachineProcess):
             frameTime = None
             imageID = None
             frameShape = None
-        return im, frameTime, imageID, frameShape
+            notes = []
+        return im, frameTime, imageID, frameShape, notes
 
 class VideoWriter(StateMachineProcess):
     # Human-readable states
