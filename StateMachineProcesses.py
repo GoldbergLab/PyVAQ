@@ -3627,7 +3627,7 @@ class VideoAcquirer(StateMachineProcess):
                     # DO STUFF
                     try:
                         notes = []
-                        
+
                         #  Retrieve next received image
                         if self.verbose >= 3:
                             self.acquireStopwatch.click()
@@ -3669,7 +3669,7 @@ class VideoAcquirer(StateMachineProcess):
                                     raise IOError('DROPPED FRAMES!!!')
                                 elif self.camType == cu.NE_CAM:
                                     # Issue warning if NE cam drops frame but don't crash
-                                    notes = ['{t} - frame_drop: {a}=>{b}'.format(t=str(frameTime), a=lastImageID, b=imageID)]
+                                    notes = ['{t} - frame_drop: {a}=>{b}\n'.format(t=str(frameTime), a=lastImageID, b=imageID)]
                                     if self.verbose > 0: self.log('WARNING - DROPPED FRAMES! Image ID {a} was followed by image ID {b}. {k} dropped frames total'.format(a=lastImageID, b=imageID, k=droppedFrameCount))
                                 else:
                                     # We're gonna chill about dropped frames for other cameras
