@@ -3664,6 +3664,7 @@ class VideoAcquirer(StateMachineProcess):
                                 droppedFrameCount += 1
                                 if self.camType in [cu.FLIR_CAM, cu.APTINA_CAM]:
                                     self.log('WARNING - DROPPED FRAMES! Image ID {a} was followed by image ID {b}. {k} dropped frames total'.format(a=lastImageID, b=imageID, k=droppedFrameCount))
+                                    notes = []
                                     raise IOError('DROPPED FRAMES!!!')
                                 elif self.camType == cu.NE_CAM:
                                     # Issue warning if NE cam drops frame but don't crash
@@ -3671,6 +3672,7 @@ class VideoAcquirer(StateMachineProcess):
                                     if self.verbose > 0: self.log('WARNING - DROPPED FRAMES! Image ID {a} was followed by image ID {b}. {k} dropped frames total'.format(a=lastImageID, b=imageID, k=droppedFrameCount))
                                 else:
                                     # We're gonna chill about dropped frames for other cameras
+                                    notes = []
                                     if self.verbose > 2: self.log('WARNING - DROPPED FRAMES! Image ID {a} was followed by image ID {b}. {k} dropped frames total'.format(a=lastImageID, b=imageID, k=droppedFrameCount))
 
                             if self.verbose >= 3: self.log("Got image from camera, t="+str(frameTime))
