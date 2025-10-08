@@ -975,6 +975,7 @@ class Camera:
         self._initialized = False
 
         self._pending_images = {}
+        self._pending_image_IDs = {}
         self._stacked_buf = self._create_stacked_buf()
 
     def _create_buf(self):
@@ -1453,17 +1454,30 @@ class Camera:
 
             if frame_time in self._pending_images:
                 image_pair = self._pending_images[frame_time]
+
+                if image_pair[sensor_id] is not None:
+                    raise IOError('Got to naneye images with the same frame_time and sensor_id')
                 image_pair[sensor_id] = buf
+
+                image_id_pair = self._pending_image_IDs[frame_time]
+                image_id_pair[sensor_id] = frame_idx
+
+                if image_id_pair[0] ~= image_id_pair[1]:
+                    raise IOError('Matched two naneye images that have the same frame_time but different IDs')
+
                 self._stacked_buf[:self._buflen] = image_pair[0]
                 self._stacked_buf[self._buflen:] = image_pair[1]
                 self._empty_buffer.put(image_pair[0], block=block, timeout=timeout)
                 self._empty_buffer.put(image_pair[1], block=block, timeout=timeout)
                 del image_pair
                 del self._pending_images[frame_time]
+                del self._pending_image_IDs[frame_time]
                 break
             else:
                 self._pending_images[frame_time] = [None, None]
                 self._pending_images[frame_time][sensor_id] = buf
+                self._pending_image_IDs[frame_time] = [None, None]
+                self._pending_image_IDs[frame_time][sensor_id] = frame_idx
 
         # Copy the buffer data into an ImagePtr object
         img = ImagePtr(
