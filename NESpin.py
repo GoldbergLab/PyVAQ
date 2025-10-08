@@ -1449,33 +1449,48 @@ class Camera:
         while True:
             # Loop until we have a pair of images from the two naneye cams
             #   with matching timestamps and stack them.
+
             # Get the latest image data
             buf, sensor_id, frame_idx, frame_time = self._image_buffer.get(timeout=timeout, block=block)
 
+            # Check if we already have a stored image with this frame_time
             if frame_time in self._pending_images:
+                # Frame time matches stored image - get the image pair container
                 image_pair = self._pending_images[frame_time]
 
+                # Check if we've already gotten an image from this sensor with the frame_time
                 if image_pair[sensor_id] is not None:
                     raise IOError('Got to naneye images with the same frame_time and sensor_id')
+                # Add new image to the frame pair container to complete the pair
                 image_pair[sensor_id] = buf
 
+                # Get the image ID pair container
                 image_id_pair = self._pending_image_IDs[frame_time]
+                # Add the new image ID
                 image_id_pair[sensor_id] = frame_idx
 
+                # Check that the two image IDs match
                 if image_id_pair[0] ~= image_id_pair[1]:
                     raise IOError('Matched two naneye images that have the same frame_time but different IDs')
 
+                # Stack the images
                 self._stacked_buf[:self._buflen] = image_pair[0]
                 self._stacked_buf[self._buflen:] = image_pair[1]
+
+                # Recycle the used buffers
                 self._empty_buffer.put(image_pair[0], block=block, timeout=timeout)
                 self._empty_buffer.put(image_pair[1], block=block, timeout=timeout)
+
+                # Remove the completed image and image ID pairs from storage
                 del image_pair
                 del self._pending_images[frame_time]
                 del self._pending_image_IDs[frame_time]
                 break
             else:
+                # This image does not have a pair in storage - start a new pair and store it
                 self._pending_images[frame_time] = [None, None]
                 self._pending_images[frame_time][sensor_id] = buf
+                # Same goes for the image ID
                 self._pending_image_IDs[frame_time] = [None, None]
                 self._pending_image_IDs[frame_time][sensor_id] = frame_idx
 
