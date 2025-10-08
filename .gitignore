@@ -18,3 +18,5 @@ __pycache__/
 OpenCV_cam_list.tmp
 # Ignore PyVAQ startup_settings.ini file
 startup_settings.ini
+# Ignore date folders (contains recorded data)
+/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]
