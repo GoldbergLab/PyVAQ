@@ -1460,7 +1460,7 @@ class Camera:
 
                 # Check if we've already gotten an image from this sensor with the frame_time
                 if image_pair[sensor_id] is not None:
-                    raise IOError('Got to naneye images with the same frame_time and sensor_id')
+                    raise IOError('Got two naneye images with the same frame_time and sensor_id')
                 # Add new image to the frame pair container to complete the pair
                 image_pair[sensor_id] = buf
 
