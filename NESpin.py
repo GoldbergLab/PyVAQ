@@ -1470,7 +1470,7 @@ class Camera:
                 image_id_pair[sensor_id] = frame_idx
 
                 # Check that the two image IDs match
-                if image_id_pair[0] ~= image_id_pair[1]:
+                if image_id_pair[0] != image_id_pair[1]:
                     raise IOError('Matched two naneye images that have the same frame_time but different IDs')
 
                 # Stack the images
