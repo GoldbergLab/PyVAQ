@@ -1108,9 +1108,9 @@ him know. Otherwise, I had nothing to do with it.
         availableCamSerials = psu.discoverCameras()
         audioChannelConfigurations = [
             "DEFAULT",
-            "DIFFERENTIAL",
+            "DIFF",
             "NRSE",
-            "PSEUDODIFFERENTIAL",
+            "PSEUDO_DIFF",
             "RSE"
         ]
 

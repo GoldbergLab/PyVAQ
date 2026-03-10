@@ -788,8 +788,8 @@ class TerminalConfiguration(Enum):
     DEFAULT = -1  #: Default.
     RSE = 10083  #: Referenced Single-Ended.
     NRSE = 10078  #: Non-Referenced Single-Ended.
-    DIFFERENTIAL = 10106  #: Differential.
-    PSEUDODIFFERENTIAL = 12529  #: Pseudodifferential.
+    DIFF = 10106  #: Differential.
+    PSEUDO_DIFF = 12529  #: Pseudodifferential.
 
 
 class ThermocoupleType(Enum):
@@ -1035,8 +1035,8 @@ class _Save(Enum):
 class _TermCfg(Enum):
     RSE = 1  #: RSE terminal configuration
     NRSE = 2  #: NRSE terminal configuration
-    DIFFERENTIAL = 4  #: Differential terminal configuration
-    PSEUDODIFFERENTIAL = 8  #: Pseudodifferential terminal configuration
+    DIFF = 4  #: Differential terminal configuration
+    PSEUDO_DIFF = 8  #: Pseudodifferential terminal configuration
 
 
 class _TriggerUsageTypes(Enum):

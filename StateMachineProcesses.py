@@ -2258,12 +2258,12 @@ class AudioAcquirer(StateMachineProcess):
         self.inputChannels = channelNames
         if channelConfig == "DEFAULT":
             self.channelConfig = nidaqmx.constants.TerminalConfiguration.DEFAULT
-        elif channelConfig == "DIFFERENTIAL":
-            self.channelConfig = nidaqmx.constants.TerminalConfiguration.DIFFERENTIAL
+        elif channelConfig == "DIFF":
+            self.channelConfig = nidaqmx.constants.TerminalConfiguration.DIFF
         elif channelConfig == "NRSE":
             self.channelConfig = nidaqmx.constants.TerminalConfiguration.NRSE
-        elif channelConfig == "PSEUDODIFFERENTIAL":
-            self.channelConfig = nidaqmx.constants.TerminalConfiguration.PSEUDODIFFERENTIAL
+        elif channelConfig == "PSEUDO_DIFF":
+            self.channelConfig = nidaqmx.constants.TerminalConfiguration.PSEUDO_DIFF
         elif channelConfig == "RSE":
             self.channelConfig = nidaqmx.constants.TerminalConfiguration.RSE
         self.syncChannel = syncChannel
