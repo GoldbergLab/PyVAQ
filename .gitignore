@@ -14,3 +14,6 @@ __pycache__/
 !simAudioFeed2.wav
 *.avi
 *.pvs
+*.tmp
+# Ignore startup_settings.ini
+startup_settings.ini

@@ -39,6 +39,16 @@ class ffmpegVideoWriter():
         # All frames should be the same size and format
         # If shape is given (as a (width, height) tuple), it will be used. If
         #   not, we will try to figure out the image shape.
+
+        if self.frameType == 'image':
+            bytes = frame.tobytes()
+        elif self.frameType == 'numpy':
+            bytes = frame.data
+        elif self.frameType == 'bytes':
+            bytes = frame
+        if self.verbose >= 3:
+            print('Sending frame to ffmpeg!')
+
         if self.ffmpegProc is None:
             if self.verbose >= 3:
                 print("STARTING NEW FFMPEG VIDEO PROCESS!")
@@ -71,7 +81,7 @@ class ffmpegVideoWriter():
 
             if self.gpuVEnc:
                 # With GPU acceleration
-                ffmpegCommand = [FFMPEG_EXE, '-y',
+                ffmpegCommand = [FFMPEG_EXE, '-y', '-probesize', '32', '-flush_packets', '1',
                     '-vsync', 'passthrough', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
                     '-v', ffmpegVerbosity, '-f', 'rawvideo', '-c:v', 'rawvideo',
                     '-pix_fmt', self.input_pixel_format, '-s', shapeArg, '-thread_queue_size', '128',
@@ -79,7 +89,7 @@ class ffmpegVideoWriter():
                     self.filename]
             else:
                 # Without GPU acceleration
-                ffmpegCommand = [FFMPEG_EXE, '-y',
+                ffmpegCommand = [FFMPEG_EXE, '-y', '-probesize', str(len(bytes)), '-flush_packets', '1',
                     '-vsync', 'passthrough', '-v', ffmpegVerbosity, '-f', 'rawvideo',
                     '-c:v', 'rawvideo', '-pix_fmt', self.input_pixel_format,
                     '-s', shapeArg, '-r', str(self.fps), '-thread_queue_size', '128',
@@ -95,14 +105,6 @@ class ffmpegVideoWriter():
             except TypeError:
                 raise OSError('Error starting ffmpeg process - check that ffmpeg is present on this system and included in the system PATH variable')
 
-        if self.frameType == 'image':
-            bytes = frame.tobytes()
-        elif self.frameType == 'numpy':
-            bytes = frame.tobytes()
-        elif self.frameType == 'bytes':
-            bytes = frame
-        if self.verbose >= 3:
-            print('Sending frame to ffmpeg!')
         self.ffmpegProc.stdin.write(bytes)    #'raw', 'RGB'))
         self.ffmpegProc.stdin.flush()
 
