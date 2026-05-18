@@ -1,5 +1,9 @@
 # Ignore compiled python files
 __pycache__/
+# Ignore virtual environments
+.venv/
+# Ignore Claude Code local files
+.claude/
 # Ignore extra test files and old stuff
 /cruft/
 # Ignore log files:
