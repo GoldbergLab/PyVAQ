@@ -1,5 +1,6 @@
 certifi==2025.6.15
 cffi==2.0.0
+cftime==1.6.5
 charset-normalizer==3.4.2
 click==8.2.1
 clr_loader==0.2.10
@@ -12,6 +13,7 @@ hightime==0.2.2
 idna==3.10
 kiwisolver==1.4.8
 matplotlib==3.10.3
+netCDF4==1.7.4
 nidaqmx==1.1.0
 numpy==1.26.4
 opencv-python==4.10.0.84
