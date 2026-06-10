@@ -1,7 +1,11 @@
 # Ignore compiled python files
 __pycache__/
+# Ignore virtual environments
+.venv/
+# Ignore Claude Code local files
+.claude/
 # Ignore extra test files and old stuff
-/Cruft/
+/cruft/
 # Ignore log files:
 /logs/
 # Ignore specific files:
@@ -15,5 +19,8 @@ __pycache__/
 *.avi
 *.pvs
 *.tmp
-# Ignore startup_settings.ini
+OpenCV_cam_list.tmp
+# Ignore PyVAQ startup_settings.ini file
 startup_settings.ini
+# Ignore date folders (contains recorded data)
+/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]

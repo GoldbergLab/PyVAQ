@@ -1,27 +1,49 @@
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
-from CollapsableFrame import CollapsableFrame
+from pathlib import Path
 
 class Param():
     TEXT='text'
     MONOCHOICE='monochoice'
     MULTICHOICE='multichoice'
+    PATH='path'
 
-    def __init__(self, name='unnamedParam', widgetType=TEXT, options=[], default=None, parser=lambda x:x, description=None):
+    def __init__(
+            self,
+            name='unnamedParam',
+            widgetType=TEXT,
+            options=[],
+            default=None,
+            parser=lambda x:x,
+            description='',
+            tooltip=None,
+            triggerUpdate=False,
+            validationFunction=None
+        ):
         # parent = a tkinter container that widgets should belong to
         # name = the name of the parameter
-        # widgetType = one of Param.TEXT, Param.MONOCHOICE, Param.MULTICHOICE
+        # widgetType = one of Param.TEXT, Param.MONOCHOICE, Param.MULTICHOICE, Param.PATH
         # options = a list of options to select from (not relevant for TEXT types)
         # default = default value. If default is supplied for MONOCHOICE,
         #           default must be one of the options. or none. If default is
         #           supplied for MULTICHOICE types, default either be None or
         #           a list of one or more of the supplied options
         # parser = function to parse input string, for example 'float'
+        # description = descriptive text
+        # tooltip = hover text
+        # triggerUpdate = should this widget trigger a dialog update when eddited?
+        # validatiion_function = function that takes the output of ParamDialog.collectParams and returns True or False indicating whether this widget should be enabled or disabled
         if type in [Param.MONOCHOICE, Param.MULTICHOICE]:
             if default is not None:
                 if default not in options:
                     raise IndexError('Supplied default must be one of the supplied options')
+        if type in [Param.TEXT, Param.PATH]:
+            if default is None:
+                default = ''
+            if not isinstance(default, str):
+                raise TypeError('Supplied default for text or path params must be a string')
+
         self.name = name
         self.widgetType = widgetType
         self.options = options
@@ -33,13 +55,26 @@ class Param():
         self.mainFrame = None
         self.widgetFrame = None
         self.label = None
+        self.tooltip = tooltip
+        self.triggerUpdate = triggerUpdate
+        self.update_function = lambda x:None
+        self.validationFunction = validationFunction
+
+    def registerUpdateFunction(self, update_function):
+        self.update_function = update_function
+        if self.triggerUpdate:
+            if self.var is not None:
+                if isinstance(self.var, list):
+                    [var.trace('w', self.update_function) for var in self.var]
+                else:
+                    self.var.trace('w', self.update_function)
 
     def getHeight(self):
         # Returns an approximate # of lines the param widget occupies. Note that
         #   if createWidget is called with a maxHeight argument, then this
         #   function will be incorrect. Use min(maxHeight+1, param.getHeight())
         #   to get the actual height
-        if self.widgetType == Param.TEXT:
+        if self.widgetType in [Param.TEXT, Param.PATH]:
             return 2 + self.getLabelHeight()
         elif self.widgetType == Param.MONOCHOICE:
             return len(self.options) + 1 + self.getLabelHeight()
@@ -67,6 +102,27 @@ class Param():
             self.var = tk.StringVar()
             entry = ttk.Entry(self.widgetFrame, textvariable=self.var)
             entry.grid(row=0, column=0, sticky=tk.NW)
+            self.widgets.append(entry)
+            if self.default is None:
+                self.var.set('')
+            else:
+                self.var.set(self.default)
+        elif self.widgetType == Param.PATH:
+            self.var = tk.StringVar()
+            entry = ttk.Entry(self.widgetFrame, textvariable=self.var, width=60)
+            cmd = lambda: self.var.set(
+                tk.filedialog.askopenfilename(
+                    parent=self.widgetFrame,
+                    title='Select PyVAQ settings file',
+                    initialdir='.',
+                    initialfile=None,
+                    multiple=False
+                )
+            )
+            button = ttk.Button(self.widgetFrame, text="📁", command=cmd, default=tk.ACTIVE)
+            button.grid(row=0, column=0, sticky=tk.NW)
+            entry.grid(row=0, column=1, sticky=tk.NW)
+            self.widgets.append(button)
             self.widgets.append(entry)
             if self.default is None:
                 self.var.set('')
@@ -108,8 +164,10 @@ class Param():
                 self.widgets.append(cbutton)
 
             self.selectAllVar = tk.IntVar()
-            self.selectAllButton = ttk.Checkbutton(self.widgetFrame, text="Select all", variable=self.selectAllVar, onvalue=1, offvalue=0)
-            self.selectAllButton.grid(row=0, column=0, sticky=tk.NW)
+            if len(self.options) > 1:
+                # If more than one option is available, add a "select all" button
+                self.selectAllButton = ttk.Checkbutton(self.widgetFrame, text="Select all", variable=self.selectAllVar, onvalue=1, offvalue=0)
+                self.selectAllButton.grid(row=0, column=0, sticky=tk.NW)
             self.selectAllVar.set(0)
             def selectAllOrNoneCallbackFactory(savar, cbuttons, vars):
                 def callback(*args):
@@ -122,6 +180,9 @@ class Param():
                 return callback
             saCallback = selectAllOrNoneCallbackFactory(self.selectAllVar, self.widgets, self.var)
             self.selectAllVar.trace('w', saCallback)
+        else:
+            raise NameError('Unknown widget type:' + self.widgetType)
+
         if self.label is not None:
             self.label.grid(row=0, column=0, sticky=tk.NW)
         self.widgetFrame.grid(row=1, column=0, sticky=tk.NW)
@@ -140,12 +201,29 @@ class Param():
 
     def get(self):
         if self.mainFrame is not None:
-            if self.widgetType in [Param.TEXT, Param.MONOCHOICE]:
+            if self.widgetType in [Param.TEXT, Param.PATH, Param.MONOCHOICE]:
                 return self.parser(self.var.get())
             elif self.widgetType in [Param.MULTICHOICE]:
                 return [self.parser(var.get()) for var in self.var if len(var.get()) > 0]
         else:
             raise AttributeError('You must call createWidgets on this Param object before calling get')
+
+    def disable(self):
+        self.setState(enableState=False)
+
+    def enable(self):
+        self.setState(enableState=True)
+
+    def setState(self, enableState):
+        for widget in self.widgets:
+            try:
+                if enableState:
+                    widget['state'] = tk.NORMAL
+                else:
+                    widget['state'] = tk.DISABLED
+            except tk.TclError:
+                # I guess this widget doesn't have a "state" property
+                pass
 
 class ParamDialog(tk.Frame):
     # A container for a Tkinter widget
@@ -155,9 +233,17 @@ class ParamDialog(tk.Frame):
     VERTICAL='v'
     BOX='b'
     HYBRID='y'
-    COLLAPSABLE='c'
 
-    def __init__(self, parent, params=[], title=None, arrangement=HORIZONTAL, maxHeight=None, popup=True):
+    def __init__(
+        self,
+        parent,
+        params=[],
+        title=None,
+        arrangement=HORIZONTAL,
+        maxHeight=None,
+        popup=True,
+        showStatusBar=False,
+        ):
         # params should be a list of Param objects
         # maxHeight is the maximum number of parameter options that can be stacked before wrapping horizontally. Leave as "None" to disable wrapping.
 
@@ -187,9 +273,13 @@ class ParamDialog(tk.Frame):
         self.maxHeight = maxHeight
         self.params = params
         self.results = None
+        self.showStatusBar = showStatusBar
 
         self.paramFrame = ttk.Frame(self)
         self.buttonFrame = ttk.Frame(self)
+        if self.showStatusBar:
+            self.statusBar = ttk.Label(self, relief=tk.SUNKEN)
+
         self.parameterWidgets = {}
         self.subFrames = []   # For HYBRID arrangement
         self.createParameterWidgets()
@@ -197,6 +287,8 @@ class ParamDialog(tk.Frame):
         self.grid()
         self.paramFrame.grid(row=0, sticky=tk.NSEW)
         self.buttonFrame.grid(row=1, sticky=tk.NSEW)
+        if self.showStatusBar:
+            self.statusBar.grid(row=2, sticky=tk.NSEW)
 
         if popup:
             self.parent.wait_window(self.parent)
@@ -207,6 +299,7 @@ class ParamDialog(tk.Frame):
             nW, nH = getOptimalBoxGrid(len(self.params))
         row = 0; col = 0; lineCount = 0; hybridCol = 0
         for k, param in enumerate(self.params):
+            param.update_function = self.update
             if self.arrangement == ParamDialog.HORIZONTAL:
                 param.createWidgets(self.paramFrame, maxHeight=self.maxHeight)
                 row=0; col=k;
@@ -233,17 +326,15 @@ class ParamDialog(tk.Frame):
                     row += 1
                     lineCount += paramHeight
                 param.createWidgets(self.subFrames[-1], maxHeight=self.maxHeight)
-            elif self.arrangement == ParamDialog.COLLAPSABLE:
-                self.subFrames.append(
-                    CollapsableFrame(
-                        self.paramFrame,
-                        collapseText=param.name
-                    )
-                )
-                self.subFrames[-1].grid(row=k, column=0, sticky=tk.W)
-                param.createWidgets(self.subFrames[-1], maxHeight=self.maxHeight)
             else:
                 raise NameError("Unknown arrangement type: "+str(self.arrangement))
+
+            param.registerUpdateFunction(self.update)
+            def tooltipUpdaterFactory(param):
+                def tooltipUpdater(*args, **kwargs):
+                    self.updateToolTip(param)
+                return tooltipUpdater
+            param.mainFrame.bind("<Enter>", tooltipUpdaterFactory(param))
 
             param.grid(row=row, column=col, sticky=tk.NSEW)
 
@@ -255,6 +346,16 @@ class ParamDialog(tk.Frame):
             cancelButton.grid(row=0, column=1)
             self.bind("<Return>", self.ok)
             self.bind("<Escape>", self.cancel)
+
+    def updateToolTip(self, param, tooltip=None):
+        if self.showStatusBar:
+            if tooltip is None:
+                if param.tooltip is None:
+                    tooltip = param.name + ': ' + param.description
+                else:
+                    tooltip = param.tooltip
+
+            self.statusBar.config(text=tooltip)
 
     def collectParams(self):
         self.results = {}
@@ -278,6 +379,17 @@ class ParamDialog(tk.Frame):
         self.rootWindow.focus_set()
         self.parent.destroy()
 
+    def update(self, *args, **kwargs):
+        self.collectParams()
+        print('collected choices:')
+        print(self.results)
+        for param in self.params:
+            if param.validationFunction is not None:
+                newState = param.validationFunction(self.results)
+                if not isinstance(newState, bool):
+                    raise TypeError('Param validation function must return True or False')
+                param.setState(newState)
+
     # def validate(self):
     #     return 1 # override
     #
@@ -292,3 +404,10 @@ def getOptimalBoxGrid(N, maxHeight=None):
         h = min(maxHeight, h)
     w = math.ceil(N/h)
     return (w, h)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    p1 = Param(name="param1", triggerUpdate=True, tooltip="first param")
+    p2 = Param(name="param2", triggerUpdate=True, tooltip="second param", validationFunction=lambda choices:choices['param1'] == 'password')
+    pd = ParamDialog(root, params=[p1, p2], title='Example', showStatusBar=True)
+    root.mainloop()

@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox as mb
 import tkinter.ttk as ttk
-import PySpinUtilities as psu
+import CameraUtilities as cu
 import pprint
 from collections import OrderedDict as odict
 
@@ -45,6 +45,7 @@ class CameraConfigPanel(tk.Frame):
 
         self.parent = parent
         self.camSerials = []
+        self.camTypes = []
         self.storedAttributes = {}
 
         self.filterLabel = tk.Label(self, text='Attribute filter:', justify=tk.RIGHT)
@@ -114,8 +115,8 @@ class CameraConfigPanel(tk.Frame):
         self.applyConfigurationOnInitCheckbox.grid(row=7, column=1, sticky=tk.E)
 
         self.updateCameraList()
-        self.grabAllCameraAttributes()
-        self.updateCameraAttributes(grab=False)
+        self.grabAllCameraAttributes(updateCameraList=False)
+        self.updateCameraAttributes(grab=False, updateCameraList=False)
 
         self.grid()
 
@@ -165,7 +166,7 @@ class CameraConfigPanel(tk.Frame):
 
         """
 
-        self.camSerials = psu.discoverCameras()
+        self.camSerials, self.camTypes = cu.discoverCameras()
         self.cameraList['values'] = self.camSerials
         if len(self.camSerials) > 0:
             self.cameraList.current(0)
@@ -184,7 +185,7 @@ class CameraConfigPanel(tk.Frame):
         else:
             return self.cameraList['values'][idx]
 
-    def grabAllCameraAttributes(self):
+    def grabAllCameraAttributes(self, updateCameraList=True):
         """Get all the camera attributes from all the attached cameras.
 
         Returns:
@@ -192,7 +193,8 @@ class CameraConfigPanel(tk.Frame):
 
         """
 
-        self.updateCameraList()
+        if updateCameraList:
+            self.updateCameraList()
 
         progressPopup = tk.Toplevel(self.parent)
         progressPopup.title('Gathering camera information...')
@@ -202,16 +204,16 @@ class CameraConfigPanel(tk.Frame):
         progressLabel.grid(row=0, column=0, sticky=tk.EW)
         progressBar.grid(row=1, column=0, sticky=tk.EW)
 
-        for camSerial in self.camSerials:
-            nestedAttributes = psu.getAllCameraAttributes(camSerial=camSerial)
-            flattenedAttributes = psu.flattenCameraAttributes(nestedAttributes)
+        for camSerial, camType in zip(self.camSerials, self.camTypes):
+            nestedAttributes = cu.getAllCameraAttributes(camSerial=camSerial, camType=camType, updateCameraList=updateCameraList)
+            flattenedAttributes = cu.flattenCameraAttributes(nestedAttributes)
             self.storedAttributes[camSerial] = flattenedAttributes
             progressBar.step(1)
             self.update_idletasks()
 
         progressPopup.destroy()
 
-    def updateCameraAttributes(self, camSerial=None, grab=True):
+    def updateCameraAttributes(self, camSerial=None, grab=True, updateCameraList=True):
         """Reload current attributes from current camera, update widgets.
 
         Args:
@@ -226,7 +228,8 @@ class CameraConfigPanel(tk.Frame):
 
         """
 
-        self.updateCameraList()
+        if updateCameraList:
+            self.updateCameraList()
 
         if camSerial is None:
             camSerial = self.getCurrentCamSerial()
@@ -236,8 +239,8 @@ class CameraConfigPanel(tk.Frame):
             return
 
         if grab:
-            nestedAttributes = psu.getAllCameraAttributes(camSerial=camSerial)
-            flattenedAttributes = psu.flattenCameraAttributes(nestedAttributes)
+            nestedAttributes = cu.getAllCameraAttributes(camSerial=camSerial)
+            flattenedAttributes = cu.flattenCameraAttributes(nestedAttributes)
             self.storedAttributes[camSerial] = flattenedAttributes
         self.updateAttributeList()
         self.updateValue()
@@ -322,7 +325,7 @@ class CameraConfigPanel(tk.Frame):
             self.valueVar.set('')
             return
 
-        value = psu.convertAttributeValue(attribute['value'], attribute['type'])
+        value = cu.convertAttributeValue(attribute['value'], attribute['type'])
         if attribute['type'] == 'enum':
             self.valueList['values'] = list(attribute['options'].values())
             self.valueEntry.grid_remove()
@@ -338,7 +341,7 @@ class CameraConfigPanel(tk.Frame):
             self.valueEntry.grid()
             self.valueVar.set(value)
 
-        value = psu.convertAttributeValue(attribute['value'], attribute['type'])
+        value = cu.convertAttributeValue(attribute['value'], attribute['type'])
 
         if attribute['type'] == 'enum':
             self.valueVar.set(value)
@@ -446,7 +449,7 @@ class CameraConfigPanel(tk.Frame):
         configurationText = self.configurationText.get("1.0", tk.END).strip()
         attributes = configurationText.split('\n')
         configuration = {}
-        
+
         for camSerial in self.camSerials:
             # Set up empty config for every camera
             configuration[camSerial] = odict()
@@ -469,8 +472,8 @@ class CameraConfigPanel(tk.Frame):
             attributeName = attribute['name']
             attributeType = attribute['type']
             attributeValue = attribute['value']
-            attributeValue = psu.convertAttributeValue(attributeValue, attributeType)
-            result = psu.setCameraAttribute(attributeName, attributeValue, attributeType, camSerial=camSerial, nodemap='NodeMap')
+            attributeValue = cu.convertAttributeValue(attributeValue, attributeType)
+            result = cu.setCameraAttribute(attributeName, attributeValue, attributeType, camSerial=camSerial, nodemap='NodeMap')
             if result:
                 message = 'Applied attribute to camera {cs}: {n}={v} ({t})'.format(cs=camSerial, n=attributeName, v=attributeValue, t=attributeType)
                 mb.showinfo(title='Attribute successfully applied to camera', message=message)
@@ -497,7 +500,13 @@ class CameraConfigPanel(tk.Frame):
 
         results = {}
         for camSerial in configuration:
-            results[camSerial] = psu.applyCameraConfiguration(configuration[camSerial], camSerial=camSerial)
+            if camSerial not in self.camSerials:
+                print('Warning: Found camera {s} in configuration, but it is not detected in the system right now.'.format(s=camSerial))
+                continue
+            idx = self.camSerials.index(camSerial)
+            camType = self.camTypes[idx]
+
+            results[camSerial] = cu.applyCameraConfiguration(configuration[camSerial], camSerial=camSerial, camType=camType)
         successCount = sum([sum([results[camSerial][attributeName] for attributeName in results[camSerial]]) for camSerial in results])
         failCount = sum([sum([not results[camSerial][attributeName] for attributeName in results[camSerial]]) for camSerial in results])
         totalCount = failCount + successCount

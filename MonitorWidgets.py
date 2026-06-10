@@ -1,7 +1,7 @@
 import tkinter as tk
 import tkinter.ttk as ttk
 import numpy as np
-from PIL import Image, ImageTk, ImageDraw, ImageFont
+from PIL import Image, ImageTk
 #from SharedImageQueue import SharedImageSender
 from scipy.signal import butter, lfilter
 from matplotlib.backends.backend_tkagg import (
@@ -12,7 +12,8 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from fileWritingEntry import FileWritingEntry
 import cv2
-import PySpinUtilities as psu
+import CameraUtilities as cu
+from ffplayViewer import ffplayer
 from CollapsableFrame import CollapsableFrame
 
 WIDGET_COLORS = [
@@ -22,9 +23,6 @@ WIDGET_COLORS = [
     '#FFC1C1'  # light red
 ]
 LINE_STYLES = [c+'-' for c in 'bykcmgr']
-
-with Image.open(r'Resources\NoImages_000.png') as NO_IMAGES_IMAGE:
-    NO_IMAGES_IMAGE.load()
 
 class BaseMonitor(CollapsableFrame):
     """A base class that other monitor classes inherit from.
@@ -402,20 +400,19 @@ class AudioMonitor(BaseMonitor):
 class CameraMonitor(BaseMonitor):
     def __init__(self, *args, displaySize=(400, 300),
                     camSerial='Unknown camera', speedText='Unknown speed',
-                    text="Camera Monitor", collapsed=False, **kwargs):
+                    text="Camera Monitor", collapsed=False, pixelFormat='rgb8',
+                    **kwargs):
         self.camSerial = camSerial
         fileText = "Video Writing - {camSerial}".format(camSerial=self.camSerial)
         BaseMonitor.__init__(self, *args, filePurposeText='video writing',
             fileText=fileText, **kwargs)
         self.setText("{serial} ({speed})".format(serial=self.camSerial, speed=speedText))
         self.displaySize = displaySize
-        self.canvas = tk.Canvas(self, width=self.displaySize[0], height=self.displaySize[1], borderwidth=2, relief=tk.SUNKEN)
-        self.imageID = None
-        self.currentImage = None
+        self.infoText = "{serial} ({speed})".format(serial=self.camSerial, speed=speedText)
+        self.viewer = ffplayer(100, self.infoText, pixelFormat=pixelFormat)
 
         self.isIdle = False  # Boolean flag indicating whether the monitor is actively sending images or not
 
-        self.canvas.grid(row=0, column=0, columnspan=2)
         if self.showFileWidgets:
             self.fileWidget.grid(row=1, column=0, rowspan=2, sticky=tk.NSEW)
             self.enableViewerCheckButton.grid(row=1, column=1)
@@ -432,30 +429,40 @@ class CameraMonitor(BaseMonitor):
         return self.displaySize
     def setDisplaySize(self, newSize):
         self.displaySize = newSize
-        self.canvas['width'] = self.displaySize[0]
-        self.canvas['height'] = self.displaySize[1]
+        # self.canvas['width'] = self.displaySize[0]
+        # self.canvas['height'] = self.displaySize[1]
 
     def idle(self):
         if not self.isIdle:
             # Transitioning from active to idle
             self.isIdle = True
-            self.updateImage(NO_IMAGES_IMAGE)
+            self.viewer.blank()
+            # self.updateImage(NO_IMAGES_IMAGE)
     def active(self):
         self.isIdle = False
 
     def updateImage(self, image, pixelFormat=None):
         # Expects a PIL image object
+        self.active()
         if self.viewerEnabled():
-            if psu.pixelFormats[pixelFormat]['bayer']:
-                # Invert bayer filter to get full color image
-                image = Image.fromarray(cv2.cvtColor(np.asarray(image), cv2.COLOR_BayerRGGB2RGB))
-            newSize = self.getBestImageSize(image.size)
-            image = image.resize(newSize, resample=Image.BILINEAR)
-            self.currentImage = ImageTk.PhotoImage(image)
-            if self.imageID is None:
-                self.imageID = self.canvas.create_image((0, 0), image=self.currentImage, anchor=tk.NW)
-            else:
-                self.canvas.itemconfig(self.imageID, image=self.currentImage)
+            # if cu.pixelFormats[pixelFormat]['bayer']:
+            #     # Invert bayer filter to get full color image
+            #     print('debayering. Image before:', image.shape)
+            #     image = cv2.cvtColor(np.asarray(image), cv2.COLOR_BayerRGGB2RGB)
+            #     print('debayering. Image after:', image.shape)
+            # newSize = self.getBestImageSize(image.size)
+            # image = image.resize(newSize, resample=Image.BILINEAR)
+            if pixelFormat is not None:
+                ffmpegPixelFormat = cu.pixelFormats[pixelFormat]['ffmpeg']
+                # breakpoint()
+                if ffmpegPixelFormat is not None and ffmpegPixelFormat[0] != self.viewer.pixelFormat:
+                    # There are multiple options for this pixel format  in ffmpeg, just choose the first one.
+                    ffmpegPixelFormat = ffmpegPixelFormat[0]
+                    self.viewer.close()
+                    self.viewer = ffplayer(100, self.infoText, pixelFormat=ffmpegPixelFormat)
+            # print('ffmpeg pixel format:', ffmpegPixelFormat)
+
+            self.viewer.showFrame(image)
 
     def getBestImageSize(self, imageSize):
         # Get a new image size that preserves the aspect ratio, and fits into
@@ -472,8 +479,4 @@ class CameraMonitor(BaseMonitor):
 
     def destroy(self):
         ttk.LabelFrame.destroy(self)
-        # self.fileWidget.grid_forget()
-        # self.canvas.grid_forget()
-        self.imageID = None
-        self.currentImage = None
-        # self.cameraAttributeBrowserButton.grid_forget()
+        self.viewer.close()

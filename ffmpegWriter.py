@@ -11,11 +11,20 @@ DEFAULT_GPU_COMPRESSION_ARGS = [
     '-c:v', 'h264_nvenc', '-preset', 'fast', '-cq', '32'
     ]
 
-class ffmpegVideoWriter():
-    def __init__(self, filename, frameType, verbose=1, fps=30, shape=None,
-                input_pixel_format="bayer_rggb8", output_pixel_format="rgb0",
-                gpuVEnc=False, gpuCompressionArgs=DEFAULT_GPU_COMPRESSION_ARGS,
-                cpuCompressionArgs=DEFAULT_CPU_COMPRESSION_ARGS):
+class ffmpegWriter():
+    def __init__(
+        self,
+        filename: str,
+        frameType: str,
+        verbose: int = 1,
+        fps: int = 30,
+        shape = None,
+        input_pixel_format: str = "bayer_rggb8",
+        output_pixel_format: str = "rgb0",
+        gpuVEnc: bool = False,
+        gpuCompressionArgs: list = DEFAULT_GPU_COMPRESSION_ARGS,
+        cpuCompressionArgs: list = DEFAULT_CPU_COMPRESSION_ARGS
+    ):
         # You can specify the image shape at initialization, or when you write
         #   the first frame (the shape parameter is ignored for subsequent
         #   frames), or not at all, and hope we can figure it out.
@@ -39,19 +48,9 @@ class ffmpegVideoWriter():
         # All frames should be the same size and format
         # If shape is given (as a (width, height) tuple), it will be used. If
         #   not, we will try to figure out the image shape.
-
-        if self.frameType == 'image':
-            bytes = frame.tobytes()
-        elif self.frameType == 'numpy':
-            bytes = frame.data
-        elif self.frameType == 'bytes':
-            bytes = frame
-        if self.verbose >= 3:
-            print('Sending frame to ffmpeg!')
-
         if self.ffmpegProc is None:
             if self.verbose >= 3:
-                print("STARTING NEW FFMPEG VIDEO PROCESS!")
+                print("STARTING NEW FFMPEG PROCESS!")
             if shape is None and self.shape is None:
                 if self.frameType == 'image':
                     w, h = frame.size
@@ -81,7 +80,7 @@ class ffmpegVideoWriter():
 
             if self.gpuVEnc:
                 # With GPU acceleration
-                ffmpegCommand = [FFMPEG_EXE, '-y', '-probesize', '32', '-flush_packets', '1',
+                ffmpegCommand = [FFMPEG_EXE, '-y',
                     '-vsync', 'passthrough', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
                     '-v', ffmpegVerbosity, '-f', 'rawvideo', '-c:v', 'rawvideo',
                     '-pix_fmt', self.input_pixel_format, '-s', shapeArg, '-thread_queue_size', '128',
@@ -89,7 +88,7 @@ class ffmpegVideoWriter():
                     self.filename]
             else:
                 # Without GPU acceleration
-                ffmpegCommand = [FFMPEG_EXE, '-y', '-probesize', str(len(bytes)), '-flush_packets', '1',
+                ffmpegCommand = [FFMPEG_EXE, '-y',
                     '-vsync', 'passthrough', '-v', ffmpegVerbosity, '-f', 'rawvideo',
                     '-c:v', 'rawvideo', '-pix_fmt', self.input_pixel_format,
                     '-s', shapeArg, '-r', str(self.fps), '-thread_queue_size', '128',
@@ -100,91 +99,20 @@ class ffmpegVideoWriter():
             if self.verbose >= 2:
                 print('ffmpeg command:')
                 print(ffmpegCommand)
-            try:
-                self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
-            except TypeError:
-                raise OSError('Error starting ffmpeg process - check that ffmpeg is present on this system and included in the system PATH variable')
+            self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
 
-        self.ffmpegProc.stdin.write(bytes)    #'raw', 'RGB'))
-        self.ffmpegProc.stdin.flush()
-
-    def close(self):
-        if self.ffmpegProc is not None:
-            self.ffmpegProc.stdin.close()
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            self.ffmpegProc = None
-            if self.verbose >= 2:
-                print('Closed pipe to ffmpeg')
-
-class ffmpegAudioWriter():
-    # Thanks to https://github.com/Zulko/moviepy/blob/master/moviepy/audio/io/ffmpeg_audiowriter.py
-    # for the FFMPEG recipe
-    def __init__(self, filename, verbose=1, sampleRate=40000):
-        # You can specify the image shape at initialization, or when you write
-        #   the first frame (the shape parameter is ignored for subsequent
-        #   frames), or not at all, and hope we can figure it out.
-        # dataType should be one of 'numpy', 'image', or 'bytes'
-        self.ffmpegProc = None
-        self.verbose = verbose
-        self.sampleRate = sampleRate
-        self.filename = filename
-        # nBytes and nChannels will be determined by the first audio chunk provided.
-        self.nBytes = None
-        self.nChannels = None
-
-    def write(self, data):
-        # data should be a N x C numpy array, where N is the # of samples, and C is the # of channels
-        # All data chunks should have the same number of channels
-        if self.ffmpegProc is None:
-            if self.verbose >= 3:
-                print("STARTING NEW FFMPEG AUDIO PROCESS!")
-
-            # Determine FFMPEG verbosity level
-            if self.verbose <= 0:
-                ffmpegVerbosity = 'quiet'
-            elif self.verbose == 1:
-                ffmpegVerbosity = 'error'
-            elif self.verbose == 2:
-                ffmpegVerbosity = 'warning'
-            elif self.verbose >= 3:
-                ffmpegVerbosity = 'verbose'
-
-            # Gather info about data type
-            self.nBytes = data.itemsize
-            self.nChannels = data.shape[-1]
-
-            # Generate FFMPEG command
-            ffmpegCommand = [
-                FFMPEG_EXE,
-                '-y',
-                '-v', ffmpegVerbosity,
-                '-f', 's{b}le'.format(b=8*self.nBytes),
-                '-c:a', 'pcm_s{b}le'.format(b=8*self.nBytes),
-                '-ar', '{r}'.format(r=self.sampleRate),
-                '-ac', '{c}'.format(c=self.nChannels),
-                '-thread_queue_size', '128',
-                '-i', '-',
-                '-thread_queue_size', '128',
-                self.filename
-                ]
-
-            if self.verbose >= 2:
-                print('ffmpeg command:')
-                print(ffmpegCommand)
-
-            try:
-                self.ffmpegProc = subprocess.Popen(ffmpegCommand, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
-            except TypeError:
-                raise OSError('Error starting ffmpeg process - check that ffmpeg is present on this system and included in the system PATH variable')
-
-        # Convert array to bytes
-        bytes = data.tobytes()
+        if self.frameType == 'bytes':
+            buf = frame
+        elif self.frameType == 'image':
+            buf = frame.tobytes()
+        elif self.frameType == 'numpy':
+            # buf = frame.tobytes()
+            buf = memoryview(frame)
         if self.verbose >= 3:
             print('Sending frame to ffmpeg!')
 
-        # Pipe data to ffmpeg
-        self.ffmpegProc.stdin.write(bytes)
+        self.ffmpegProc.stdin.write(buf)    #'raw', 'RGB'))
+
         self.ffmpegProc.stdin.flush()
 
     def close(self):
@@ -196,6 +124,7 @@ class ffmpegAudioWriter():
             if self.verbose >= 2:
                 print('Closed pipe to ffmpeg')
 #            self.ffmpegProc.communicate()
+
 
 
 # nvenc lossless (~2.5 sec / 100 frames)

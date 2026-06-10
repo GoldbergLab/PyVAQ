@@ -14,7 +14,7 @@ class SharedImageSender():
     def __init__(self,
                 width,
                 height,
-                pixelFormat=PySpin.PixelFormat_BGR8,  #PySpin.PixelFormat_BayerRG8,
+                pixelFormat=PySpin.PixelFormat_BGR8,  #PySpin.PixelFormat_BayerRG8, only matters if outputType is PySpin
                 offsetX=0,
                 offsetY=0,
                 verbose=0,
@@ -135,6 +135,12 @@ class SharedImageSender():
                 elif self.verbose >= 2:
                     print('{name}: Warning, metadata queue full. Overflow allowed - continuing...'.format(name=self.name))
 
+    def close(self):
+        pass # No-op here to match mp.Queue and queue.Queue API
+
+    def join_thread(self):
+        pass # No-op here to match mp.Queue and queue.Queue API
+
 class SharedImageReceiver():
     def __init__(self,
                 width,
@@ -248,3 +254,9 @@ class SharedImageReceiver():
             return output, metadata
         else:
             return output
+
+    def close(self):
+        pass # No-op here to match mp.Queue and queue.Queue API
+
+    def join_thread(self):
+        pass # No-op here to match mp.Queue and queue.Queue API

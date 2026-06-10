@@ -23,8 +23,8 @@ def config_descendants(widget, ignoreTclErrors=True, collapsableInner=None, **pa
 
 class CollapsableFrame(tk.Frame):
     def __init__(self, parent, *args, collapseSymbol='/\\', collapseText=None,
-        expandSymbol='\\/', text=None, expandText=None, collapseFunction=None,
-        expandFunction=None, collapsed=True, padx=0, pady=0, ipadx=0,
+        expandSymbol='\\/', expandText=None, collapseFunction=None,
+        expandFunction=None, text=None, collapsed=True, padx=0, pady=0, ipadx=0,
         ipady=0, **kwargs):
         # CollapsableFrame: A class that provides a "collapsable" frame, meaning
         #   a Tkinter frame that can be "collapsed" such that all its children
@@ -46,9 +46,6 @@ class CollapsableFrame(tk.Frame):
         # expandText = the header text for the collapsable frame when it is
         #   in its collapsed configuration. This will be displayed as a header,
         #   and will still be visible even when the frame is collapsed.
-        # text = the header text for the frame when it is either collapsed or
-        #   expanded. Provided for compatibility with tk.LabeLFrame, this only
-        #   has an effect if expandText and collapseText are both None
         #
         self.parent = parent
         self.outerFrame = tk.Frame(self.parent, *args, **kwargs)

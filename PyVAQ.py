@@ -12,7 +12,6 @@ from tkinter.filedialog import askdirectory, asksaveasfilename, askopenfilename
 from tkinter.messagebox import showinfo, showwarning
 import queue
 from PIL import Image
-import pprint
 import traceback
 from collections import deque
 import re
@@ -21,7 +20,6 @@ import unicodedata
 from TimeInput import TimeVar, TimeEntry
 from ParamDialog import ParamDialog, Param
 from fileWritingEntry import FileWritingEntry
-import warnings
 import cProfile, pstats, io
 # For audio monitor graph embedding:
 from matplotlib.backends.backend_tkagg import (
@@ -32,23 +30,40 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 # from matplotlib.lines import Line2D
-# from pympler import tracker
 try:
     import PySpin
 except ModuleNotFoundError:
     # pip seems to install PySpin as pyspin sometimes...
     import pyspin as PySpin
-
-from MonitorWidgets import CameraMonitor, AudioMonitor, DigitalMonitor
+from MonitorWidgets import AudioMonitor, CameraMonitor, DigitalMonitor
 from DockableFrame import Docker
-from StateMachineProcesses import sendMessage, States, Messages, Trigger, StdoutManager, AVMerger, Synchronizer, AudioTriggerer, AudioAcquirer, AudioWriter, VideoAcquirer, VideoWriter, ContinuousTriggerer, syncPrint, SimpleVideoWriter, SimpleAudioWriter, DigitalAcquirer, SimpleDigitalWriter
+from StateMachineProcesses import (
+    sendMessage,
+    clearDataQueues,
+    States,
+    Messages,
+    Trigger,
+    StdoutManager,
+    AVMerger,
+    Synchronizer,
+    AudioTriggerer,
+    AudioAcquirer,
+    AudioWriter,
+    DigitalAcquirer,
+    SimpleDigitalWriter,
+    VideoAcquirer,
+    VideoWriter,
+    ContinuousTriggerer,
+    syncPrint,
+    SimpleVideoWriter,
+    SimpleAudioWriter
+)
 import inspect
 import CollapsableFrame as cf
-import PySpinUtilities as psu
+import CameraUtilities as cu
 import ctypes
-from ffmpegWriter import DEFAULT_CPU_COMPRESSION_ARGS, DEFAULT_GPU_COMPRESSION_ARGS
+from ffmpegWriter import DEFAULT_CPU_COMPRESSION_ARGS,  DEFAULT_GPU_COMPRESSION_ARGS
 from CameraConfig import CameraConfigPanel
-import copy
 from collections import OrderedDict as odict
 
 VERSION='0.3.0'
@@ -190,6 +205,62 @@ def getSharedString(sharedString, block=False):
         value = None
     return value
 
+def splashScreen(root, settingsFilePath=""):
+    # Load startup settings to use a defaults for splash screen
+    startupSettingsFile = 'startup_settings.ini'
+    defaultLibs = None
+    try:
+        with open(startupSettingsFile, 'r') as f:
+            startupSettings = json.load(f)
+    except FileNotFoundError:
+        startupSettings = {}
+
+    if 'defaultLibs' in startupSettings:
+        defaultLibs = startupSettings['defaultLibs']
+    if len(settingsFilePath) == 0 and 'defaultSettingsFilePath' in startupSettings:
+        settingsFilePath = startupSettings['defaultSettingsFilePath']
+
+    if defaultLibs is None:
+        defaultLibs = cu.CAM_TYPE_NAMES.values()
+
+    params = []
+    params.append(
+        Param(
+            name="Camera support",
+            widgetType=Param.MULTICHOICE,
+            options=cu.CAM_TYPE_NAMES.values(),
+            default=defaultLibs
+        )
+    )
+    params.append(
+        Param(
+            name="Settings file",
+            widgetType=Param.PATH,
+            default=settingsFilePath
+        )
+    )
+    splashScreen = ParamDialog(
+        root,
+        params=params,
+        title="PyVAQ",
+        maxHeight=35,
+        arrangement=ParamDialog.VERTICAL
+    )
+
+    choices = splashScreen.results
+
+    if choices is not None:
+        # Record chosen startup settings to use as defaults next launch
+        startupSettings['defaultLibs'] = choices['Camera support']
+        startupSettings['defaultSettingsFilePath'] = choices['Settings file']
+        try:
+            with open(startupSettingsFile, 'w') as f:
+                json.dump(startupSettings, f)
+        except:
+            print('Error storing startup settings')
+
+    return choices
+
 LINE_STYLES = [c+'-' for c in 'bykcmgr']
 WIDGET_COLORS = [
     '#050505', # near black
@@ -197,28 +268,6 @@ WIDGET_COLORS = [
     '#c1ffc1', # light green
     '#FFC1C1'  # light red
 ]
-
-def MakeVarGetter(variable, conversion=int, default=0):
-    """Factory for creating variable getter functions..
-
-    Args:
-        variable (tk.Variable or similar): A tk style variable object.
-        conversion (function): A function to convert the value of the variable
-            (for instance from string to integer)
-        default (*): A default value to return if the variable returns an empty
-            string
-
-    Returns:
-        type: Description of returned object.
-
-    """
-    def VarGetter():
-        strValue = variable.get()
-        if len(strValue) == 0:
-            return default
-        else:
-            return conversion(strValue)
-    return VarGetter
 
 class GeneralVar:
     def __init__(self):
@@ -240,7 +289,7 @@ class GeneralVar:
             self.readCallback = callback
 
 class PyVAQ:
-    def __init__(self, master, settingsFilePath=None):
+    def __init__(self, master, settingsFilePath=''):
         self.master = master
         try:
             self.master.wm_iconbitmap(ICON_PATH)
@@ -272,6 +321,25 @@ class PyVAQ:
         self.style.configure('InvalidDirectory.TEntry', fieldbackground=WIDGET_COLORS[3])
 #        self.style.map('Directory.TEntry.label', background=[(('!invalid',), 'green'),(('invalid',), 'red')])
 
+        # Create splash screen
+        choices = splashScreen(
+            self.master,
+            settingsFilePath=settingsFilePath,
+        )
+        if choices is None:
+            # User pressed "cancel" or "x"
+            self.master.destroy()
+            self.master.quit()
+            return
+
+        for camType in cu.CAM_TYPES:
+            camName = cu.CAM_TYPE_NAMES[camType]
+            if camName not in choices['Camera support']:
+                # User deselected this library - unload it.
+                cu.CamLibs[camType] = None
+
+        settingsFilePath = choices['Settings file']
+
         self.ID = 'GUI'
         self.stdoutBuffer = []
 
@@ -287,6 +355,8 @@ class PyVAQ:
         self.audioDAQChannels = GeneralVar(); self.audioDAQChannels.set([])
         self.digitalDAQChannels = GeneralVar(); self.digitalDAQChannels.set([])
         self.camSerials = GeneralVar(); self.camSerials.set([])  # Cam serials selected for acquisition
+        self.camTypes = GeneralVar(); self.camTypes.set([])  # Cam serials selected for acquisition
+        self.camHardwareSync = GeneralVar(); self.camHardwareSync.set([])  # Boolean var indicating whether or not camera is using hardware synchronization
         self.dataSyncTerminal = GeneralVar(); self.dataSyncTerminal.set(None)
         self.videoSyncTerminal = GeneralVar(); self.videoSyncTerminal.set(None)
         self.dataSyncSource = GeneralVar(); self.dataSyncSource.set("PFI5")
@@ -434,12 +504,10 @@ class PyVAQ:
         self.maxGPUVEncVar = tk.StringVar(); self.maxGPUVEncVar.set(str(DEFAULT_NUM_GPU_VENC_SESSIONS))
         self.maxGPUVEncEntry = ttk.Entry(self.maxGPUVencFrame, width=16, textvariable=self.maxGPUVEncVar)
 
-        self.selectAcquisitionHardwareButton =  ttk.Button(self.acquisitionParametersFrame, text="Select audio/video inputs", command=self.selectAcquisitionHardware)
+        self.selectAcquisitionHardwareButton =  ttk.Button(self.acquisitionParametersFrame, text="Select audio/digital/video inputs", command=self.selectAcquisitionHardware)
         self.acquisitionHardwareText = tk.Text(self.acquisitionParametersFrame)
 
-        self.dataChunkSizeSecondsFrame =  ttk.LabelFrame(self.acquisitionParametersFrame, text="Data chunk size (s)", style='SingleContainer.TLabelframe')
-        self.dataChunkSizeSecondsVar =    tk.StringVar(); self.dataChunkSizeSecondsVar.set("1.0")
-        self.dataChunkSizeSecondsEntry =  ttk.Entry(self.dataChunkSizeSecondsFrame, width=16, textvariable=self.dataChunkSizeSecondsVar)
+        self.chunkSizeVar =         tk.StringVar(); self.chunkSizeVar.set(1000)
 
         self.cameraConfigurationFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Camera Configuration", **COLLAPSABLE_FRAME_STYLE); self.cameraConfigurationFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         self.cameraConfigurationPanel = CameraConfigPanel(self.cameraConfigurationFrame)
@@ -600,12 +668,12 @@ class PyVAQ:
         self.monitorMasterFrameRate = 15
 
         # Pointers to processes
-        self.videoWriteProcesses = {}
         self.videoAcquireProcesses = {}
-        self.audioWriteProcess = None
+        self.videoWriteProcesses = {}
         self.audioAcquireProcess = None
-        self.digitalWriteProcess = None
+        self.audioWriteProcess = None
         self.digitalAcquireProcess = None
+        self.digitalWriteProcess = None
         self.audioTriggerProcess = None
         self.continuousTriggerProcess = None
         self.syncProcess = None
@@ -622,8 +690,8 @@ class PyVAQ:
         #   2=Minor status updates, 3=Continuous status messages
         # These need to be integrated into the param scheme
         self.audioAcquireVerbose = 1
-        self.digitalAcquireVerbose = 1
         self.audioWriteVerbose = 1
+        self.digitalAcquireVerbose = 1
         self.digitalWriteVerbose = 1
         self.videoAcquireVerbose = 1
         self.videoWriteVerbose = 1
@@ -636,27 +704,25 @@ class PyVAQ:
 
         # the params dict defines how to access and set all the parameters in the GUI
         self.paramInfo = {
-            'dataFrequency':                    dict(get=MakeVarGetter(self.audioFrequencyVar),                 set=self.audioFrequencyVar.set),
-            'videoFrequency':                   dict(get=MakeVarGetter(self.videoFrequencyVar),                 set=self.videoFrequencyVar.set),
-            'dataChunkSizeSeconds':             dict(get=MakeVarGetter(self.dataChunkSizeSecondsVar, conversion=float),           set=self.dataChunkSizeSecondsVar.set),
-            'dataChunkSizeSamples':             dict(get=self.getDataChunkSizeSamples,                          set=self.setDataChunkSizeSamples),
-            "maxGPUVEnc":                       dict(get=MakeVarGetter(self.maxGPUVEncVar),                     set=self.maxGPUVEncVar.set),
-            # 'exposureTime':                     dict(get=MakeVarGetter(self.exposureTimeVar),               set=self.exposureTimeVar.set),
-            'gain':                             dict(get=MakeVarGetter(self.gainVar, conversion=float),                      set=self.gainVar.set),
-            'preTriggerTime':                   dict(get=MakeVarGetter(self.preTriggerTimeVar, conversion=float),            set=self.preTriggerTimeVar.set),
-            'acquisitionBufferSize':            dict(get=MakeVarGetter(self.acquisitionBufferSizeVar, conversion=float),     set=self.acquisitionBufferSizeVar.set),
-            'recordTime':                       dict(get=MakeVarGetter(self.recordTimeVar, conversion=float),                set=self.recordTimeVar.set),
-            'triggerHighLevel':                 dict(get=MakeVarGetter(self.triggerHighLevelVar, conversion=float),          set=self.triggerHighLevelVar.set),
-            'triggerLowLevel':                  dict(get=MakeVarGetter(self.triggerLowLevelVar, conversion=float),           set=self.triggerLowLevelVar.set),
-            'triggerHighTime':                  dict(get=MakeVarGetter(self.triggerHighTimeVar, conversion=float),           set=self.triggerHighTimeVar.set),
-            'triggerLowTime':                   dict(get=MakeVarGetter(self.triggerLowTimeVar, conversion=float),            set=self.triggerLowTimeVar.set),
-            'triggerHighFraction':              dict(get=MakeVarGetter(self.triggerHighFractionVar, conversion=float),       set=self.triggerHighFractionVar.set),
-            'triggerLowFraction':               dict(get=MakeVarGetter(self.triggerLowFractionVar, conversion=float),        set=self.triggerLowFractionVar.set),
-            'triggerHighBandpass':              dict(get=MakeVarGetter(self.triggerHighBandpassVar, conversion=float),       set=self.triggerHighBandpassVar.set),
-            'triggerLowBandpass':               dict(get=MakeVarGetter(self.triggerLowBandpassVar, conversion=float),        set=self.triggerLowBandpassVar.set),
-            'maxAudioTriggerTime':              dict(get=MakeVarGetter(self.maxAudioTriggerTimeVar, conversion=float),       set=self.maxAudioTriggerTimeVar.set),
-            "videoExposureTime":                dict(get=MakeVarGetter(self.videoExposureTimeVar, conversion=float),         set=self.videoExposureTimeVar.set),
-            "continuousTriggerPeriod":          dict(get=MakeVarGetter(self.continuousTriggerPeriodVar, conversion=float),   set=self.continuousTriggerPeriodVar.set),
+            'dataFrequency':                   dict(get=lambda:int(self.audioFrequencyVar.get()),              set=self.audioFrequencyVar.set),
+            'videoFrequency':                   dict(get=lambda:int(self.videoFrequencyVar.get()),              set=self.videoFrequencyVar.set),
+            'chunkSize':                        dict(get=lambda:int(self.chunkSizeVar.get()),                   set=self.chunkSizeVar.set),
+            "maxGPUVEnc":                       dict(get=lambda:int(self.maxGPUVEncVar.get()),                  set=self.maxGPUVEncVar.set),
+            # 'exposureTime':                     dict(get=lambda:int(self.exposureTimeVar.get()),                set=self.exposureTimeVar.set),
+            'gain':                             dict(get=lambda:float(self.gainVar.get()),                      set=self.gainVar.set),
+            'preTriggerTime':                   dict(get=lambda:float(self.preTriggerTimeVar.get()),            set=self.preTriggerTimeVar.set),
+            'acquisitionBufferSize':            dict(get=lambda:float(self.acquisitionBufferSizeVar.get()),     set=self.acquisitionBufferSizeVar.set),
+            'recordTime':                       dict(get=lambda:float(self.recordTimeVar.get()),                set=self.recordTimeVar.set),
+            'triggerHighLevel':                 dict(get=lambda:float(self.triggerHighLevelVar.get()),          set=self.triggerHighLevelVar.set),
+            'triggerLowLevel':                  dict(get=lambda:float(self.triggerLowLevelVar.get()),           set=self.triggerLowLevelVar.set),
+            'triggerHighTime':                  dict(get=lambda:float(self.triggerHighTimeVar.get()),           set=self.triggerHighTimeVar.set),
+            'triggerLowTime':                   dict(get=lambda:float(self.triggerLowTimeVar.get()),            set=self.triggerLowTimeVar.set),
+            'triggerHighFraction':              dict(get=lambda:float(self.triggerHighFractionVar.get()),       set=self.triggerHighFractionVar.set),
+            'triggerLowFraction':               dict(get=lambda:float(self.triggerLowFractionVar.get()),        set=self.triggerLowFractionVar.set),
+            'triggerHighBandpass':              dict(get=lambda:float(self.triggerHighBandpassVar.get()),       set=self.triggerHighBandpassVar.set),
+            'triggerLowBandpass':               dict(get=lambda:float(self.triggerLowBandpassVar.get()),        set=self.triggerLowBandpassVar.set),
+            'maxAudioTriggerTime':              dict(get=lambda:float(self.maxAudioTriggerTimeVar.get()),       set=self.maxAudioTriggerTimeVar.set),
+            "videoExposureTime":                dict(get=lambda:float(self.videoExposureTimeVar.get()),         set=self.videoExposureTimeVar.set),
             'videoBaseFileNames':               dict(get=self.videoBaseFileNames.get,                           set=self.setVideoBaseFileNames),
             'videoDirectories':                 dict(get=self.videoDirectories.get,                             set=self.setVideoDirectories),
             'audioBaseFileName':                dict(get=self.audioBaseFileName.get,                            set=self.setAudioBaseFileName),
@@ -677,18 +743,22 @@ class PyVAQ:
             'multiChannelStopBehavior':         dict(get=self.multiChannelStopBehaviorVar.get,                  set=self.multiChannelStopBehaviorVar.set),
             'multiChannelStartBehavior':        dict(get=self.multiChannelStartBehaviorVar.get,                 set=self.multiChannelStartBehaviorVar.set),
             "bufferSizeSeconds":                dict(get=self.getBufferSizeSeconds,                             set=self.setBufferSizeSeconds),
+            "bufferSizeAudioChunks":            dict(get=self.getBufferSizeAudioChunks,                         set=self.setBufferSizeAudioChunks),
             "numStreams":                       dict(get=self.getNumStreams,                                    set=self.setNumStreams),
             "numProcesses":                     dict(get=self.getNumProcesses,                                  set=self.setNumProcesses),
             "numSyncedProcesses":               dict(get=self.getNumSyncedProcesses,                            set=self.setNumSyncedProcesses),
             "acquireSettings":                  dict(get=self.getCameraSettings,                                set=self.setCameraSettings),
+            "continuousTriggerPeriod":          dict(get=lambda:float(self.continuousTriggerPeriodVar.get()),   set=self.continuousTriggerPeriodVar.set),
             "audioTagContinuousTrigs":          dict(get=self.audioTagContinuousTrigsVar.get,                   set=self.audioTagContinuousTrigsVar.set),
             "daySubfolders":                    dict(get=self.daySubfoldersVar.get,                             set=self.daySubfoldersVar.set),
             "audioDAQChannels":                 dict(get=self.audioDAQChannels.get,                             set=self.audioDAQChannels.set),
             "digitalDAQChannels":               dict(get=self.digitalDAQChannels.get,                           set=self.digitalDAQChannels.set),
             "camSerials":                       dict(get=self.camSerials.get,                                   set=self.camSerials.set),
+            "camTypes":                         dict(get=self.camTypes.get,                                     set=self.camTypes.set),
+            "camHardwareSync":                  dict(get=self.camHardwareSync.get,                              set=self.camHardwareSync.set),
             "dataSyncTerminal":                 dict(get=self.dataSyncTerminal.get,                             set=self.dataSyncTerminal.set),
             "videoSyncTerminal":                dict(get=self.videoSyncTerminal.get,                            set=self.videoSyncTerminal.set),
-            "dataSyncSource":                   dict(get=self.dataSyncSource.get,                               set=self.dataSyncSource.set),
+            "dataSyncSource":                  dict(get=self.dataSyncSource.get,                              set=self.dataSyncSource.set),
             "videoSyncSource":                  dict(get=self.videoSyncSource.get,                              set=self.videoSyncSource.set),
             "acquisitionSignalChannel":         dict(get=self.acquisitionSignalChannel.get,                     set=self.acquisitionSignalChannel.set),
             "audioChannelConfiguration":        dict(get=self.audioChannelConfiguration.get,                    set=self.audioChannelConfiguration.set),
@@ -713,14 +783,15 @@ class PyVAQ:
 
         # Start automatic updating of video and audio monitors
         self.audioMonitorUpdateJob = None
+        self.digitalMonitorUpdateJob = None
         self.videoMonitorUpdateJob = None
         self.audioAnalysisMonitorUpdateJob = None
         self.triggerIndicatorUpdateJob = None
-        self.autoUpdateVideoMonitors()
-        self.autoUpdateAudioMonitors()
-        self.autoUpdateDigitalMonitors()
-        if self.triggerModeVar.get() == "Audio":
-            self.autoUpdateAudioAnalysisMonitors()
+        # self.autoUpdateVideoMonitors()
+        # self.autoUpdateAudioMonitors()
+        # self.autoUpdateDigitalMonitors()
+        # if self.triggerModeVar.get() == "Audio":
+        #     self.autoUpdateAudioAnalysisMonitors()
 
         self.updateStatusDisplayJob = None
         self.metaState = None
@@ -729,7 +800,7 @@ class PyVAQ:
         self.master.update_idletasks()
 
         # If provided, load settings file
-        if settingsFilePath is not None:
+        if len(settingsFilePath) >= 0:
             self.loadSettings(path=settingsFilePath)
 
     def log(self, msg, *args, **kwargs):
@@ -1080,6 +1151,8 @@ him know. Otherwise, I had nothing to do with it.
             "audioDAQChannels",
             "digitalDAQChannels",
             "camSerials",
+            "camTypes",
+            "camHardwareSync",
             "dataSyncTerminal",
             "videoSyncTerminal",
             "dataSyncSource",
@@ -1088,15 +1161,15 @@ him know. Otherwise, I had nothing to do with it.
             "audioChannelConfiguration"
             )
 
-        defaultDigitalDAQChannels = p["digitalDAQChannels"]
-        defaultAudioDAQChannels = p["audioDAQChannels"]
-        defaultCamSerials = p["camSerials"]
-        defaultDataSyncTerminal = p["dataSyncTerminal"]
-        defaultVideoSyncTerminal = p["videoSyncTerminal"]
-        defaultdataSyncSource = p["dataSyncSource"]
-        defaultVideoSyncSource = p["videoSyncSource"]
-        defaultAcquisitionSignalChannel = p["acquisitionSignalChannel"]
-        defaultAudioChannelConfiguration = p["audioChannelConfiguration"]
+        defaultDigitalDAQChannels = p['digitalDAQChannels']
+        defaultAudioDAQChannels = p['audioDAQChannels']
+        defaultCamSerials = p['camSerials']
+        defaultDataSyncTerminal = p['dataSyncTerminal']
+        defaultVideoSyncTerminal = p['videoSyncTerminal']
+        defaultdataSyncSource = p['dataSyncSource']
+        defaultVideoSyncSource = p['videoSyncSource']
+        defaultAcquisitionSignalChannel = p['acquisitionSignalChannel']
+        defaultAudioChannelConfiguration = p['audioChannelConfiguration']
 
         # Query the system to determine what DAQ channels and cameras are
         #   currently available
@@ -1105,7 +1178,19 @@ him know. Otherwise, I had nothing to do with it.
         availableClockChannels = flattenList(discoverDAQClockChannels().values()) + ['None']
         availableDigitalTerminals = ['None'] + flattenList(discoverDAQTerminals().values())
 
-        availableCamSerials = psu.discoverCameras()
+        availableFLIRCamSerials, _ = cu.discoverCameras(camType=cu.FLIR_CAM)
+        availableAptinaCamSerials, _ = cu.discoverCameras(camType=cu.APTINA_CAM)
+        availableNanEyeCamSerials, _ = cu.discoverCameras(camType=cu.NE_CAM)
+        availableOtherCamSerials, _ = cu.discoverCameras(camType=cu.OTHER_CAM)
+        availableCamSerials = (
+            availableFLIRCamSerials +
+            availableOtherCamSerials +
+            availableAptinaCamSerials +
+            availableNanEyeCamSerials
+        )
+
+        camSerials = []
+
         audioChannelConfigurations = [
             "DEFAULT",
             "DIFF",
@@ -1118,22 +1203,32 @@ him know. Otherwise, I had nothing to do with it.
         params = []
         if len(availableAudioChannels) > 0:
             params.append(Param(name='Audio Channels', widgetType=Param.MULTICHOICE, options=availableAudioChannels, default=defaultAudioDAQChannels))
-        if len(availableCamSerials) > 0:
-            params.append(Param(name='Cameras', widgetType=Param.MULTICHOICE, options=availableCamSerials, default=defaultCamSerials))
-        if len(availableAudioChannels) > 0:
+        if len(availableDigitalChannels) > 0:
             params.append(Param(name='Digital Channels', widgetType=Param.MULTICHOICE, options=availableDigitalChannels, default=defaultDigitalDAQChannels))
+        if len(availableFLIRCamSerials) > 0:
+            params.append(Param(name='FLIR Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableFLIRCamSerials, default=None))
+            params.append(Param(name='FLIR Cameras (hw sync)', widgetType=Param.MULTICHOICE, options=availableFLIRCamSerials, default=None))
+        if len(availableAptinaCamSerials) > 0:
+            params.append(Param(name='Aptina Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableAptinaCamSerials, default=None))
+            params.append(Param(name='Aptina Cameras (hw sync)', widgetType=Param.MULTICHOICE, options=availableAptinaCamSerials, default=None))
+        if len(availableNanEyeCamSerials) > 0:
+            params.append(Param(name='NanEye Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableNanEyeCamSerials, default=None))
+        if len(availableOtherCamSerials) > 0:
+            params.append(Param(name='Other Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableOtherCamSerials, default=None))
+            params.append(Param(name='Other Cameras (hw sync)', widgetType=Param.MULTICHOICE, options=availableOtherCamSerials, default=None))
         if len(availableClockChannels) > 0:
             params.append(Param(name='Audio/Digital Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=defaultDataSyncTerminal))
             params.append(Param(name='Video Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=defaultVideoSyncTerminal))
-            params.append(Param(name='Audio Sync PFI Interface', widgetType=Param.TEXT, options=None, default=defaultdataSyncSource, description="This must match your selection for Audio/Digital Sync Channel. Check DAQ pinout for matching PFI channel."))
+            params.append(Param(name='Audio/Digital Sync PFI Interface', widgetType=Param.TEXT, options=None, default=defaultdataSyncSource, description="This must match your selection for Audio/Digital Sync Channel. Check DAQ pinout for matching PFI channel."))
             params.append(Param(name='Video Sync PFI Interface', widgetType=Param.TEXT, options=None, default=defaultVideoSyncSource, description="This must match your selection for Video Sync Channel. Check DAQ pinout for matching PFI channel."))
         params.append(Param(name='Audio channel configuration', widgetType=Param.MONOCHOICE, options=audioChannelConfigurations, default=defaultAudioChannelConfiguration, description="Choose an analog channel configuration for audio acquisition. Recommend differential if you have a 3-wire XLR-type output, RSE if you only use two wires."))
         params.append(Param(name='Acquisition start trigger channel', widgetType=Param.MONOCHOICE, options=availableDigitalTerminals, default=defaultAcquisitionSignalChannel, description="Choose a channel that will trigger the acquisition start with a rising edge. Leave as None if you wish the acquisition to start without waiting for a digital trigger."))
 
         choices = None
         if len(params) > 0:
-            pd = ParamDialog(self.master, params=params, title="Choose audio/digital/video inputs to use", maxHeight=35, arrangement=ParamDialog.COLLAPSABLE)
+            pd = ParamDialog(self.master, params=params, title="Choose audio/digital/video inputs to use", maxHeight=35, arrangement=ParamDialog.HYBRID)
             choices = pd.results
+
             if choices is not None:
                 # We're changing acquisition settings, so stop everything
                 self.stopMonitors()
@@ -1141,49 +1236,99 @@ him know. Otherwise, I had nothing to do with it.
                 self.destroyChildProcesses()
 
                 # Extract chosen parameters from GUI
+                audioDAQChannels = []
                 if 'Audio Channels' in choices:
-                    audioDAQChannels = choices['Audio Channels']
-                else:
-                    audioDAQChannels = []
-                if 'Cameras' in choices:
-                    camSerials = choices['Cameras']
-                else:
-                    camSerials = []
+                    audioDAQChannels.extend(choices['Audio Channels'])
+                FLIRCamSerials = []
+                FLIRCamHWSync = []
+                if 'FLIR Cameras (sw sync)' in choices:
+                    FLIRCamSerials.extend(choices['FLIR Cameras (sw sync)'])
+                    FLIRCamHWSync.extend([False for camSerial in choices['FLIR Cameras (sw sync)']])
+                if 'FLIR Cameras (hw sync)' in choices:
+                    FLIRCamSerials.extend(choices['FLIR Cameras (hw sync)'])
+                    FLIRCamHWSync.extend([True for camSerial in choices['FLIR Cameras (hw sync)']])
+                otherCamSerials = []
+                otherCamHWSync = []
+                if 'Other Cameras (sw sync)' in choices:
+                    otherCamSerials.extend(choices['Other Cameras (sw sync)'])
+                    otherCamHWSync.extend([False for camSerial in choices['Other Cameras (sw sync)']])
+                if 'Other Cameras (hw sync)' in choices:
+                    otherCamSerials.extend(choices['Other Cameras (hw sync)'])
+                    otherCamHWSync.extend([True for camSerial in choices['Other Cameras (hw sync)']])
+                aptinaCamSerials = []
+                aptinaCamHWSync = []
+                if 'Aptina Cameras (sw sync)' in choices:
+                    aptinaCamSerials.extend(choices['Aptina Cameras (sw sync)'])
+                    aptinaCamHWSync.extend([False for camSerial in choices['Aptina Cameras (sw sync)']])
+                if 'Aptina Cameras (hw sync)' in choices:
+                    aptinaCamSerials.extend(choices['Aptina Cameras (hw sync)'])
+                    aptinaCamHWSync.extend([True for camSerial in choices['Aptina Cameras (hw sync)']])
+                nanEyeCamSerials = []
+                nanEyeCamHWSync = []
+                if 'NanEye Cameras (sw sync)' in choices:
+                    nanEyeCamSerials.extend(choices['NanEye Cameras (sw sync)'])
+                    nanEyeCamHWSync.extend([False for camSerial in choices['NanEye Cameras (sw sync)']])
+
                 if 'Digital Channels' in choices:
                     digitalDAQChannels = choices['Digital Channels']
                 else:
                     digitalDAQChannels = []
+
+                dataSyncTerminal = None
                 if 'Audio/Digital Sync Channel' in choices and choices['Audio/Digital Sync Channel'] != "None":
                     dataSyncTerminal = choices['Audio/Digital Sync Channel']
-                else:
-                    dataSyncTerminal = None
+                videoSyncTerminal = None
                 if 'Video Sync Channel' in choices and choices['Video Sync Channel'] != "None":
                     videoSyncTerminal = choices['Video Sync Channel']
-                else:
-                    videoSyncTerminal = None
-                if 'Audio Sync PFI Interface' in choices and len(choices['Audio Sync PFI Interface']) > 0:
-                    dataSyncSource = choices['Audio Sync PFI Interface']
-                else:
-                    dataSyncSource = None
-                if 'Video Sync PFI Interface' in choices and len(choices['Video Sync PFI Interface']) > 0:
+                dataSyncSource = None
+                if 'Audio/Digital Sync PFI Interface' in choices and \
+                        choices['Audio/Digital Sync PFI Interface'] is not None and \
+                        len(choices['Audio/Digital Sync PFI Interface']) > 0:
+                    dataSyncSource = choices['Audio/Digital Sync PFI Interface']
+                videoSyncSource = None
+                if 'Video Sync PFI Interface' in choices and \
+                        choices['Video Sync PFI Interface'] is not None and \
+                        len(choices['Video Sync PFI Interface']) > 0:
                     videoSyncSource = choices['Video Sync PFI Interface']
-                else:
-                    videoSyncSource = None
-                if 'Acquisition signal channel' in choices and len(choices['Acquisition start trigger channel']) > 0:
+                if 'Acquisition signal channel' in choices and \
+                        choices['Acquisition start trigger channel'] is not None and \
+                        len(choices['Acquisition start trigger channel']) > 0:
                     if choices['Acquisition start trigger channel'] == 'None':
                         acquisitionSignalChannel = None
                     else:
                         acquisitionSignalChannel = choices['Acquisition start trigger channel']
                 else:
                     acquisitionSignalChannel = None
-                if 'Audio channel configuration' in choices and len(choices['Audio channel configuration']) > 0:
+                if 'Audio channel configuration' in choices:
                     audioChannelConfiguration = choices['Audio channel configuration']
+                else:
+                    audioChannelConfiguration = None
+
+                camSerials = (
+                    FLIRCamSerials +
+                    otherCamSerials +
+                    aptinaCamSerials +
+                    nanEyeCamSerials
+                )
+                camTypes = (
+                    [cu.FLIR_CAM for camSerial in FLIRCamSerials] +
+                    [cu.OTHER_CAM for camSerial in otherCamSerials] +
+                    [cu.APTINA_CAM for camSerial in aptinaCamSerials] +
+                    [cu.NE_CAM for camSerial in nanEyeCamSerials])
+                camHardwareSync = (
+                    FLIRCamHWSync +
+                    otherCamHWSync +
+                    aptinaCamHWSync +
+                    nanEyeCamHWSync
+                )
 
                 # Set chosen parameters
                 self.setParams(
                     audioDAQChannels=audioDAQChannels,
                     digitalDAQChannels=digitalDAQChannels,
                     camSerials=camSerials,
+                    camTypes=camTypes,
+                    camHardwareSync=camHardwareSync,
                     dataSyncTerminal=dataSyncTerminal,
                     videoSyncTerminal=videoSyncTerminal,
                     dataSyncSource=dataSyncSource,
@@ -1218,6 +1363,8 @@ him know. Otherwise, I had nothing to do with it.
             "audioDAQChannels",
             "digitalDAQChannels",
             "camSerials",
+            "camTypes",
+            "camHardwareSync",
             "dataSyncTerminal",
             "videoSyncTerminal",
             "dataSyncSource",
@@ -1226,18 +1373,29 @@ him know. Otherwise, I had nothing to do with it.
             "audioChannelConfiguration"
             )
 
+        FLIRCamSerials =   [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.FLIR_CAM]
+        aptinaCamSerials = [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.APTINA_CAM]
+        nanEyeCamSerials = [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.NE_CAM]
+        otherCamSerials =  [camSerial + '*'*p['camHardwareSync'][k] for k, camSerial in enumerate(p['camSerials']) if p['camTypes'][k] == cu.OTHER_CAM]
+
         lines.extend([
             'Acquisition hardware selections:',
             '  Audio DAQ channels:   {audioDAQChannels}'.format(audioDAQChannels=', '.join(p['audioDAQChannels'])),
             '  Digital DAQ channels: {digitalDAQChannels}'.format(digitalDAQChannels=', '.join(p['digitalDAQChannels'])),
-            '  Cameras:              {camSerials}'.format(camSerials=', '.join(p['camSerials'])),
-            '  Audio sync terminal:  {dataSyncTerminal}'.format(dataSyncTerminal=p['dataSyncTerminal']),
+            '  FLIR Cameras:         {camSerials}'.format(camSerials=', '.join(FLIRCamSerials)) if len(FLIRCamSerials) > 0 else None,
+            '  Aptina Cameras:       {camSerials}'.format(camSerials=', '.join(aptinaCamSerials)) if len(aptinaCamSerials) > 0 else None,
+            '  NanEye Cameras:       {camSerials}'.format(camSerials=', '.join(nanEyeCamSerials)) if len(nanEyeCamSerials) > 0 else None,
+            '  Other Cameras:        {camSerials}'.format(camSerials=', '.join(otherCamSerials)) if len(otherCamSerials) > 0 else None,
+            '  Data sync terminal:   {dataSyncTerminal}'.format(dataSyncTerminal=p['dataSyncTerminal']),
             '  Video sync terminal:  {videoSyncTerminal}'.format(videoSyncTerminal=p['videoSyncTerminal']),
-            '  Audio sync source:    {dataSyncSource}'.format(dataSyncSource=p['dataSyncSource']),
+            '  Data sync source:     {dataSyncSource}'.format(dataSyncSource=p['dataSyncSource']),
             '  Video sync source:    {videoSyncSource}'.format(videoSyncSource=p['videoSyncSource']),
             '  Acq signal channel:   {acquisitionSignalChannel}'.format(acquisitionSignalChannel=p['acquisitionSignalChannel']),
-            '  Audio channel config: {audioChannelConfiguration}'.format(audioChannelConfiguration=p['audioChannelConfiguration'])
+            '  Audio channel config: {audioChannelConfiguration}'.format(audioChannelConfiguration=p['audioChannelConfiguration']),
+            '  (* = hardware synchronized)'
         ])
+
+        lines = [line for line in lines if line is not None]
 
         self.acquisitionHardwareText.delete('0.0', tk.END)
         self.acquisitionHardwareText['height'] = len(lines)
@@ -1275,25 +1433,27 @@ him know. Otherwise, I had nothing to do with it.
 
         p = self.getParams(
             'camSerials',
-            'videoBaseFileNames',
-            'videoDirectories',
-            'videoMonitorDisplaySize',
+            'camTypes',
             'audioDAQChannels',
             'audioBaseFileName',
             'audioDirectory',
             'digitalDAQChannels',
             'digitalBaseFileName',
             'digitalDirectory',
+            'videoBaseFileNames',
+            'videoDirectories',
+            'videoMonitorDisplaySize'
             )
-        camSerials = p["camSerials"]
-        videoBaseFileNames = p["videoBaseFileNames"]
-        videoDirectories = p["videoDirectories"]
-        audioDAQChannels = p["audioDAQChannels"]
-        audioBaseFileName = p["audioBaseFileName"]
-        audioDirectory = p["audioDirectory"]
-        digitalDAQChannels = p["digitalDAQChannels"]
-        digitalBaseFileName = p["digitalBaseFileName"]
-        digitalDirectory = p["digitalDirectory"]
+        camSerials = p['camSerials']
+        camTypes = p['camTypes']
+        audioDAQChannels = p['audioDAQChannels']
+        audioBaseFileName = p['audioBaseFileName']
+        audioDirectory = p['audioDirectory']
+        digitalDAQChannels = p['digitalDAQChannels']
+        digitalBaseFileName = p['digitalBaseFileName']
+        digitalDirectory = p['digitalDirectory']
+        videoBaseFileNames = p['videoBaseFileNames']
+        videoDirectories = p['videoDirectories']
 
         # Destroy old video stream monitoring widgets
         oldCamSerials = list(self.cameraMonitors.keys())
@@ -1302,7 +1462,7 @@ him know. Otherwise, I had nothing to do with it.
             self.cameraMonitors[camSerial].destroy()
             del self.cameraMonitors[camSerial]
 
-        self.cameraSpeeds = dict([(camSerial, psu.checkCameraSpeed(camSerial=camSerial)) for camSerial in camSerials])
+        self.cameraSpeeds = dict([(camSerial, cu.checkCameraSpeed(camSerial=camSerial, camType=camType)) for camSerial, camType in zip(camSerials, camTypes)])
 
         # Create new video stream monitoring widgets and other entities
         for camSerial in camSerials:
@@ -1317,7 +1477,7 @@ him know. Otherwise, I had nothing to do with it.
 
             self.cameraMonitors[camSerial] = CameraMonitor(
                 self.videoMonitorMasterFrame,
-                displaySize=p["videoMonitorDisplaySize"],
+                displaySize=p['videoMonitorDisplaySize'],
                 camSerial=camSerial,
                 speedText=self.cameraSpeeds[camSerial],
                 initialDirectory=videoDirectory,
@@ -1364,10 +1524,9 @@ him know. Otherwise, I had nothing to do with it.
                 initialBaseFileName=audioBaseFileName,
                 showFileWidgets=showWriteWidgets
                 )
-            self.audioMonitor.grid(row=1, column=0, sticky=tk.NSEW)
+            self.audioMonitor.grid(row=1, column=0)
 
             self.audioMonitor.setEnableWriteChangeHandler(self.audioWriteEnableChangeHandler)
-
         if audioDAQChannels is None or len(audioDAQChannels) == 0:
             # Don't display docker buttons
             self.audioMonitorDocker.unDockButton.grid_forget()
@@ -1376,7 +1535,6 @@ him know. Otherwise, I had nothing to do with it.
             # Re-dock audio monitor, which includes making sure docker buttons
             #   are displayed properly.
             self.audioMonitorDocker.reDock()
-
         self.audioMonitor.updateChannels(audioDAQChannels)
         self.audioMonitor.setDirectoryChangeHandler(self.audioDirectoryChangeHandler)
         self.audioMonitor.setBaseFileNameChangeHandler(self.audioBaseFileNameChangeHandler)
@@ -1780,7 +1938,7 @@ him know. Otherwise, I had nothing to do with it.
         gs = gridspec.GridSpec(1, 2, width_ratios=[6, 1])
 
         # Create plot for volume vs time trace
-        chunkSize = self.getParams('dataChunkSizeSamples');
+        chunkSize = self.getParams('chunkSize')
         t = np.arange(int(self.analysisSummaryHistoryChunkLength))
         self.audioAnalysisWidgets['volumeTraceAxes'] = vtaxes = fig.add_subplot(gs[0])  # Axes to display
         vtaxes.autoscale(enable=True)
@@ -2026,7 +2184,7 @@ him know. Otherwise, I had nothing to do with it.
                 self.digitalMonitor.addDigitalData(newDigitalData.transpose())
 
         if beginAuto:
-            # Schedule another automatic call to autoUpdateDigitalMonitors
+            # Schedule another automatic call to autoUpdateAudioMonitors
             self.digitalMonitorUpdateJob = self.master.after(100, self.autoUpdateDigitalMonitors)
 
         self.endLog(inspect.currentframe().f_code.co_name)
@@ -2157,7 +2315,7 @@ him know. Otherwise, I had nothing to do with it.
                 self.log("  audioAcquireProcess.audioQueue size:", queueSizes['audioAnalysisQueueSize'])
                 self.log("  audioAnalysisQueue size:", queueSizes['audioMonitorQueueSize'])
                 self.log("  audioMonitorQueue size:", queueSizes['audioQueueSize'])
-            if self.audioAcquireProcess is not None:
+            if self.digitalAcquireProcess is not None:
                 self.log("  digitalMonitorQueue size:", queueSizes['digitalQueueSize'])
             if self.audioTriggerProcess is not None:
                 self.log("  audioAnalysisMonitorQueue size:", queueSizes['audioAnalysisMonitorQueueSize'])
@@ -2290,9 +2448,9 @@ him know. Otherwise, I had nothing to do with it.
                     },
                     audioWriteState=         [[state]],
                     audioAcquireState=       [[state]],
-                    audioTriggerState=       [[state]],
                     digitalWriteState=       [[state]],
                     digitalAcquireState=     [[state]],
+                    audioTriggerState=       [[state]],
                     continuousTriggerState=  [[state]],
                     syncState=               [[state]],
                     mergeState=              [[state]],
@@ -2486,8 +2644,8 @@ him know. Otherwise, I had nothing to do with it.
             if self.videoWriteProcesses[camSerial] is not None:
                 lines.extend([
                     '   {camSerial} ({PID}):\t{state}'.format(camSerial=camSerial, PID=PIDs['videoWritePIDs'][camSerial], state=stateNames['videoWriteStates'][camSerial]),
-                    '       Image Queue: {qsize}'.format(qsize=queueSizes['videoMonitorQueueSizes'][camSerial]),
-                    '       Monitor Queue: {qsize}'.format(qsize=queueSizes['imageQueueSizes'][camSerial]),
+                    '       Image Queue: {qsize}'.format(qsize=queueSizes['imageQueueSizes'][camSerial]),
+                    '       Monitor Queue: {qsize}'.format(qsize=queueSizes['videoMonitorQueueSizes'][camSerial]),
                     '       Info: {info}'.format(info=info['videoWriteInfo'][camSerial])
                 ])
         lines.extend([
@@ -2542,9 +2700,9 @@ him know. Otherwise, I had nothing to do with it.
             processes.append(self.audioWriteProcess)
         if audio and acquirers:
             processes.append(self.audioAcquireProcess)
-        if audio and writers:
+        if digital and writers:
             processes.append(self.digitalWriteProcess)
-        if audio and acquirers:
+        if digital and acquirers:
             processes.append(self.digitalAcquireProcess)
         if auxiliary:
             processes.extend([
@@ -2619,16 +2777,27 @@ him know. Otherwise, I had nothing to do with it.
         stateList.append(states['continuousTriggerState']); isAcquirer.append(False); isWriter.append(False); isAux.append(True)
 
         # Define human readable state names
-        allStates = {States.UNKNOWN:'UNKNOWN', States.STOPPED:'STOPPED',
-            States.INITIALIZING:'INITIALIZING', States.READY:'READY',
-            States.STOPPING:'STOPPING', States.ERROR:'ERROR',
-            States.EXITING:'EXITING', States.DEAD:'DEAD',
-            States.IGNORING:'IGNORING', States.MERGING:'MERGING',
-            States.SYNCHRONIZING:'SYNCHRONIZING', States.WAITING:'WAITING',
-            States.ANALYZING:'ANALYZING', States.FILEINIT:'FILEINIT',
-            States.WRITING:'WRITING', States.BUFFERING:'BUFFERING',
-            States.ACQUIRING:'ACQUIRING', States.FILEINIT:'FILEINIT',
-            States.TRIGGERING:'TRIGGERING', None:'None'}
+        allStates = {
+            States.UNKNOWN:'UNKNOWN',
+            States.STOPPED:'STOPPED',
+            States.INITIALIZING:'INITIALIZING',
+            States.READY:'READY',
+            States.STOPPING:'STOPPING',
+            States.ERROR:'ERROR',
+            States.EXITING:'EXITING',
+            States.DEAD:'DEAD',
+            States.IGNORING:'IGNORING',
+            States.MERGING:'MERGING',
+            States.SYNCHRONIZING:'SYNCHRONIZING',
+            States.WAITING:'WAITING',
+            States.ANALYZING:'ANALYZING',
+            States.WRITING:'WRITING',
+            States.BUFFERING:'BUFFERING',
+            States.ACQUIRING:'ACQUIRING',
+            States.FILEINIT:'FILEINIT',
+            States.TRIGGERING:'TRIGGERING',
+            None:'None'
+        }
 
         # Tally up the various types of states processes are in
         for state, acquirer, aux, writer in zip(stateList, isAcquirer, isAux, isWriter):
@@ -2792,6 +2961,7 @@ him know. Otherwise, I had nothing to do with it.
             self.setupInputMonitoringWidgets(showWriteWidgets=not self.previewMode)
             self.createChildProcesses()
         self.initializeChildProcesses()
+        self.startMonitors()
         # Schedule button update after 100 ms to give child processes a chance to react
         # self.master.after(100, self.updateAcquisitionButton)
     def haltAcquisition(self):
@@ -2913,6 +3083,7 @@ him know. Otherwise, I had nothing to do with it.
                 defaultextension = 'pvs',
                 initialdir = '.'
             )
+
         if path is not None and len(path) > 0:
             with open(path, 'w') as f:
                 f.write(json.dumps(params))
@@ -2941,6 +3112,22 @@ him know. Otherwise, I had nothing to do with it.
                 params = json.loads(f.read())
             self.log('Loading settings from:')
             self.log('    ', path)
+            if type(params['camSerials']) == dict:
+                # Legacy param file format
+                camSerials = []
+                camTypes = []
+                for camType in cu.CAM_TYPES:
+                    if camType in params['camSerials']:
+                        camSerials.extend(params['camSerials'][camType])
+                        camTypes.extend([camType for _ in params['camSerials']])
+                params['camSerials'] = camSerials
+                params['camTypes'] = camTypes
+            if 'camTypes' not in params:
+                # Legacy file format, generate dummy cam types
+                params['camTypes'] = [cu.FLIR_CAM for _ in params['camSerials']]
+            if 'camHardwareSync' not in params:
+                # Legacy file format, generate dummy cam hardware sync status
+                params['camHardwareSync'] = [False for _ in params['camSerials']]
 
             # Convert serializable time string back to datetime object
             if 'scheduleStartTime' in params:
@@ -2952,16 +3139,18 @@ him know. Otherwise, I had nothing to do with it.
             if 'audioSyncTerminal' in params:
                 # Name changed when digital channels were introduced
                 params['dataSyncTerminal'] = params['audioSyncTerminal']
+                del params['audioSyncTerminal']
             if 'audioSyncSource' in params:
                 # Name changed when digital channels were introduced
                 params['dataSyncSource'] = params['audioSyncSource']
+                del params['audioSyncSource']
             if 'chunkSize' in params:
                 self.log('Warning, \'chunkSize\' is a legacy setting and will be ignored. Please use \'dataChunkSizeSeconds\' instead')
 
-            self.log("Loaded settings:")
-            self.log(params)
             self.setParams(**params)
             self.updateAcquisitionHardwareDisplay()
+            self.log("Loaded settings:")
+            self.log(params)
         self.endLog(inspect.currentframe().f_code.co_name)
 
     def setAudioWriteEnable(self, newAudioWriteEnable, *args, updateGUI=True):
@@ -2983,7 +3172,7 @@ him know. Otherwise, I had nothing to do with it.
         self.audioWriteEnable.set(newAudioWriteEnable)
         if updateGUI:
             # Update text field
-            self.audioMonitors.setWriteEnable(newAudioWriteEnable)
+            self.audioMonitor.setWriteEnable(newAudioWriteEnable)
         # Notify AudioWriter child process of new write enable state
         sendMessage(self.audioWriteProcess, (Messages.SETPARAMS, dict(enableWrite=newAudioWriteEnable)))
 
@@ -3006,7 +3195,7 @@ him know. Otherwise, I had nothing to do with it.
         self.digitalWriteEnable.set(newDigitalWriteEnable)
         if updateGUI:
             # Update text field
-            self.digitalMonitors.setWriteEnable(newDigitalWriteEnable)
+            self.digitalMonitor.setWriteEnable(newDigitalWriteEnable)
         # Notify AudioWriter child process of new write enable state
         sendMessage(self.digitalWriteProcess, (Messages.SETPARAMS, dict(enableWrite=newDigitalWriteEnable)))
 
@@ -3157,17 +3346,17 @@ him know. Otherwise, I had nothing to do with it.
         self.digitalBaseFileName.set(newDigitalBaseFileName)
         if updateGUI and self.digitalMonitor is not None:
             # Update text field
-            self.digitalMonitor.fileWidget.setBaseFileName(newAudioBaseFileName)
+            self.digitalMonitor.fileWidget.setBaseFileName(newDigitalBaseFileName)
         # Notify DigitalWriter child process of new write base filename
         sendMessage(self.digitalWriteProcess, (Messages.SETPARAMS, dict(digitalBaseFileName=newDigitalBaseFileName)))
     def setDigitalDirectory(self, newDigitalDirectory, *args, updateGUI=True):
-        """Send message to digital writer process to change audio directory
+        """Send message to digital writer process to change digital directory
 
         Args:
             newDigitalDirectory (str): A string indicating a new directory to use
                 to save digital files
             *args (any): Dummy variable to hold unused event data
-            updateGUI (bool): Should this method update the audio directory GUI
+            updateGUI (bool): Should this method update the digital directory GUI
                 textbox? Set to False when called by the textbox itself to
                 prevent an infinite event loop where the textbox triggers this
                 method, and the method triggers the textbox.
@@ -3321,15 +3510,6 @@ him know. Otherwise, I had nothing to do with it.
     def setNumSyncedProcesses(self, *args):
         """Placeholder param setter indicating this property is not settable"""
         raise AttributeError('This attribute is a derived property, and is not directly settable')
-    def setDataChunkSizeSamples(self, *args):
-        """Placeholder param setter indicating this property is not settable"""
-        raise AttributeError('This attribute is a derived property, and is not directly settable')
-
-    def getDataChunkSizeSamples(self):
-        dataChunkSizeSeconds = self.getParams('dataChunkSizeSeconds');
-        dataFrequency = self.getParams('dataFrequency');
-        chunkSizeSamples = round(dataChunkSizeSeconds * dataFrequency)
-        return chunkSizeSamples
 
     def getBufferSizeSeconds(self):
         """Set bufferSizeSeconds parameter.
@@ -3346,6 +3526,10 @@ him know. Otherwise, I had nothing to do with it.
         """
         preTriggerTime = self.getParams('preTriggerTime')
         return preTriggerTime * 2 + 1    # Twice the pretrigger time to make sure we don't miss stuff, plus one second for good measure
+    def getBufferSizeAudioChunks(self):
+        """Calculate the number of chunks in the audio buffer - not in use"""
+        p = self.getParams('bufferSizeSeconds', 'dataFrequency', 'chunkSize')
+        return p['bufferSizeSeconds'] * p['dataFrequency'] / p['chunkSize']   # Will be rounded up to nearest integer
     def getNumStreams(self):
         """Get # of audio/video streams in the current configuration."""
         audioDAQChannels = self.getParams('audioDAQChannels')
@@ -3360,16 +3544,19 @@ him know. Otherwise, I had nothing to do with it.
         """Get # of processes subject to synchronization in current config"""
         audioDAQChannels = self.getParams('audioDAQChannels')
         digitalDAQChannels = self.getParams('digitalDAQChannels')
-        camSerials = self.getParams('camSerials')
-        synchronizer = 1
-        return (len(audioDAQChannels)>0) + (len(digitalDAQChannels)>0) + len(camSerials) + synchronizer  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
+        camHardwareSync = self.getParams('camHardwareSync')
+        dataSyncTerminal = self.getParams('dataSyncTerminal')
+        videoSyncTerminal = self.getParams('videoSyncTerminal')
+        # Check if we'll be using a synchronizer process or not
+        synchronizer = dataSyncTerminal is not None or videoSyncTerminal is not None
+        return (len(audioDAQChannels)>0) + (len(digitalDAQChannels)>0) + sum(camHardwareSync) + synchronizer  # 0 or 1 audio acquire processes, N video acquire processes, and 1 sync process
     def getCameraSettings(self):
         """Get the current set of camera settings.
 
         These are settings for FLIR USB3 Vision cameras, such as the Flea3
         and Blackfly S series of cameras.
 
-        See also: PySpinUtilities.setCameraAttributes
+        See also: CameraUtilities.setCameraAttributes
 
         Returns:
             list of tuples: A list of camera settings, formatted as a list of
@@ -3408,7 +3595,7 @@ him know. Otherwise, I had nothing to do with it.
             #   serials as keys
             try:
                 newConfiguration = {}
-                camSerials = psu.discoverCameras()
+                camSerials, _ = cu.discoverCameras(camType=cu.FLIR_CAM)
                 for camSerial in camSerials:
                     newConfiguration[camSerial] = odict()
                     for attributeName, attributeValue, attributeType in configuration:
@@ -3496,8 +3683,11 @@ him know. Otherwise, I had nothing to do with it.
         self.log("Creating child processes")
         p = self.getParams()
 
-        self.log('Number of synced processes = {k}'.format(k=p["numSyncedProcesses"]))
-        ready = mp.Barrier(p["numSyncedProcesses"], timeout=0.5)
+        self.log('Number of synced processes = {k}'.format(k=p['numSyncedProcesses']))
+        if p['numSyncedProcesses'] > 0:
+            ready = mp.Barrier(p['numSyncedProcesses'], timeout=0.5)
+        else:
+            ready = None
 
         if self.StdoutManager is None:
             self.StdoutManager = StdoutManager()
@@ -3510,24 +3700,26 @@ him know. Otherwise, I had nothing to do with it.
         self.actualVideoFrequency = mp.Value('d', -1)
         self.actualDataFrequency = mp.Value('d', -1)
 
-        synchronizerRequired = p["dataSyncTerminal"] is not None or p["videoSyncTerminal"] is not None
+        synchronizerRequired = p['dataSyncTerminal'] is not None or p['videoSyncTerminal'] is not None
+
+        self.log('synchronizerRequired:', synchronizerRequired)
 
         startTime = mp.Value('d', -1)
         if not synchronizerRequired:
             startTime.value = time.time_ns()
 
-        if p["mergeFiles"] and p["numStreams"] >= 2:
+        if p['mergeFiles'] and p['numStreams'] >= 2:
             # Create merge process
             self.mergeProcess = AVMerger(
-                directory=p["mergeDirectory"],
-                numFilesPerTrigger=p["numStreams"],
+                directory=p['mergeDirectory'],
+                numFilesPerTrigger=p['numStreams'],
                 verbose=self.mergeVerbose,
                 stdoutQueue=self.StdoutManager.queue,
-                baseFileName=p["mergeBaseFileName"],
-                montage=p["montageMerge"],
-                deleteMergedAudioFiles=p["deleteMergedAudioFiles"],
-                deleteMergedVideoFiles=p["deleteMergedVideoFiles"],
-                compression=p["mergeCompression"]
+                baseFileName=p['mergeBaseFileName'],
+                montage=p['montageMerge'],
+                deleteMergedAudioFiles=p['deleteMergedAudioFiles'],
+                deleteMergedVideoFiles=p['deleteMergedVideoFiles'],
+                compression=p['mergeCompression']
                 )
             mergeMsgQueue = self.mergeProcess.msgQueue
         else:
@@ -3539,40 +3731,38 @@ him know. Otherwise, I had nothing to do with it.
                 actualVideoFrequency=self.actualVideoFrequency,
                 actualDataFrequency=self.actualDataFrequency,
                 startTime=startTime,
-                startTriggerTerminal=p['acquisitionSignalChannel'],
-#                startOnHWSignal=p['startOnHWSignal'],
-#                writeEnableOnHWSignal=p['writeEnableOnHWSignal'],
-                dataSyncChannel=p["dataSyncTerminal"],
-                videoSyncChannel=p["videoSyncTerminal"],
-                videoDutyCycle=convertExposureTimeToDutyCycle(p["videoExposureTime"]/1000, p["videoFrequency"]),
-                requestedDataFrequency=p["dataFrequency"],
-                requestedVideoFrequency=p["videoFrequency"],
+                signalChannel=p['acquisitionSignalChannel'],
+                startOnHWSignal=p['startOnHWSignal'],
+                writeEnableOnHWSignal=p['writeEnableOnHWSignal'],
+                dataSyncChannel=p['dataSyncTerminal'],
+                videoSyncChannel=p['videoSyncTerminal'],
+                videoDutyCycle=convertExposureTimeToDutyCycle(p['videoExposureTime']/1000, p['videoFrequency']),
+                requestedDataFrequency=p['dataFrequency'],
+                requestedVideoFrequency=p['videoFrequency'],
                 verbose=self.syncVerbose,
                 ready=ready,
                 stdoutQueue=self.StdoutManager.queue)
         else:
-            # We're not creating a synchronizer object, so we'll just manually set the actualVideo/AudioFrequency variable
-            self.actualDataFrequency.value = p["dataFrequency"]
-            self.actualVideoFrequency.value = p["videoFrequency"]
+            # We're not creating a synchronizer object, so we'll just manually set the actualDataFrequency variable
+            self.actualDataFrequency.value = p['dataFrequency']
 
         copyToMonitoringQueue = True
-        copyToAnalysisQueue = p["triggerMode"] != "SimpleContinuous"
+        copyToAnalysisQueue = p['triggerMode'] != "SimpleContinuous"
 
-        if len(p["audioDAQChannels"]) > 0:
+        if len(p['audioDAQChannels']) > 0:
             if createWriters:
                 audioQueue = mp.Queue()
             else:
                 audioQueue = None
-
             self.audioAcquireProcess = AudioAcquirer(
                 startTime=startTime,
                 audioQueue=audioQueue,
-                chunkSize=p['dataChunkSizeSamples'],
+                chunkSize=p['chunkSize'],
                 audioFrequency=self.actualDataFrequency,
                 bufferSize=None,
-                channelNames=p["audioDAQChannels"],
-                channelConfig=p["audioChannelConfiguration"],
-                syncChannel=p["dataSyncSource"],
+                channelNames=p['audioDAQChannels'],
+                channelConfig=p['audioChannelConfiguration'],
+                syncChannel=p['dataSyncSource'],
                 verbose=self.audioAcquireVerbose,
                 sendToWriter=createWriters,
                 sendToMonitor=True,
@@ -3584,18 +3774,18 @@ him know. Otherwise, I had nothing to do with it.
             if not createWriters:
                 self.audioWriteProcess = None
             else:
-                if p["triggerMode"] == "SimpleContinuous":
+                if p['triggerMode'] == "SimpleContinuous":
                     if mergeMsgQueue is not None:
                         self.log('Warning: SimpleAudioWriter does not support A/V merging yet.')
                     self.audioWriteProcess = SimpleAudioWriter(
-                        audioDirectory=p["audioDirectory"],
-                        audioBaseFileName=p["audioBaseFileName"],
-                        channelNames=p["audioDAQChannels"],
+                        audioDirectory=p['audioDirectory'],
+                        audioBaseFileName=p['audioBaseFileName'],
+                        channelNames=p['audioDAQChannels'],
                         audioQueue=audioQueue,
                         audioFrequency=self.actualDataFrequency,
                         frameRate=self.actualVideoFrequency,
-                        numChannels=len(p["audioDAQChannels"]),
-                        videoLength=p["recordTime"],
+                        numChannels=len(p['audioDAQChannels']),
+                        videoLength=p['recordTime'],
                         mergeMessageQueue=mergeMsgQueue,
                         daySubfolders=p['daySubfolders'],
                         verbose=self.audioWriteVerbose,
@@ -3603,22 +3793,23 @@ him know. Otherwise, I had nothing to do with it.
                         scheduleStartTime=p['scheduleStartTime'],
                         scheduleStopTime=p['scheduleStopTime'],
                         stdoutQueue=self.StdoutManager.queue)
-                elif p["triggerMode"] != 'None':
+                elif p['triggerMode'] != 'None':
                     self.audioWriteProcess = AudioWriter(
-                        audioDirectory=p["audioDirectory"],
-                        audioBaseFileName=p["audioBaseFileName"],
-                        channelNames=p["audioDAQChannels"],
+                        audioDirectory=p['audioDirectory'],
+                        audioBaseFileName=p['audioBaseFileName'],
+                        channelNames=p['audioDAQChannels'],
                         audioQueue=audioQueue,
                         mergeMessageQueue=mergeMsgQueue,
-                        chunkSize=p['dataChunkSizeSamples'],
-                        bufferSizeSeconds=p["bufferSizeSeconds"],
+                        chunkSize=p['chunkSize'],
+                        bufferSizeSeconds=p['bufferSizeSeconds'],
                         audioFrequency=self.actualDataFrequency,
-                        numChannels=len(p["audioDAQChannels"]),
+                        numChannels=len(p['audioDAQChannels']),
                         daySubfolders=p['daySubfolders'],
                         verbose=self.audioWriteVerbose,
                         stdoutQueue=self.StdoutManager.queue)
 
-        if len(p["digitalDAQChannels"]) > 0:
+
+        if len(p['digitalDAQChannels']) > 0:
             if createWriters:
                 digitalQueue = mp.Queue()
             else:
@@ -3626,11 +3817,11 @@ him know. Otherwise, I had nothing to do with it.
             self.digitalAcquireProcess = DigitalAcquirer(
                 startTime=startTime,
                 dataQueue=digitalQueue,
-                chunkSize=p['dataChunkSizeSamples'],
+                chunkSize=p['chunkSize'],
                 sampleRate=self.actualDataFrequency,
                 bufferSize=None,
-                channelNames=p["digitalDAQChannels"],
-                syncChannel=p["dataSyncSource"],
+                channelNames=p['digitalDAQChannels'],
+                syncChannel=p['dataSyncSource'],
                 verbose=self.digitalAcquireVerbose,
                 sendToWriter=createWriters,
                 sendToMonitor=True,
@@ -3643,62 +3834,76 @@ him know. Otherwise, I had nothing to do with it.
             if not createWriters:
                 self.digitalWriteProcess = None
             else:
-                if p["triggerMode"] == "SimpleContinuous":
+                if p['triggerMode'] == "SimpleContinuous":
                     self.digitalWriteProcess = SimpleDigitalWriter(
-                        digitalDirectory=p["digitalDirectory"],
-                        digitalBaseFileName=p["digitalBaseFileName"],
-                        channelNames=p["digitalDAQChannels"],
+                        digitalDirectory=p['digitalDirectory'],
+                        digitalBaseFileName=p['digitalBaseFileName'],
+                        channelNames=p['digitalDAQChannels'],
                         dataQueue=digitalQueue,
                         sampleRate=self.actualDataFrequency,
                         frameRate=self.actualVideoFrequency,
-                        videoLength=p["recordTime"],
+                        videoLength=p['recordTime'],
                         daySubfolders=p['daySubfolders'],
                         verbose=self.digitalWriteVerbose,
                         scheduleEnabled=p['scheduleEnabled'],
                         scheduleStartTime=p['scheduleStartTime'],
                         scheduleStopTime=p['scheduleStopTime'],
                         stdoutQueue=self.StdoutManager.queue)
-                elif p["triggerMode"] != 'None':
+                elif p['triggerMode'] != 'None':
                     raise Error('Cannot acquire digital signals without simple continuous triggering.')
                     # self.audioWriteProcess = AudioWriter(
-                    #     audioDirectory=p["audioDirectory"],
-                    #     audioBaseFileName=p["audioBaseFileName"],
-                    #     channelNames=p["audioDAQChannels"],
+                    #     audioDirectory=p['audioDirectory'],
+                    #     audioBaseFileName=p['audioBaseFileName'],
+                    #     channelNames=p['audioDAQChannels'],
                     #     audioQueue=audioQueue,
                     #     mergeMessageQueue=mergeMsgQueue,
-                    #     chunkSize=p["chunkSize"],
-                    #     bufferSizeSeconds=p["bufferSizeSeconds"],
+                    #     chunkSize=p['chunkSize'],
+                    #     bufferSizeSeconds=p['bufferSizeSeconds'],
                     #     audioFrequency=self.actualDataFrequency,
-                    #     numChannels=len(p["audioDAQChannels"]),
+                    #     numChannels=len(p['audioDAQChannels']),
                     #     daySubfolders=p['daySubfolders'],
                     #     verbose=self.audioWriteVerbose,
                     #     stdoutQueue=self.StdoutManager.queue)
 
+
         gpuCount = 0
-        for camSerial in p["camSerials"]:
-            if camSerial in p["videoDirectories"]:
-                videoDirectory = p["videoDirectories"][camSerial]
+        for k, camSerial in enumerate(p['camSerials']):
+            if camSerial in p['videoDirectories']:
+                videoDirectory = p['videoDirectories'][camSerial]
             else:
                 videoDirectory = ''
-            if camSerial in p["videoBaseFileNames"]:
-                videoBaseFileName = p["videoBaseFileNames"][camSerial]
+            if camSerial in p['videoBaseFileNames']:
+                videoBaseFileName = p['videoBaseFileNames'][camSerial]
             else:
                 videoBaseFileName = ''
 
             processes = {}
 
+            camType = p['camTypes'][k]
+
+            if p['camHardwareSync'][k]:
+                # This camera is hardware synced
+                requestedVideoFrequency = p['videoFrequency']
+            else:
+                # This camera is software synced
+                requestedVideoFrequency = cu.getSoftwareFrameRate(camSerial=camSerial, camType=camType)
+                self.actualVideoFrequency.value = p['videoFrequency']
+            print('requestedVideoFrequency:', requestedVideoFrequency)
+
             videoAcquireProcess = VideoAcquirer(
                 startTime=startTime,
                 camSerial=camSerial,
-                acquireSettings=p["acquireSettings"][camSerial],
-                frameRate = self.actualVideoFrequency,
-                requestedFrameRate=p["videoFrequency"],
+                camType=camType,
+                HWTrigger=p['camHardwareSync'][k],
+                acquireSettings=p['acquireSettings'][camSerial],
+                frameRate=self.actualVideoFrequency,
+                requestedFrameRate=requestedVideoFrequency,
                 monitorFrameRate=self.monitorMasterFrameRate,
                 verbose=self.videoAcquireVerbose,
-                bufferSizeSeconds=p["acquisitionBufferSize"],
+                bufferSizeSeconds=p['acquisitionBufferSize'],
                 sendToWriter=createWriters,
                 sendToMonitor=True,
-                ready=ready,
+                ready=ready,  # Will be ignored if HWTrigger is false
                 stdoutQueue=self.StdoutManager.queue)
 
             if camSerial in p['videoWriteEnable']:
@@ -3709,7 +3914,7 @@ him know. Otherwise, I had nothing to do with it.
             if not createWriters:
                 videoWriteProcess = None
             else:
-                if p["triggerMode"] == "SimpleContinuous":
+                if p['triggerMode'] == "SimpleContinuous":
                     gpuOk = (gpuCount < p['maxGPUVEnc'])
 
                     if camSerial in p['gpuVideoCompressionArgs']:
@@ -3730,9 +3935,9 @@ him know. Otherwise, I had nothing to do with it.
                         videoBaseFileName=videoBaseFileName,
                         imageQueue=videoAcquireProcess.imageQueueReceiver,
                         frameRate=self.actualVideoFrequency,
-                        requestedFrameRate=p["videoFrequency"],
+                        requestedFrameRate=requestedVideoFrequency,
                         mergeMessageQueue=mergeMsgQueue,
-                        videoLength=p["recordTime"],
+                        videoLength=p['recordTime'],
                         daySubfolders=p['daySubfolders'],
                         verbose=self.videoWriteVerbose,
                         stdoutQueue=self.StdoutManager.queue,
@@ -3745,7 +3950,7 @@ him know. Otherwise, I had nothing to do with it.
                         cpuCompressionArgs=cpuCompressionArgs,
                         )
                     gpuCount += 1
-                elif p["triggerMode"] == 'None':
+                elif p['triggerMode'] == 'None':
                     videoWriteProcess = None
                 else:
                     videoWriteProcess = VideoWriter(
@@ -3754,9 +3959,9 @@ him know. Otherwise, I had nothing to do with it.
                         videoBaseFileName=videoBaseFileName,
                         imageQueue=videoAcquireProcess.imageQueueReceiver,
                         frameRate=self.actualVideoFrequency,
-                        requestedFrameRate=p["videoFrequency"],
+                        requestedFrameRate=p['videoFrequency'],
                         mergeMessageQueue=mergeMsgQueue,
-                        bufferSizeSeconds=p["bufferSizeSeconds"],
+                        bufferSizeSeconds=p['bufferSizeSeconds'],
                         daySubfolders=p['daySubfolders'],
                         verbose=self.videoWriteVerbose,
                         stdoutQueue=self.StdoutManager.queue
@@ -3764,7 +3969,7 @@ him know. Otherwise, I had nothing to do with it.
             self.videoAcquireProcesses[camSerial] = videoAcquireProcess
             self.videoWriteProcesses[camSerial] = videoWriteProcess
 
-        if p["triggerMode"] != "SimpleContinuous":
+        if p['triggerMode'] != "SimpleContinuous":
             # Create (but don't start) continuous trigger process for sending
             #   automatic, continuous, and consecutive triggers to audio and video
             #   writers
@@ -3786,21 +3991,21 @@ him know. Otherwise, I had nothing to do with it.
         #   audioTriggerProcess to generate audio-based triggers
         if self.audioAcquireProcess is not None and \
                 self.getParams('triggerMode') == "Audio" and \
-                len(p["audioDAQChannels"]) > 0:
+                len(p['audioDAQChannels']) > 0:
             self.audioTriggerProcess = AudioTriggerer(
                 audioQueue=self.audioAcquireProcess.analysisQueue,
                 audioFrequency=self.actualDataFrequency,
-                chunkSize=p['dataChunkSizeSamples'],
-                triggerHighLevel=p["triggerHighLevel"],
-                triggerLowLevel=p["triggerLowLevel"],
-                triggerHighTime=p["triggerHighTime"],
-                triggerLowTime=p["triggerLowTime"],
-                triggerHighFraction=p["triggerHighFraction"],
-                triggerLowFraction=p["triggerLowFraction"],
-                maxAudioTriggerTime=p["maxAudioTriggerTime"],
-                preTriggerTime=p["preTriggerTime"],
-                multiChannelStartBehavior=p["multiChannelStartBehavior"],
-                multiChannelStopBehavior=p["multiChannelStopBehavior"],
+                chunkSize=p['chunkSize'],
+                triggerHighLevel=p['triggerHighLevel'],
+                triggerLowLevel=p['triggerLowLevel'],
+                triggerHighTime=p['triggerHighTime'],
+                triggerLowTime=p['triggerLowTime'],
+                triggerHighFraction=p['triggerHighFraction'],
+                triggerLowFraction=p['triggerLowFraction'],
+                maxAudioTriggerTime=p['maxAudioTriggerTime'],
+                preTriggerTime=p['preTriggerTime'],
+                multiChannelStartBehavior=p['multiChannelStartBehavior'],
+                multiChannelStopBehavior=p['multiChannelStopBehavior'],
                 bandpassFrequencies=(p['triggerLowBandpass'], p['triggerHighBandpass']),
                 taggerQueues=taggerQueues,
                 verbose=self.audioTriggerVerbose,
@@ -3815,22 +4020,21 @@ him know. Otherwise, I had nothing to do with it.
             if self.getParams('triggerMode') == "Audio":
                 sendMessage(self.audioTriggerProcess, (Messages.STARTANALYZE, None))
 
-        if len(p["audioDAQChannels"]) > 0:
+        if len(p['audioDAQChannels']) > 0:
             if self.audioWriteProcess is not None:
                 self.audioWriteProcess.start()
             self.audioAcquireProcess.start()
 
-        if len(p["digitalDAQChannels"]) > 0:
+        if len(p['digitalDAQChannels']) > 0:
             if self.digitalWriteProcess is not None:
                 self.digitalWriteProcess.start()
             self.digitalAcquireProcess.start()
 
         # Start all video-related processes
-        for camSerial in p["camSerials"]:
+        for camSerial in p['camSerials']:
             if self.videoWriteProcesses[camSerial] is not None:
                 self.videoWriteProcesses[camSerial].start()
             self.videoAcquireProcesses[camSerial].start()
-            print('starting video acquire', camSerial)
 
         # Start other processes
         if self.syncProcess is not None: self.syncProcess.start()
@@ -3848,7 +4052,7 @@ him know. Otherwise, I had nothing to do with it.
         """
         p = self.getParams('audioDAQChannels', 'digitalDAQChannels', 'camSerials', 'triggerMode')
 
-        if len(p["audioDAQChannels"]) > 0:
+        if len(p['audioDAQChannels']) > 0:
             # Start audio trigger process
             sendMessage(self.audioTriggerProcess, (Messages.START, None))
             self.updateTriggerMode()
@@ -3859,7 +4063,7 @@ him know. Otherwise, I had nothing to do with it.
             # Start AudioAcquirer
             sendMessage(self.audioAcquireProcess, (Messages.START, None))
 
-        if len(p["digitalDAQChannels"]) > 0:
+        if len(p['digitalDAQChannels']) > 0:
             # Start DigitalWriter
             sendMessage(self.digitalWriteProcess, (Messages.START, None))
 
@@ -3871,17 +4075,17 @@ him know. Otherwise, I had nothing to do with it.
             sendMessage(self.continuousTriggerProcess, (Messages.START, None))
 
         # For each camera
-        for camSerial in p["camSerials"]:
+        for camSerial in p['camSerials']:
             # Start VideoWriter
             sendMessage(self.videoWriteProcesses[camSerial], (Messages.START, None))
             # Start VideoAcquirer
             sendMessage(self.videoAcquireProcesses[camSerial], (Messages.START, None))
 
-        if len(p["audioDAQChannels"]) + len(p["camSerials"]) >= 1:
+        if len(p['audioDAQChannels']) + len(p['camSerials']) >= 1:
             # Start sync process
             sendMessage(self.syncProcess, (Messages.START, None))
 
-        if len(p["audioDAQChannels"]) + len(p["camSerials"]) >= 2:
+        if len(p['audioDAQChannels']) + len(p['camSerials']) >= 2:
             # Start merge process
             self.updateAVMergerState()
 
@@ -3939,6 +4143,62 @@ him know. Otherwise, I had nothing to do with it.
         sendMessage(self.syncProcess, (Messages.EXIT, None))
         #self.StdoutManager.queue.put(Messages.EXIT)
 
+    def clearChildQueues(self):
+        """If any child processes have registered data queues that need clearing
+        before the process exits, clear them now.
+
+
+        Returns:
+            None
+
+        """
+        clearDataQueues(self.audioTriggerProcess)
+        clearDataQueues(self.continuousTriggerProcess)
+        for camSerial in self.videoAcquireProcesses:
+            clearDataQueues(self.videoAcquireProcesses[camSerial])
+        for camSerial in self.videoWriteProcesses:
+            clearDataQueues(self.videoWriteProcesses[camSerial])
+        clearDataQueues(self.audioAcquireProcess)
+        clearDataQueues(self.audioWriteProcess)
+        clearDataQueues(self.digitalAcquireProcess)
+        clearDataQueues(self.digitalWriteProcess)
+        clearDataQueues(self.mergeProcess)
+        clearDataQueues(self.syncProcess)
+
+
+    def ensureChildProcessesDie(self):
+        processes = [
+            self.audioTriggerProcess,
+            self.continuousTriggerProcess,
+            self.audioAcquireProcess,
+            self.audioWriteProcess,
+            self.mergeProcess,
+            self.syncProcess,
+            *self.videoAcquireProcesses.values(),
+            *self.videoWriteProcesses.values()
+        ]
+        processNames = [
+            'audioTriggerProcess',
+            'continuousTriggerProcess',
+            'audioAcquireProcess',
+            'audioWriteProcess',
+            'mergeProcess',
+            'syncProcess',
+            *['videoAcquire_{s}'.format(s=camSerial) for camSerial in self.videoAcquireProcesses],
+            *['videoWrite_{s}'.format(s=camSerial) for camSerial in self.videoWriteProcesses]
+        ]
+        timeout=5
+        for process, name in zip(processes, processNames):
+            if process is None or not process.is_alive():
+                continue
+            try:
+                print('Ensuring {n} process exits...'.format(n=name))
+                process.join(timeout)
+                print('Process {n} exited with code {c}'.format(n=name, c=process.exitcode))
+            except mp.TimeoutError:
+                print('{n} process failed to exit, attempting to kill...'.format(n=name))
+                process.kill()
+
     def destroyChildProcesses(self):
         """Exit then dereference all child processes.
 
@@ -3955,6 +4215,10 @@ him know. Otherwise, I had nothing to do with it.
 
         # Give children a chance to register exit message
         time.sleep(0.5)
+
+        self.clearChildQueues()
+
+        self.ensureChildProcessesDie()
 
         # try:
         #     s = io.StringIO()
@@ -4043,8 +4307,8 @@ him know. Otherwise, I had nothing to do with it.
             'camSerials',
             'audioDAQChannels',
             )
-        camSerials = p["camSerials"]
-        audioDAQChannels = p["audioDAQChannels"]
+        camSerials = p['camSerials']
+        audioDAQChannels = p['audioDAQChannels']
 
         if (self.audioMonitorDocker is not None and
             self.audioMonitorDocker.isDocked() and
@@ -4120,13 +4384,11 @@ him know. Otherwise, I had nothing to do with it.
         self.recordTimeEntry.grid()
         self.maxGPUVencFrame.grid(                  row=2, column=3, sticky=tk.NSEW)
         self.maxGPUVEncEntry.grid()
-        self.dataChunkSizeSecondsFrame.grid(        row=3, column=0, sticky=tk.EW)
-        self.dataChunkSizeSecondsEntry.grid()
-        self.acquisitionSignalParametersFrame.grid( row=4, column=0, columnspan=4, sticky=tk.NSEW)
+        self.acquisitionSignalParametersFrame.grid( row=3, column=0, columnspan=4, sticky=tk.NSEW)
         self.startOnHWSignalCheckbutton.grid(row=0, column=0)
         self.writeEnableOnHWSignalCheckbutton.grid(row=0, column=1)
-        self.selectAcquisitionHardwareButton.grid(  row=5, column=0, columnspan=4, sticky=tk.NSEW)
-        self.acquisitionHardwareText.grid(          row=6, column=0, columnspan=4)
+        self.selectAcquisitionHardwareButton.grid(  row=4, column=0, columnspan=4, sticky=tk.NSEW)
+        self.acquisitionHardwareText.grid(          row=5, column=0, columnspan=4)
 
         #### Children of self.acquisitionParametersFrame
         self.cameraConfigurationPanel.grid(row=1, column=0)
@@ -4209,7 +4471,7 @@ him know. Otherwise, I had nothing to do with it.
 
 if __name__ == "__main__":
     simulatedHardware = False
-    settingsFilePath = None
+    settingsFilePath = ''
     for arg in sys.argv[1:]:
         if arg == '-s' or arg == '--sim':
             # Use simulated harddware instead of physical cameras and DAQs
