@@ -1174,12 +1174,27 @@ him know. Otherwise, I had nothing to do with it.
         defaultDigitalDAQChannels = p['digitalDAQChannels']
         defaultAudioDAQChannels = p['audioDAQChannels']
         defaultCamSerials = p['camSerials']
+        defaultCamTypes = p['camTypes']
+        defaultCamHardwareSync = p['camHardwareSync']
         defaultDataSyncTerminal = p['dataSyncTerminal']
         defaultVideoSyncTerminal = p['videoSyncTerminal']
         defaultdataSyncSource = p['dataSyncSource']
         defaultVideoSyncSource = p['videoSyncSource']
         defaultAcquisitionSignalChannel = p['acquisitionSignalChannel']
         defaultAudioChannelConfiguration = p['audioChannelConfiguration']
+
+        def selectedCamSerials(camType, hwSync, availableCamSerials):
+            # Return the currently-selected camera serials matching the given
+            #   camera type and hardware-sync mode, limited to those still
+            #   available/connected, so the input-selection widgets are
+            #   pre-filled with the current configuration.
+            return [
+                camSerial
+                for camSerial, camType_, hwSync_ in zip(
+                    defaultCamSerials, defaultCamTypes, defaultCamHardwareSync)
+                if camType_ == camType and bool(hwSync_) == hwSync
+                    and camSerial in availableCamSerials
+            ]
 
         # Query the system to determine what DAQ channels and cameras are
         #   currently available
@@ -1216,16 +1231,16 @@ him know. Otherwise, I had nothing to do with it.
         if len(availableDigitalChannels) > 0:
             params.append(Param(name='Digital Channels', widgetType=Param.MULTICHOICE, options=availableDigitalChannels, default=defaultDigitalDAQChannels))
         if len(availableFLIRCamSerials) > 0:
-            params.append(Param(name='FLIR Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableFLIRCamSerials, default=None))
-            params.append(Param(name='FLIR Cameras (hw sync)', widgetType=Param.MULTICHOICE, options=availableFLIRCamSerials, default=None))
+            params.append(Param(name='FLIR Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableFLIRCamSerials, default=selectedCamSerials(cu.FLIR_CAM, False, availableFLIRCamSerials)))
+            params.append(Param(name='FLIR Cameras (hw sync)', widgetType=Param.MULTICHOICE, options=availableFLIRCamSerials, default=selectedCamSerials(cu.FLIR_CAM, True, availableFLIRCamSerials)))
         if len(availableAptinaCamSerials) > 0:
-            params.append(Param(name='Aptina Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableAptinaCamSerials, default=None))
-            params.append(Param(name='Aptina Cameras (hw sync)', widgetType=Param.MULTICHOICE, options=availableAptinaCamSerials, default=None))
+            params.append(Param(name='Aptina Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableAptinaCamSerials, default=selectedCamSerials(cu.APTINA_CAM, False, availableAptinaCamSerials)))
+            params.append(Param(name='Aptina Cameras (hw sync)', widgetType=Param.MULTICHOICE, options=availableAptinaCamSerials, default=selectedCamSerials(cu.APTINA_CAM, True, availableAptinaCamSerials)))
         if len(availableNanEyeCamSerials) > 0:
-            params.append(Param(name='NanEye Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableNanEyeCamSerials, default=None))
+            params.append(Param(name='NanEye Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableNanEyeCamSerials, default=selectedCamSerials(cu.NE_CAM, False, availableNanEyeCamSerials)))
         if len(availableOtherCamSerials) > 0:
-            params.append(Param(name='Other Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableOtherCamSerials, default=None))
-            params.append(Param(name='Other Cameras (hw sync)', widgetType=Param.MULTICHOICE, options=availableOtherCamSerials, default=None))
+            params.append(Param(name='Other Cameras (sw sync)', widgetType=Param.MULTICHOICE, options=availableOtherCamSerials, default=selectedCamSerials(cu.OTHER_CAM, False, availableOtherCamSerials)))
+            params.append(Param(name='Other Cameras (hw sync)', widgetType=Param.MULTICHOICE, options=availableOtherCamSerials, default=selectedCamSerials(cu.OTHER_CAM, True, availableOtherCamSerials)))
         if len(availableClockChannels) > 0:
             params.append(Param(name='Audio/Digital Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=defaultDataSyncTerminal))
             params.append(Param(name='Video Sync Channel', widgetType=Param.MONOCHOICE, options=availableClockChannels, default=defaultVideoSyncTerminal))
