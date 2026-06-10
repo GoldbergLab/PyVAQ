@@ -57,6 +57,7 @@ class ffplayer:
             '-window_title', self.windowTitle,             # give a window title
             '-hide_banner',
             # '-loglevel', 'verbose',
+            '-autoexit',                                   # exit (and close window) when stdin reaches EOF
             '-nostats'
             ]
 
@@ -92,14 +93,23 @@ class ffplayer:
         """
         if self.ffplay_proc:
             if self.ffplay_proc.stdin:
-                self.ffplay_proc.stdin.close()
+                try:
+                    self.ffplay_proc.stdin.close()
+                except (BrokenPipeError, OSError):
+                    pass
             try:
                 output, err = self.ffplay_proc.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
-                debug('ffplay: failed to close player gracefully:')
+                # ffplay didn't exit on its own (e.g. stdin EOF wasn't enough);
+                #   force it to close so its window doesn't linger as an orphan.
+                debug('ffplay: failed to close player gracefully, killing:')
                 debug(traceback.format_exc())
-                output = b''
-                err = b'Failed to communicate with ffplay process while closing.'
+                self.ffplay_proc.kill()
+                try:
+                    output, err = self.ffplay_proc.communicate(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    output = b''
+                    err = b'Failed to communicate with ffplay process while closing.'
         else:
             output = ''
             err = ''

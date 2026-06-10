@@ -117,13 +117,27 @@ class ffmpegWriter():
 
     def close(self):
         if self.ffmpegProc is not None:
-            self.ffmpegProc.stdin.close()
+            try:
+                # Close stdin to signal end-of-stream to ffmpeg.
+                self.ffmpegProc.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass
+            try:
+                # Wait for ffmpeg to finish encoding buffered frames and write
+                #   the output file trailer. Without this, killing the parent
+                #   process (e.g. on a daemon shutdown) can orphan ffmpeg and
+                #   leave the output file unfinalized/corrupt.
+                self.ffmpegProc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                if self.verbose >= 0:
+                    print('ffmpeg did not exit within timeout; killing it.')
+                self.ffmpegProc.kill()
+                self.ffmpegProc.wait()
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             self.ffmpegProc = None
             if self.verbose >= 2:
                 print('Closed pipe to ffmpeg')
-#            self.ffmpegProc.communicate()
 
 
 

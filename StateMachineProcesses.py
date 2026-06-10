@@ -956,6 +956,13 @@ class StateMachineProcess(mp.Process):
                 L.release()
 
     def checkMessages(self, block=False, timeout=None):
+        if block and self.exitFlag:
+            # If we are already trying to exit, never block indefinitely waiting
+            #   for a message - there may be no more messages coming, and we need
+            #   to fall through so the state machine can progress to EXITING.
+            #   (Only affects shutdown; exitFlag is False during acquisition.)
+            block = False
+            timeout = None
         try:
             msg, arg = self.msgQueue.get(block=block, timeout=timeout)
             if msg == Messages.SETPARAMS:

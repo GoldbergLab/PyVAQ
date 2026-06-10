@@ -867,7 +867,17 @@ class PyVAQ:
         """
         self.stopMonitors()
         self.log("Stopping acquisition")
+        # First quiesce acquisition (STOP), then fully exit, join, and clean up
+        #   all child processes. This lets writers finalize their output files
+        #   (and their ffmpeg subprocesses) instead of being abruptly killed as
+        #   daemons when the interpreter exits, which could leave truncated or
+        #   corrupt files and orphaned ffmpeg processes.
         self.haltChildProcesses()
+        self.destroyChildProcesses()
+        # Close camera viewer (ffplay) subprocesses explicitly - destroying the
+        #   Tk master does not invoke the CameraMonitor.destroy() that would
+        #   otherwise close them, so their windows would linger.
+        self.closeCameraViewers()
         self.log("Destroying master")
         self.master.destroy()
         self.master.quit()
@@ -1400,6 +1410,26 @@ him know. Otherwise, I had nothing to do with it.
         self.acquisitionHardwareText.delete('0.0', tk.END)
         self.acquisitionHardwareText['height'] = len(lines)
         self.acquisitionHardwareText.insert('0.0', '\n'.join(lines))
+
+    def closeCameraViewers(self):
+        """Close ffplay viewer subprocesses owned by camera monitors.
+
+        Tk's master.destroy() (on app close) tears down the widgets without
+        invoking the CameraMonitor's overridden destroy(), so the ffplay viewer
+        processes would otherwise be orphaned, leaving their windows open. This
+        explicitly closes them. Safe to call even if monitors were already
+        destroyed.
+
+        Returns:
+            None
+
+        """
+        for camSerial in list(self.cameraMonitors.keys()):
+            try:
+                self.cameraMonitors[camSerial].destroy()
+            except Exception:
+                pass
+        self.cameraMonitors = {}
 
     def destroyInputMonitoringWidgets(self):
         """Destroy camera and audo monitor widgets.
@@ -4141,7 +4171,9 @@ him know. Otherwise, I had nothing to do with it.
         sendMessage(self.digitalWriteProcess, (Messages.EXIT, None))
         sendMessage(self.mergeProcess, (Messages.EXIT, None))
         sendMessage(self.syncProcess, (Messages.EXIT, None))
-        #self.StdoutManager.queue.put(Messages.EXIT)
+        # NOTE: the StdoutManager is intentionally NOT exited here - it is shut
+        #   down last in destroyChildProcesses so worker processes can flush
+        #   their final log messages through it first.
 
     def clearChildQueues(self):
         """If any child processes have registered data queues that need clearing
@@ -4172,6 +4204,8 @@ him know. Otherwise, I had nothing to do with it.
             self.continuousTriggerProcess,
             self.audioAcquireProcess,
             self.audioWriteProcess,
+            self.digitalAcquireProcess,
+            self.digitalWriteProcess,
             self.mergeProcess,
             self.syncProcess,
             *self.videoAcquireProcesses.values(),
@@ -4182,22 +4216,34 @@ him know. Otherwise, I had nothing to do with it.
             'continuousTriggerProcess',
             'audioAcquireProcess',
             'audioWriteProcess',
+            'digitalAcquireProcess',
+            'digitalWriteProcess',
             'mergeProcess',
             'syncProcess',
             *['videoAcquire_{s}'.format(s=camSerial) for camSerial in self.videoAcquireProcesses],
             *['videoWrite_{s}'.format(s=camSerial) for camSerial in self.videoWriteProcesses]
         ]
-        timeout=5
+        # Timeout is generous enough to let writers finalize their output files
+        #   (including waiting on ffmpeg) before we resort to force-terminating.
+        timeout = 30
         for process, name in zip(processes, processNames):
             if process is None or not process.is_alive():
                 continue
-            try:
-                print('Ensuring {n} process exits...'.format(n=name))
+            # NOTE: Process.join(timeout) returns silently whether or not the
+            #   process actually exited - it does NOT raise on timeout. So we
+            #   must check is_alive() afterwards and escalate to
+            #   terminate()/kill() for any process that won't exit on its own.
+            print('Ensuring {n} process exits...'.format(n=name))
+            process.join(timeout)
+            if process.is_alive():
+                print('{n} process failed to exit, terminating...'.format(n=name))
+                process.terminate()
                 process.join(timeout)
-                print('Process {n} exited with code {c}'.format(n=name, c=process.exitcode))
-            except mp.TimeoutError:
-                print('{n} process failed to exit, attempting to kill...'.format(n=name))
+            if process.is_alive():
+                print('{n} process still alive, killing...'.format(n=name))
                 process.kill()
+                process.join(timeout)
+            print('Process {n} exited with code {c}'.format(n=name, c=process.exitcode))
 
     def destroyChildProcesses(self):
         """Exit then dereference all child processes.
@@ -4238,9 +4284,24 @@ him know. Otherwise, I had nothing to do with it.
         self.videoWriteProcesses = {}
         self.mergeProcess = None
         self.syncProcess = None
-        self.StdoutManager = None
 
+        # Flush the GUI's own accumulated log entry while the StdoutManager is
+        #   still alive to print it.
         self.endLog(inspect.currentframe().f_code.co_name)
+
+        # Shut down the StdoutManager last, after all worker processes have died
+        #   and flushed their final log messages, so nothing is lost. It is a
+        #   daemon, so it would otherwise leak (a fresh one is spawned on the
+        #   next createChildProcesses).
+        if self.StdoutManager is not None:
+            try:
+                self.StdoutManager.queue.put(Messages.EXIT)
+                self.StdoutManager.join(5)
+                if self.StdoutManager.is_alive():
+                    self.StdoutManager.terminate()
+            except Exception:
+                pass
+        self.StdoutManager = None
 
     def sendWriteTrigger(self, t=None):
         """Send a manual trigger to write processes to trigger recording.
