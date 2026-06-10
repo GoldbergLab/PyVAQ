@@ -64,6 +64,7 @@ import CameraUtilities as cu
 import ctypes
 from ffmpegWriter import DEFAULT_CPU_COMPRESSION_ARGS,  DEFAULT_GPU_COMPRESSION_ARGS
 from CameraConfig import CameraConfigPanel
+from CameraSettings import CameraSettingsPanel
 from collections import OrderedDict as odict
 
 VERSION='0.3.0'
@@ -509,8 +510,25 @@ class PyVAQ:
 
         self.chunkSizeVar =         tk.StringVar(); self.chunkSizeVar.set(1000)
 
-        self.cameraConfigurationFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Camera Configuration", **COLLAPSABLE_FRAME_STYLE); self.cameraConfigurationFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
-        self.cameraConfigurationPanel = CameraConfigPanel(self.cameraConfigurationFrame)
+        self.cameraConfigurationFrame = cf.CollapsableFrame(self.controlFrame, collapseText="Camera Settings", **COLLAPSABLE_FRAME_STYLE); self.cameraConfigurationFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
+        # Per-camera settings (file writing, compression) - decoupled from
+        #   acquisition so they can be edited any time after cameras are selected.
+        self.cameraSettingsPanel = CameraSettingsPanel(self.cameraConfigurationFrame, advancedCommand=self.showCameraConfigDialog)
+
+        # The legacy FLIR-only attribute browser now lives in a separate, lazily
+        #   shown window (reached via the "Advanced (FLIR)..." button), rather
+        #   than inline. It is created up front (withdrawn) because paramInfo
+        #   references it. WM close just hides it so its state persists.
+        self.cameraConfigDialog = tk.Toplevel(self.master)
+        self.cameraConfigDialog.title("Advanced FLIR camera configuration")
+        self.cameraConfigDialog.protocol("WM_DELETE_WINDOW", self.cameraConfigDialog.withdraw)
+        self.cameraConfigDialog.withdraw()
+        self.cameraConfigurationPanel = CameraConfigPanel(self.cameraConfigDialog)
+        self.cameraConfigurationPanel.grid(row=0, column=0, sticky=tk.NSEW)
+
+        self.cameraSettingsPanel.setDirectoryChangeHandler(self.videoDirectoryChangeHandler)
+        self.cameraSettingsPanel.setBaseFileNameChangeHandler(self.videoBaseFileNameChangeHandler)
+        self.cameraSettingsPanel.setEnableWriteChangeHandler(self.videoWriteEnableChangeHandler)
 
         self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", **COLLAPSABLE_FRAME_STYLE); self.mergeFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         # self.mergeFrame = ttk.LabelFrame(self.acquisitionFrame, text="AV File merging")
@@ -1368,6 +1386,9 @@ him know. Otherwise, I had nothing to do with it.
 
                 # Update display text
                 self.updateAcquisitionHardwareDisplay()
+                # Rebuild the per-camera settings panel for the newly-selected
+                #   cameras (available without initializing acquisition).
+                self.updateCameraSettingsPanel()
             else:
                 self.log('User input cancelled.')
         else:
@@ -1425,6 +1446,49 @@ him know. Otherwise, I had nothing to do with it.
         self.acquisitionHardwareText.delete('0.0', tk.END)
         self.acquisitionHardwareText['height'] = len(lines)
         self.acquisitionHardwareText.insert('0.0', '\n'.join(lines))
+
+    def showCameraConfigDialog(self, *args):
+        """Show the (legacy, FLIR-only) advanced camera attribute configuration.
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
+        # Refresh the list of available cameras, then reveal the window.
+        try:
+            self.cameraConfigurationPanel.updateCameraList()
+        except Exception:
+            self.log('Warning: failed to refresh advanced camera configuration list')
+            self.endLog(inspect.currentframe().f_code.co_name)
+        self.cameraConfigDialog.deiconify()
+        self.cameraConfigDialog.lift()
+
+    def updateCameraSettingsPanel(self):
+        """Rebuild the per-camera settings panel from the selected cameras.
+
+        Seeds each camera's widgets from the current per-camera settings, so it
+        reflects (and can edit) the configuration without acquisition running.
+
+        Returns:
+            None
+
+        """
+        p = self.getParams(
+            'camSerials',
+            'videoDirectories',
+            'videoBaseFileNames',
+            'videoWriteEnable'
+            )
+        self.cameraSettingsPanel.updateCameras(
+            p['camSerials'],
+            directories=p['videoDirectories'],
+            baseFileNames=p['videoBaseFileNames'],
+            writeEnables=p['videoWriteEnable']
+            )
+        self.update()
 
     def closeCameraViewers(self):
         """Close ffplay viewer subprocesses owned by camera monitors.
@@ -1520,6 +1584,9 @@ him know. Otherwise, I had nothing to do with it.
             else:
                 videoBaseFileName = ''
 
+            # The camera monitor is now display-only; per-camera file-writing
+            #   settings live in the always-available Camera Settings panel
+            #   (self.cameraSettingsPanel), so file widgets are not shown here.
             self.cameraMonitors[camSerial] = CameraMonitor(
                 self.videoMonitorMasterFrame,
                 displaySize=p['videoMonitorDisplaySize'],
@@ -1527,11 +1594,8 @@ him know. Otherwise, I had nothing to do with it.
                 speedText=self.cameraSpeeds[camSerial],
                 initialDirectory=videoDirectory,
                 initialBaseFileName=videoBaseFileName,
-                showFileWidgets=showWriteWidgets
+                showFileWidgets=False
             )
-            self.cameraMonitors[camSerial].setDirectoryChangeHandler(self.videoDirectoryChangeHandler)
-            self.cameraMonitors[camSerial].setBaseFileNameChangeHandler(self.videoBaseFileNameChangeHandler)
-            self.cameraMonitors[camSerial].setEnableWriteChangeHandler(self.videoWriteEnableChangeHandler)
 
         if len(camSerials) == 0:
             # Don't display docker buttons
@@ -1812,9 +1876,7 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
-        videoWriteEnables = {}
-        for camSerial in self.cameraMonitors:
-            videoWriteEnables[camSerial] = self.cameraMonitors[camSerial].getEnableWrite()
+        videoWriteEnables = self.cameraSettingsPanel.getWriteEnables()
         self.setVideoWriteEnable(videoWriteEnables, updateGUI=False)
     def videoBaseFileNameChangeHandler(self, *args):
         """Handle changes in videoBaseFileName
@@ -1826,9 +1888,7 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
-        videoBaseFileNames = {}
-        for camSerial in self.cameraMonitors:
-            videoBaseFileNames[camSerial] = self.cameraMonitors[camSerial].getBaseFileName()
+        videoBaseFileNames = self.cameraSettingsPanel.getBaseFileNames()
         self.setVideoBaseFileNames(videoBaseFileNames, updateGUI=False)
     def videoDirectoryChangeHandler(self, *args):
         """Handle changes in videoDirectory
@@ -1840,9 +1900,7 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
-        videoDirectories = {}
-        for camSerial in self.cameraMonitors:
-            videoDirectories[camSerial] = self.cameraMonitors[camSerial].getDirectory()
+        videoDirectories = self.cameraSettingsPanel.getDirectories()
         self.setVideoDirectories(videoDirectories, updateGUI=False)
     def audioBaseFileNameChangeHandler(self, *args):
         """Handle changes in audioBaseFileName
@@ -3194,6 +3252,9 @@ him know. Otherwise, I had nothing to do with it.
 
             self.setParams(**params)
             self.updateAcquisitionHardwareDisplay()
+            # Rebuild the per-camera settings panel to reflect the loaded
+            #   cameras and seed each camera's widgets with the loaded values.
+            self.updateCameraSettingsPanel()
             self.log("Loaded settings:")
             self.log(params)
         self.endLog(inspect.currentframe().f_code.co_name)
@@ -3263,17 +3324,15 @@ him know. Otherwise, I had nothing to do with it.
         """
         # Update stored parameter
         self.videoWriteEnable.set(newVideoWriteEnables)
-        # Loop over available cameras
-        for camSerial in self.cameraMonitors:
-            # Check if we're changing enable state for this particular camera
-            if camSerial in newVideoWriteEnables:
-                newVideoWriteEnable = newVideoWriteEnables[camSerial]
-                if updateGUI:
-                    # Update text field
-                    self.cameraMonitors[camSerial].setWriteEnable(newVideoWriteEnable)
-                if camSerial in self.videoWriteProcesses:
-                    # Notify VideoWriter child process of new write enable state
-                    sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(enableWrite=newVideoWriteEnable)))
+        # Loop over cameras being changed
+        for camSerial in newVideoWriteEnables:
+            newVideoWriteEnable = newVideoWriteEnables[camSerial]
+            if updateGUI and camSerial in self.cameraSettingsPanel.cameraEntries:
+                # Update checkbox
+                self.cameraSettingsPanel.cameraEntries[camSerial].setWriteEnable(newVideoWriteEnable)
+            if camSerial in self.videoWriteProcesses:
+                # Notify VideoWriter child process of new write enable state
+                sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(enableWrite=newVideoWriteEnable)))
 
     def setVideoBaseFileNames(self, newVideoBaseFileNames, *args, updateGUI=True):
         """Send messages to video writer processes to change base filenames
@@ -3292,15 +3351,14 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         self.videoBaseFileNames.set(newVideoBaseFileNames)
-        for camSerial in self.cameraMonitors:
-            if camSerial in newVideoBaseFileNames:
-                newVideoBaseFileName = newVideoBaseFileNames[camSerial]
-                if updateGUI:
-                    # Update text field
-                    self.cameraMonitors[camSerial].fileWidget.setBaseFileName(newVideoBaseFileName)
-                if camSerial in self.videoWriteProcesses:
-                    # Notify VideoWriter child process of new write base filename
-                    sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(videoBaseFileName=newVideoBaseFileName)))
+        for camSerial in newVideoBaseFileNames:
+            newVideoBaseFileName = newVideoBaseFileNames[camSerial]
+            if updateGUI and camSerial in self.cameraSettingsPanel.cameraEntries:
+                # Update text field
+                self.cameraSettingsPanel.cameraEntries[camSerial].setBaseFileName(newVideoBaseFileName)
+            if camSerial in self.videoWriteProcesses:
+                # Notify VideoWriter child process of new write base filename
+                sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(videoBaseFileName=newVideoBaseFileName)))
     def setVideoDirectories(self, newVideoDirectories, *args, updateGUI=True):
         """Send messages to video writer processes to change video directories
 
@@ -3318,15 +3376,14 @@ him know. Otherwise, I had nothing to do with it.
 
         """
         self.videoDirectories.set(newVideoDirectories)
-        for camSerial in self.cameraMonitors:
-            if camSerial in newVideoDirectories:
-                newVideoDirectory = newVideoDirectories[camSerial]
-                if updateGUI:
-                    # Update text field
-                    self.cameraMonitors[camSerial].fileWidget.setDirectory(newVideoDirectory)
-                if camSerial in self.videoWriteProcesses and (len(newVideoDirectory) == 0 or os.path.isdir(newVideoDirectory)):
-                    # Notify VideoWriter child process of new write directory
-                    sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(videoDirectory=newVideoDirectory)))
+        for camSerial in newVideoDirectories:
+            newVideoDirectory = newVideoDirectories[camSerial]
+            if updateGUI and camSerial in self.cameraSettingsPanel.cameraEntries:
+                # Update text field
+                self.cameraSettingsPanel.cameraEntries[camSerial].setDirectory(newVideoDirectory)
+            if camSerial in self.videoWriteProcesses and (len(newVideoDirectory) == 0 or os.path.isdir(newVideoDirectory)):
+                # Notify VideoWriter child process of new write directory
+                sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, dict(videoDirectory=newVideoDirectory)))
     def setAudioBaseFileName(self, newAudioBaseFileName, *args, updateGUI=True):
         """Send message to audio writer process to change base filenames
 
@@ -4466,8 +4523,8 @@ him know. Otherwise, I had nothing to do with it.
         self.selectAcquisitionHardwareButton.grid(  row=4, column=0, columnspan=4, sticky=tk.NSEW)
         self.acquisitionHardwareText.grid(          row=5, column=0, columnspan=4)
 
-        #### Children of self.acquisitionParametersFrame
-        self.cameraConfigurationPanel.grid(row=1, column=0)
+        #### Children of self.cameraConfigurationFrame ("Camera Settings")
+        self.cameraSettingsPanel.grid(row=1, column=0, sticky=tk.NSEW)
 
         #### Children of self.mergeFrame
         self.mergeFilesCheckbutton.grid(            row=1, column=0, sticky=tk.NW)
