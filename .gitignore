@@ -4,6 +4,9 @@ __pycache__/
 .venv/
 # Ignore Claude Code local files
 .claude/
+# Ignore Claude Code persistent memory
+memory/
+MEMORY.md
 # Ignore extra test files and old stuff
 /cruft/
 # Ignore log files:
