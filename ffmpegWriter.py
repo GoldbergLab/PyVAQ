@@ -11,6 +11,36 @@ DEFAULT_GPU_COMPRESSION_ARGS = [
     '-c:v', 'h264_nvenc', '-preset', 'fast', '-cq', '32'
     ]
 
+def buildCPUCompressionArgs(crf):
+    """Build libx264 (CPU) ffmpeg compression args for a given CRF quality.
+
+    Lower CRF = higher quality / larger files. Valid range is roughly 0-51.
+    """
+    return ['-c:v', 'libx264', '-preset', 'fast', '-crf', str(crf)]
+
+def buildGPUCompressionArgs(cq):
+    """Build h264_nvenc (GPU) ffmpeg compression args for a given CQ quality.
+
+    Lower CQ = higher quality / larger files. Valid range is roughly 0-51.
+    """
+    return ['-c:v', 'h264_nvenc', '-preset', 'fast', '-cq', str(cq)]
+
+def _defaultQualityValue(args, flag, fallback):
+    # Extract the quality value following the given flag in a default args list,
+    #   so callers can derive a default CQ/CRF without duplicating the literal.
+    try:
+        return int(args[args.index(flag) + 1])
+    except (ValueError, IndexError):
+        return fallback
+
+def defaultCQ():
+    """Default nvenc CQ quality, taken from DEFAULT_GPU_COMPRESSION_ARGS."""
+    return _defaultQualityValue(DEFAULT_GPU_COMPRESSION_ARGS, '-cq', 23)
+
+def defaultCRF():
+    """Default libx264 CRF quality, taken from DEFAULT_CPU_COMPRESSION_ARGS."""
+    return _defaultQualityValue(DEFAULT_CPU_COMPRESSION_ARGS, '-crf', 23)
+
 class ffmpegWriter():
     def __init__(
         self,
@@ -38,8 +68,10 @@ class ffmpegWriter():
         self.input_pixel_format = input_pixel_format
         self.output_pixel_format = output_pixel_format
         self.gpuVEnc = gpuVEnc
-        self.gpuCompressionArgs = gpuCompressionArgs
-        self.cpuCompressionArgs = cpuCompressionArgs
+        # Fall back to the module defaults if no args are supplied, so callers
+        #   can safely pass None.
+        self.gpuCompressionArgs = gpuCompressionArgs if gpuCompressionArgs is not None else DEFAULT_GPU_COMPRESSION_ARGS
+        self.cpuCompressionArgs = cpuCompressionArgs if cpuCompressionArgs is not None else DEFAULT_CPU_COMPRESSION_ARGS
 
     def write(self, frame, shape=None):
         # frame should be an RGB PIL image

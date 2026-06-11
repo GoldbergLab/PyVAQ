@@ -14,12 +14,20 @@ class CameraSettingsEntry(ttk.LabelFrame):
     """Settings for a single camera: file writing (directory / base filename /
     enable-write). The frame label is the camera serial.
     """
+    # Valid range for both nvenc -cq and libx264 -crf quality values.
+    MIN_QUALITY = 0
+    MAX_QUALITY = 51
+
     def __init__(self, master, *args, camSerial='', initialDirectory='',
-                 initialBaseFileName='', initialWriteEnable=True, **kwargs):
+                 initialBaseFileName='', initialWriteEnable=True,
+                 initialCQ=23, initialCRF=23, **kwargs):
         ttk.LabelFrame.__init__(self, master, *args, text=camSerial, **kwargs)
         self.camSerial = camSerial
 
         self.enableWriteChangeHandler = lambda *a: None
+        self.compressionChangeHandler = lambda *a: None
+        self._defaultCQ = initialCQ
+        self._defaultCRF = initialCRF
 
         self.fileWidget = FileWritingEntry(
             self,
@@ -36,8 +44,26 @@ class CameraSettingsEntry(ttk.LabelFrame):
         self.enableWriteCheckButton = tk.Checkbutton(self, text="Enable write", variable=self.enableWriteVar, offvalue=False, onvalue=True)
         self._updateEnableWriteColor()
 
+        # Compression quality. The camera's active encoder (nvenc vs libx264)
+        #   depends on GPU availability at acquisition time; both values are
+        #   kept and only the relevant one is used.
+        self.compressionFrame = ttk.LabelFrame(self, text="Compression quality (lower = better/larger)")
+        self.cqVar = tk.StringVar(); self.cqVar.set(str(initialCQ))
+        self.crfVar = tk.StringVar(); self.crfVar.set(str(initialCRF))
+        self.cqLabel = ttk.Label(self.compressionFrame, text="GPU nvenc -cq:")
+        self.cqEntry = ttk.Entry(self.compressionFrame, width=5, textvariable=self.cqVar)
+        self.crfLabel = ttk.Label(self.compressionFrame, text="CPU libx264 -crf:")
+        self.crfEntry = ttk.Entry(self.compressionFrame, width=5, textvariable=self.crfVar)
+        self.cqEntry.bind('<FocusOut>', self._onCompressionChange)
+        self.crfEntry.bind('<FocusOut>', self._onCompressionChange)
+        self.cqLabel.grid(row=0, column=0, sticky=tk.E)
+        self.cqEntry.grid(row=0, column=1, sticky=tk.W)
+        self.crfLabel.grid(row=1, column=0, sticky=tk.E)
+        self.crfEntry.grid(row=1, column=1, sticky=tk.W)
+
         self.fileWidget.grid(row=0, column=0, sticky=tk.NSEW)
         self.enableWriteCheckButton.grid(row=1, column=0, sticky=tk.W)
+        self.compressionFrame.grid(row=2, column=0, sticky=tk.NSEW)
 
     def _onEnableWriteChange(self, *args):
         self._updateEnableWriteColor()
@@ -45,6 +71,20 @@ class CameraSettingsEntry(ttk.LabelFrame):
 
     def _updateEnableWriteColor(self):
         self.enableWriteCheckButton['fg'] = 'green' if self.getEnableWrite() else 'red'
+
+    def _onCompressionChange(self, *args):
+        # Sanitize both fields, then notify.
+        self.cqVar.set(str(self._sanitizeQuality(self.cqVar.get(), self._defaultCQ)))
+        self.crfVar.set(str(self._sanitizeQuality(self.crfVar.get(), self._defaultCRF)))
+        self.compressionChangeHandler()
+
+    def _sanitizeQuality(self, value, fallback):
+        # Coerce to an int clamped to the valid quality range.
+        try:
+            value = int(float(value))
+        except (ValueError, TypeError):
+            return fallback
+        return max(self.MIN_QUALITY, min(self.MAX_QUALITY, value))
 
     # --- Getters ---
     def getDirectory(self):
@@ -55,6 +95,12 @@ class CameraSettingsEntry(ttk.LabelFrame):
 
     def getEnableWrite(self):
         return self.enableWriteVar.get()
+
+    def getCQ(self):
+        return self._sanitizeQuality(self.cqVar.get(), self._defaultCQ)
+
+    def getCRF(self):
+        return self._sanitizeQuality(self.crfVar.get(), self._defaultCRF)
 
     # --- Setters (used when a value is changed programmatically, e.g. on
     #     loading settings) ---
@@ -67,6 +113,12 @@ class CameraSettingsEntry(ttk.LabelFrame):
     def setWriteEnable(self, enableWrite):
         self.enableWriteVar.set(enableWrite)
 
+    def setCQ(self, cq):
+        self.cqVar.set(str(cq))
+
+    def setCRF(self, crf):
+        self.crfVar.set(str(crf))
+
     # --- Change-handler registration ---
     def setDirectoryChangeHandler(self, function):
         self.fileWidget.setDirectoryChangeHandler(function)
@@ -76,6 +128,9 @@ class CameraSettingsEntry(ttk.LabelFrame):
 
     def setEnableWriteChangeHandler(self, function):
         self.enableWriteChangeHandler = function
+
+    def setCompressionChangeHandler(self, function):
+        self.compressionChangeHandler = function
 
 
 class CameraSettingsPanel(ttk.Frame):
@@ -94,6 +149,7 @@ class CameraSettingsPanel(ttk.Frame):
         self.directoryChangeHandler = lambda *a: None
         self.baseFileNameChangeHandler = lambda *a: None
         self.enableWriteChangeHandler = lambda *a: None
+        self.compressionChangeHandler = lambda *a: None
 
         self.entryFrame = ttk.Frame(self)
 
@@ -134,13 +190,23 @@ class CameraSettingsPanel(ttk.Frame):
         for entry in self.cameraEntries.values():
             entry.setEnableWriteChangeHandler(function)
 
-    def updateCameras(self, camSerials, directories=None, baseFileNames=None, writeEnables=None):
+    def setCompressionChangeHandler(self, function):
+        self.compressionChangeHandler = function
+        for entry in self.cameraEntries.values():
+            entry.setCompressionChangeHandler(function)
+
+    def updateCameras(self, camSerials, directories=None, baseFileNames=None,
+                      writeEnables=None, cqs=None, crfs=None,
+                      defaultCQ=23, defaultCRF=23):
         """Rebuild the per-camera entries for the given list of camera serials,
         seeding each from the supplied per-camera dicts (keyed by serial).
+        Cameras without a stored cq/crf fall back to defaultCQ/defaultCRF.
         """
         directories = directories if directories is not None else {}
         baseFileNames = baseFileNames if baseFileNames is not None else {}
         writeEnables = writeEnables if writeEnables is not None else {}
+        cqs = cqs if cqs is not None else {}
+        crfs = crfs if crfs is not None else {}
 
         # Destroy old entries
         for camSerial in list(self.cameraEntries.keys()):
@@ -155,12 +221,15 @@ class CameraSettingsPanel(ttk.Frame):
                 camSerial=camSerial,
                 initialDirectory=directories.get(camSerial, ''),
                 initialBaseFileName=baseFileNames.get(camSerial, ''),
-                initialWriteEnable=writeEnables.get(camSerial, True)
+                initialWriteEnable=writeEnables.get(camSerial, True),
+                initialCQ=cqs.get(camSerial, defaultCQ),
+                initialCRF=crfs.get(camSerial, defaultCRF)
                 )
             # Apply the currently-registered change handlers
             entry.setDirectoryChangeHandler(self.directoryChangeHandler)
             entry.setBaseFileNameChangeHandler(self.baseFileNameChangeHandler)
             entry.setEnableWriteChangeHandler(self.enableWriteChangeHandler)
+            entry.setCompressionChangeHandler(self.compressionChangeHandler)
             entry.grid(row=k, column=0, sticky=tk.NSEW, pady=2)
             self.cameraEntries[camSerial] = entry
 
@@ -175,3 +244,9 @@ class CameraSettingsPanel(ttk.Frame):
 
     def getWriteEnables(self):
         return dict((s, e.getEnableWrite()) for s, e in self.cameraEntries.items())
+
+    def getCQs(self):
+        return dict((s, e.getCQ()) for s, e in self.cameraEntries.items())
+
+    def getCRFs(self):
+        return dict((s, e.getCRF()) for s, e in self.cameraEntries.items())

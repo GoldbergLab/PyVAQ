@@ -62,7 +62,14 @@ import inspect
 import CollapsableFrame as cf
 import CameraUtilities as cu
 import ctypes
-from ffmpegWriter import DEFAULT_CPU_COMPRESSION_ARGS,  DEFAULT_GPU_COMPRESSION_ARGS
+from ffmpegWriter import (
+    DEFAULT_CPU_COMPRESSION_ARGS,
+    DEFAULT_GPU_COMPRESSION_ARGS,
+    buildCPUCompressionArgs,
+    buildGPUCompressionArgs,
+    defaultCQ,
+    defaultCRF,
+    )
 from CameraConfig import CameraConfigPanel
 from CameraSettings import CameraSettingsPanel
 from collections import OrderedDict as odict
@@ -369,10 +376,11 @@ class PyVAQ:
         self.audioChannelConfiguration = GeneralVar(); self.audioChannelConfiguration.set(None)
         self.videoMonitorDisplaySize = GeneralVar(); self.videoMonitorDisplaySize.set((400, 300))
         self.videoMonitorDisplaySize.trace('w', self.updateVideoMonitorDisplaySize)
-        self.cpuVideoCompressionArgs = GeneralVar(); self.cpuVideoCompressionArgs.set({})   # camSerial dict containing an array of ffmpeg argument strings
-        self.cpuVideoCompressionArgs.trace('w', self.transmitVideoCompressionArgs)
-        self.gpuVideoCompressionArgs = GeneralVar(); self.gpuVideoCompressionArgs.set({})   # camSerial dict containing an array of ffmpeg argument strings
-        self.gpuVideoCompressionArgs.trace('w', self.transmitVideoCompressionArgs)
+        # Per-camera compression quality, keyed by camera serial. videoCQ holds
+        #   nvenc -cq values, videoCRF holds libx264 -crf values. The full ffmpeg
+        #   arg lists are built from these on demand.
+        self.videoCQ = GeneralVar(); self.videoCQ.set({})
+        self.videoCRF = GeneralVar(); self.videoCRF.set({})
 
         ########### GUI WIDGETS #####################
 
@@ -529,6 +537,7 @@ class PyVAQ:
         self.cameraSettingsPanel.setDirectoryChangeHandler(self.videoDirectoryChangeHandler)
         self.cameraSettingsPanel.setBaseFileNameChangeHandler(self.videoBaseFileNameChangeHandler)
         self.cameraSettingsPanel.setEnableWriteChangeHandler(self.videoWriteEnableChangeHandler)
+        self.cameraSettingsPanel.setCompressionChangeHandler(self.videoCompressionChangeHandler)
 
         self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", **COLLAPSABLE_FRAME_STYLE); self.mergeFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         # self.mergeFrame = ttk.LabelFrame(self.acquisitionFrame, text="AV File merging")
@@ -786,8 +795,8 @@ class PyVAQ:
             "startOnHWSignal":                  dict(get=self.startOnHWSignalVar.get,                           set=self.startOnHWSignalVar.set),
             "writeEnableOnHWSignal":            dict(get=self.writeEnableOnHWSignalVar.get,                     set=self.writeEnableOnHWSignalVar.set),
             "videoMonitorDisplaySize":          dict(get=self.videoMonitorDisplaySize.get,                      set=self.videoMonitorDisplaySize.set),
-            "cpuVideoCompressionArgs":          dict(get=self.cpuVideoCompressionArgs.get,                      set=self.cpuVideoCompressionArgs.set),
-            "gpuVideoCompressionArgs":          dict(get=self.gpuVideoCompressionArgs.get,                      set=self.gpuVideoCompressionArgs.set),
+            "videoCQ":                          dict(get=self.videoCQ.get,                                      set=self.videoCQ.set),
+            "videoCRF":                         dict(get=self.videoCRF.get,                                     set=self.videoCRF.set),
             "applyConfigurationOnInit":         dict(get=self.cameraConfigurationPanel.applyConfigurationOnInit,set=self.cameraConfigurationPanel.applyConfigurationOnInit),
         }
 
@@ -973,19 +982,38 @@ class PyVAQ:
             sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'verbose':self.videoWriteVerbose}))
 
     def transmitVideoCompressionArgs(self):
-        """Update video writer video compression args based on current settings
+        """Build per-camera ffmpeg compression args from the current quality
+        settings and send them to the running video writer processes.
+
+        Takes effect on the next video file each writer opens (the current
+        ffmpeg process can't change quality mid-stream).
 
         Returns:
             None
 
         """
-        cca = self.getParams('cpuVideoCompressionArgs')
-        gca = self.getParams('gpuVideoCompressionArgs')
+        p = self.getParams('videoCQ', 'videoCRF')
         for camSerial in self.videoWriteProcesses:
-            if camSerial in cca:
-                sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'cpuVideoCompressionArgs':cca[camSerial]}))
-            if camSerial in gca:
-                sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {'gpuVideoCompressionArgs':gca[camSerial]}))
+            cq = p['videoCQ'].get(camSerial, defaultCQ())
+            crf = p['videoCRF'].get(camSerial, defaultCRF())
+            sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {
+                'gpuCompressionArgs': buildGPUCompressionArgs(cq),
+                'cpuCompressionArgs': buildCPUCompressionArgs(crf),
+                }))
+
+    def videoCompressionChangeHandler(self, *args):
+        """Handle a user change to a camera's compression quality fields.
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
+        self.videoCQ.set(self.cameraSettingsPanel.getCQs())
+        self.videoCRF.set(self.cameraSettingsPanel.getCRFs())
+        self.transmitVideoCompressionArgs()
 
     def transmitDaySubfolderSetting(self, *args):
         """Change day subfolder setting in all child processes.
@@ -1480,13 +1508,19 @@ him know. Otherwise, I had nothing to do with it.
             'camSerials',
             'videoDirectories',
             'videoBaseFileNames',
-            'videoWriteEnable'
+            'videoWriteEnable',
+            'videoCQ',
+            'videoCRF'
             )
         self.cameraSettingsPanel.updateCameras(
             p['camSerials'],
             directories=p['videoDirectories'],
             baseFileNames=p['videoBaseFileNames'],
-            writeEnables=p['videoWriteEnable']
+            writeEnables=p['videoWriteEnable'],
+            cqs=p['videoCQ'],
+            crfs=p['videoCRF'],
+            defaultCQ=defaultCQ(),
+            defaultCRF=defaultCRF()
             )
         self.update()
 
@@ -4019,14 +4053,12 @@ him know. Otherwise, I had nothing to do with it.
                 if p['triggerMode'] == "SimpleContinuous":
                     gpuOk = (gpuCount < p['maxGPUVEnc'])
 
-                    if camSerial in p['gpuVideoCompressionArgs']:
-                        gpuCompressionArgs = p['gpuVideoCompressionArgs']
-                    else:
-                        gpuCompressionArgs = None
-                    if camSerial in p['cpuVideoCompressionArgs']:
-                        cpuCompressionArgs = p['cpuVideoCompressionArgs']
-                    else:
-                        cpuCompressionArgs = None
+                    # Build this camera's ffmpeg compression args from its
+                    #   per-camera quality settings (falling back to defaults).
+                    camCQ = p['videoCQ'].get(camSerial, defaultCQ())
+                    camCRF = p['videoCRF'].get(camSerial, defaultCRF())
+                    gpuCompressionArgs = buildGPUCompressionArgs(camCQ)
+                    cpuCompressionArgs = buildCPUCompressionArgs(camCRF)
 
                     if p['maxGPUVEnc'] > 0 and not gpuOk:
                         # Some GPU video encoder sessions requested, but not enough for all cameras.
