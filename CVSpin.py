@@ -2,9 +2,8 @@ import cv2
 from PIL import Image
 import re
 import os
+import platform
 from numpy import ndarray
-from pathlib import Path
-import time
 
 # A module designed to be a partial drop-in replacement for PySpin, so FLIR
 #   cameras or other USB cameras that can be controlled by OpenCV can be used
@@ -176,79 +175,120 @@ def GetAttributeCode(attributeName):
             raise NameError('Attribute name {n} not recognized.'.format(n=attributeName))
         return attributeCode
 
-CAM_NUM_FILE = Path('.\OpenCV_cam_list.tmp')
-CAM_UPDATE_INTERVAL = 600
+# Backend used for cv2.VideoCapture. We let OpenCV choose (CAP_ANY) and rely on
+#   the OPENCV_VIDEOIO_PRIORITY_MSMF=0 env var set above to prefer DirectShow on
+#   Windows. Passing cv2.CAP_DSHOW explicitly is avoided: in some OpenCV builds
+#   the DirectShow backend "can't be used to capture by index" and fails to open
+#   the camera. The default (DirectShow, via the env var) still matches the
+#   device-index order returned by pygrabber's DirectShow enumeration.
+_CV_CAPTURE_BACKEND = cv2.CAP_ANY
+
+# Discovered mapping between OpenCV device indices and the serials we expose
+#   (human-readable device names, disambiguated for duplicates). Repopulated by
+#   _discoverDevices() and used to translate between serials and indices.
+_indexToSerial = {}
+_serialToIndex = {}
+
+def _enumerateDShowDevices():
+    """List DirectShow video device names *without opening* the devices.
+
+    Returns a list of device-name strings indexed by OpenCV (DirectShow) device
+    index, or None if enumeration is unavailable (not on Windows, or pygrabber
+    is not installed).
+    """
+    if platform.system() != 'Windows':
+        return None
+    try:
+        from pygrabber.dshow_graph import FilterGraph
+    except ImportError:
+        return None
+    try:
+        return list(FilterGraph().get_input_devices())
+    except Exception as e:
+        print('pygrabber video device enumeration failed, falling back to probe:')
+        print(e)
+        return None
 
 def find_valid_ports(max_attempts=3):
-    # Find a list of cameras via OpenCV. Unfortunately, OpenCV does not provide
-    #   a function that lists all available cameras, so we have to go through
-    #   an irritatingly slow and arbitrary search process.
+    """Brute-force probe for valid OpenCV camera indices (fallback discovery).
 
-    # CAM_NUM_FILE, if it exists, should be a simple text file with two
-    #   lines. The first line contains a floating point number repressenting
-    #   the system time (as per time.time()) when the camera list was last
-    #   updated. The second line is a space-separated list of camera numbers
-    #   (as numbered by cv2).
-    # We will check if the cameras listed in CAM_NUM_FILE are too stale
-    #   (as per CAM_UPDATE_INTERVAL), then either use the old camera list
-    #   if not, or re-update if so.
-    try:
-        with open(CAM_NUM_FILE, 'r') as f:
-            cam_record = [txt.strip() for txt in f.readlines()]
-            lastUpdateTime = float(cam_record[0])
-            timeSinceLastUpdate = time.time() - lastUpdateTime
-            if timeSinceLastUpdate < CAM_UPDATE_INTERVAL:
-                valid_port_nums = [int(n) for n in cam_record[1].split(' ') if len(n) > 0]
-                return valid_port_nums
-    except Exception as e:
-        # Something went wrong, just update cam list
-        print('Error getting record of valid cv2 camera ports:')
-        print(e)
-        print('Re-updating camera port list')
-
-    # Starting "port" number is 0
+    OpenCV provides no camera-enumeration API, so when DirectShow enumeration is
+    unavailable we open device indices one at a time until max_attempts
+    consecutive failures. This actually opens each device, so it is slow and may
+    briefly activate cameras; it is only used as a fallback.
+    """
     port_num = 0
-    # Initialize empty list of port numbers that correspond to actual cameras
     valid_port_nums = []
-    # Number of failed attempts so far
     num_fails = 0
     while True:
-        # Loop over port numbers one at a time
-        # Attempt to open camera
-        cap = cv2.VideoCapture(port_num)
+        cap = cv2.VideoCapture(port_num, _CV_CAPTURE_BACKEND)
         if cap is not None and cap.isOpened():
-            # We got a valid camera! Record it.
             valid_port_nums.append(port_num)
-            # Reset # of fails because we got a live one
             num_fails = 0
-            # Release camera resource, not going to actually use it now.
             cap.release()
         else:
-            # No dice, try the next one?
             num_fails += 1
             if num_fails > max_attempts:
-                # Too many misses in a row, stop searching
                 break
         port_num += 1
-
-    # Update CAM_NUM_FILE with latest camera list
-    with open(CAM_NUM_FILE, 'w') as f:
-        cam_record = [
-            str(time.time())+'\n',
-            ' '.join(str(n) for n in valid_port_nums)+'\n'
-        ]
-        f.writelines(cam_record)
     return valid_port_nums
 
+def _disambiguateSerials(names):
+    """Build (serial, index) pairs from device names indexed by device index.
+
+    Spaces in device names are replaced with underscores so the serial is
+    filename-friendly (it is used as part of the video output filename), and
+    duplicate names are made unique by appending a counter (e.g. two identical
+    "HD Webcam" devices become "HD_Webcam" and "HD_Webcam_2").
+    """
+    counts = {}
+    pairs = []
+    for index, name in enumerate(names):
+        base = name if name else 'Camera_{i}'.format(i=index)
+        # Make the serial filename-friendly.
+        base = base.replace(' ', '_')
+        counts[base] = counts.get(base, 0) + 1
+        serial = base if counts[base] == 1 else '{b}_{n}'.format(b=base, n=counts[base])
+        pairs.append((serial, index))
+    return pairs
+
+def _discoverDevices():
+    """Discover available OpenCV cameras, returning a list of (serial, index).
+
+    Prefers fast DirectShow enumeration (real device names, no device open);
+    falls back to the brute-force index probe with synthesized names. Always
+    enumerates fresh (DirectShow enumeration is cheap), so plugged/unplugged
+    cameras are reflected promptly, and refreshes the module-level
+    serial<->index maps.
+    """
+    global _indexToSerial, _serialToIndex
+    names = _enumerateDShowDevices()
+    if names is not None:
+        pairs = _disambiguateSerials(names)
+    else:
+        # Fallback: brute-force probe, with synthesized index-based names.
+        pairs = [('Camera_{p}'.format(p=p), p) for p in find_valid_ports(max_attempts=5)]
+    _indexToSerial = dict((index, serial) for serial, index in pairs)
+    _serialToIndex = dict((serial, index) for serial, index in pairs)
+    return pairs
+
 def _portNumToSerial(port):
-    return 'Camera_{p}'.format(p=port)
+    # Map a device index to its serial (device name), discovering if needed.
+    if port not in _indexToSerial:
+        _discoverDevices()
+    return _indexToSerial.get(port, 'Camera_{p}'.format(p=port))
 
 def _serialToPortNumber(serial):
+    # Map a serial to its device index, discovering if needed.
+    if serial not in _serialToIndex:
+        _discoverDevices()
+    if serial in _serialToIndex:
+        return _serialToIndex[serial]
+    # Backward compatibility with the old "Camera_<index>" serial format.
     match = re.search('Camera_([0-9]+)', serial)
     if match is None:
         return None
-    else:
-        return int(match.group(1))
+    return int(match.group(1))
 
 class System:
     """
@@ -385,7 +425,7 @@ class System:
         An CameraList object that contains a list of all cameras.
         """
 
-        valid_ports = find_valid_ports(max_attempts=5)
+        valid_ports = [index for serial, index in _discoverDevices()]
 
         return CameraList(valid_ports)
 
@@ -1090,7 +1130,7 @@ class Camera:
         See:   GetNextImage()
         """
 
-        self._camera_pointer = cv2.VideoCapture(self._port_number)
+        self._camera_pointer = cv2.VideoCapture(self._port_number, _CV_CAPTURE_BACKEND)
         return
 
     def DeInit(self):

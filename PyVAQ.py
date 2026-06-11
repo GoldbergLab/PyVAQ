@@ -1500,14 +1500,16 @@ him know. Otherwise, I had nothing to do with it.
             None
 
         """
-        # Refresh the list of available cameras, then reveal the window.
-        try:
-            self.cameraConfigurationPanel.updateCameraList()
-        except Exception:
-            self.log('Warning: failed to refresh advanced camera configuration list')
-            self.endLog(inspect.currentframe().f_code.co_name)
+        # Reveal the window first, then load camera attributes. The grab opens
+        #   every camera and is slow, so it's done here (on demand) rather than
+        #   at startup.
         self.cameraConfigDialog.deiconify()
         self.cameraConfigDialog.lift()
+        try:
+            self.cameraConfigurationPanel.refresh()
+        except Exception:
+            self.log('Warning: failed to load advanced camera configuration')
+            self.endLog(inspect.currentframe().f_code.co_name)
 
     def updateCameraSettingsPanel(self):
         """Rebuild the per-camera settings panel from the selected cameras.
@@ -3309,6 +3311,30 @@ him know. Otherwise, I had nothing to do with it.
             params.pop('videoCQ', None)
             params.pop('videoCRF', None)
             params.pop('maxGPUVEnc', None)  # replaced by per-camera videoGPUVEnc
+
+            # Validate the loaded camera serials against the cameras currently
+            #   available. Drop any that are not present (e.g. legacy "Camera_0"
+            #   webcam serials from before device-name serials, or cameras that
+            #   are simply not connected), keeping the parallel camTypes /
+            #   camHardwareSync arrays aligned, and warn about what was dropped.
+            if 'camSerials' in params and len(params['camSerials']) > 0:
+                availableCamSerials, _ = cu.discoverCameras()
+                availableCamSerials = set(availableCamSerials)
+                keptSerials, keptTypes, keptHWSync, rejectedSerials = [], [], [], []
+                for camSerial, camType, camHWSync in zip(
+                        params['camSerials'], params['camTypes'], params['camHardwareSync']):
+                    if camSerial in availableCamSerials:
+                        keptSerials.append(camSerial)
+                        keptTypes.append(camType)
+                        keptHWSync.append(camHWSync)
+                    else:
+                        rejectedSerials.append(camSerial)
+                if len(rejectedSerials) > 0:
+                    self.log('Warning: ignoring {n} camera(s) in settings that are not currently available: {s}'.format(
+                        n=len(rejectedSerials), s=', '.join(rejectedSerials)))
+                params['camSerials'] = keptSerials
+                params['camTypes'] = keptTypes
+                params['camHardwareSync'] = keptHWSync
 
             self.setParams(**params)
             self.updateAcquisitionHardwareDisplay()

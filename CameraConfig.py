@@ -114,11 +114,26 @@ class CameraConfigPanel(tk.Frame):
         self.applyConfigurationButton.grid(row=7, column=0, sticky=tk.EW)
         self.applyConfigurationOnInitCheckbox.grid(row=7, column=1, sticky=tk.E)
 
+        # Only populate the camera dropdown here. Grabbing attributes opens
+        #   every camera and is slow, so it is deferred until this panel is
+        #   actually shown (see refresh()), rather than run at construction.
+        self.updateCameraList()
+
+        self.grid()
+
+    def refresh(self):
+        """Reload the camera list and all camera attributes.
+
+        Grabbing attributes opens each camera, so this is intended to be called
+        when the (advanced FLIR) panel is actually shown, not at startup.
+
+        Returns:
+            None
+
+        """
         self.updateCameraList()
         self.grabAllCameraAttributes(updateCameraList=False)
         self.updateCameraAttributes(grab=False, updateCameraList=False)
-
-        self.grid()
 
     def applyConfigurationOnInit(self, value=None):
         """Get or set the value of the "apply configuration on init" checkbox.
