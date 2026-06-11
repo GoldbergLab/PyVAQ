@@ -1,8 +1,8 @@
-# A tkinter panel for per-camera settings (file writing, and - later -
-# compression), decoupled from acquisition/monitoring so the user can configure
-# cameras without initializing acquisition. The per-camera data itself lives in
-# PyVAQ (keyed by camera serial); this panel is just the editor/view, populated
-# from the list of currently-selected cameras.
+# A tkinter panel for per-camera settings (file writing and video compression),
+# decoupled from acquisition/monitoring so the user can configure cameras
+# without initializing acquisition. The per-camera data itself lives in PyVAQ
+# (keyed by camera serial); this panel is just the editor/view, populated from
+# the list of currently-selected cameras.
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -12,22 +12,27 @@ from fileWritingEntry import FileWritingEntry
 
 class CameraSettingsEntry(ttk.LabelFrame):
     """Settings for a single camera: file writing (directory / base filename /
-    enable-write). The frame label is the camera serial.
+    enable-write) and video compression (GPU-vs-CPU encoder + a compression
+    level). The frame label is the camera serial.
+
+    The compression level is a single value interpreted as nvenc's -cq when GPU
+    encoding is selected, or libx264's -crf otherwise. For both, higher means
+    more compression (smaller files, worse quality).
     """
-    # Valid range for both nvenc -cq and libx264 -crf quality values.
-    MIN_QUALITY = 0
-    MAX_QUALITY = 51
+    # Valid range for the compression level (both nvenc -cq and libx264 -crf).
+    MIN_LEVEL = 0
+    MAX_LEVEL = 51
 
     def __init__(self, master, *args, camSerial='', initialDirectory='',
                  initialBaseFileName='', initialWriteEnable=True,
-                 initialCQ=23, initialCRF=23, **kwargs):
+                 initialCompressionLevel=23, initialGPUVEnc=False, **kwargs):
         ttk.LabelFrame.__init__(self, master, *args, text=camSerial, **kwargs)
         self.camSerial = camSerial
 
         self.enableWriteChangeHandler = lambda *a: None
         self.compressionChangeHandler = lambda *a: None
-        self._defaultCQ = initialCQ
-        self._defaultCRF = initialCRF
+        self.gpuVEncChangeHandler = lambda *a: None
+        self._defaultLevel = initialCompressionLevel
 
         self.fileWidget = FileWritingEntry(
             self,
@@ -44,26 +49,26 @@ class CameraSettingsEntry(ttk.LabelFrame):
         self.enableWriteCheckButton = tk.Checkbutton(self, text="Enable write", variable=self.enableWriteVar, offvalue=False, onvalue=True)
         self._updateEnableWriteColor()
 
-        # Compression quality. The camera's active encoder (nvenc vs libx264)
-        #   depends on GPU availability at acquisition time; both values are
-        #   kept and only the relevant one is used.
-        self.compressionFrame = ttk.LabelFrame(self, text="Compression quality (lower = better/larger)")
-        self.cqVar = tk.StringVar(); self.cqVar.set(str(initialCQ))
-        self.crfVar = tk.StringVar(); self.crfVar.set(str(initialCRF))
-        self.cqLabel = ttk.Label(self.compressionFrame, text="GPU nvenc -cq:")
-        self.cqEntry = ttk.Entry(self.compressionFrame, width=5, textvariable=self.cqVar)
-        self.crfLabel = ttk.Label(self.compressionFrame, text="CPU libx264 -crf:")
-        self.crfEntry = ttk.Entry(self.compressionFrame, width=5, textvariable=self.crfVar)
-        self.cqEntry.bind('<FocusOut>', self._onCompressionChange)
-        self.crfEntry.bind('<FocusOut>', self._onCompressionChange)
-        self.cqLabel.grid(row=0, column=0, sticky=tk.E)
-        self.cqEntry.grid(row=0, column=1, sticky=tk.W)
-        self.crfLabel.grid(row=1, column=0, sticky=tk.E)
-        self.crfEntry.grid(row=1, column=1, sticky=tk.W)
+        # GPU (nvenc) vs CPU (libx264) encoding for this camera. Determines how
+        #   the compression level is interpreted (and labelled).
+        self.gpuVEncVar = tk.BooleanVar(); self.gpuVEncVar.set(initialGPUVEnc)
+        self.gpuVEncVar.trace('w', self._onGPUVEncChange)
+        self.gpuVEncCheckButton = tk.Checkbutton(self, text="GPU encoding (nvenc)", variable=self.gpuVEncVar, offvalue=False, onvalue=True)
+
+        # Compression level (single value; meaning depends on the encoder).
+        self.compressionFrame = ttk.LabelFrame(self, text="Compression level (higher = more compression / smaller)")
+        self.compressionLevelVar = tk.StringVar(); self.compressionLevelVar.set(str(initialCompressionLevel))
+        self.compressionLevelLabel = ttk.Label(self.compressionFrame)
+        self.compressionLevelEntry = ttk.Entry(self.compressionFrame, width=5, textvariable=self.compressionLevelVar)
+        self.compressionLevelEntry.bind('<FocusOut>', self._onCompressionChange)
+        self._updateCompressionLabel()
+        self.compressionLevelLabel.grid(row=0, column=0, sticky=tk.E)
+        self.compressionLevelEntry.grid(row=0, column=1, sticky=tk.W)
 
         self.fileWidget.grid(row=0, column=0, sticky=tk.NSEW)
         self.enableWriteCheckButton.grid(row=1, column=0, sticky=tk.W)
-        self.compressionFrame.grid(row=2, column=0, sticky=tk.NSEW)
+        self.gpuVEncCheckButton.grid(row=2, column=0, sticky=tk.W)
+        self.compressionFrame.grid(row=3, column=0, sticky=tk.NSEW)
 
     def _onEnableWriteChange(self, *args):
         self._updateEnableWriteColor()
@@ -72,19 +77,29 @@ class CameraSettingsEntry(ttk.LabelFrame):
     def _updateEnableWriteColor(self):
         self.enableWriteCheckButton['fg'] = 'green' if self.getEnableWrite() else 'red'
 
+    def _onGPUVEncChange(self, *args):
+        self._updateCompressionLabel()
+        self.gpuVEncChangeHandler()
+
+    def _updateCompressionLabel(self):
+        # The compression level is nvenc -cq for GPU encoding, libx264 -crf for
+        #   CPU encoding. Update the field label to match.
+        if self.gpuVEncVar.get():
+            self.compressionLevelLabel.config(text="nvenc -cq:")
+        else:
+            self.compressionLevelLabel.config(text="libx264 -crf:")
+
     def _onCompressionChange(self, *args):
-        # Sanitize both fields, then notify.
-        self.cqVar.set(str(self._sanitizeQuality(self.cqVar.get(), self._defaultCQ)))
-        self.crfVar.set(str(self._sanitizeQuality(self.crfVar.get(), self._defaultCRF)))
+        self.compressionLevelVar.set(str(self._sanitizeLevel(self.compressionLevelVar.get())))
         self.compressionChangeHandler()
 
-    def _sanitizeQuality(self, value, fallback):
-        # Coerce to an int clamped to the valid quality range.
+    def _sanitizeLevel(self, value):
+        # Coerce to an int clamped to the valid compression-level range.
         try:
             value = int(float(value))
         except (ValueError, TypeError):
-            return fallback
-        return max(self.MIN_QUALITY, min(self.MAX_QUALITY, value))
+            return self._defaultLevel
+        return max(self.MIN_LEVEL, min(self.MAX_LEVEL, value))
 
     # --- Getters ---
     def getDirectory(self):
@@ -96,11 +111,11 @@ class CameraSettingsEntry(ttk.LabelFrame):
     def getEnableWrite(self):
         return self.enableWriteVar.get()
 
-    def getCQ(self):
-        return self._sanitizeQuality(self.cqVar.get(), self._defaultCQ)
+    def getCompressionLevel(self):
+        return self._sanitizeLevel(self.compressionLevelVar.get())
 
-    def getCRF(self):
-        return self._sanitizeQuality(self.crfVar.get(), self._defaultCRF)
+    def getGPUVEnc(self):
+        return self.gpuVEncVar.get()
 
     # --- Setters (used when a value is changed programmatically, e.g. on
     #     loading settings) ---
@@ -113,11 +128,11 @@ class CameraSettingsEntry(ttk.LabelFrame):
     def setWriteEnable(self, enableWrite):
         self.enableWriteVar.set(enableWrite)
 
-    def setCQ(self, cq):
-        self.cqVar.set(str(cq))
+    def setCompressionLevel(self, level):
+        self.compressionLevelVar.set(str(level))
 
-    def setCRF(self, crf):
-        self.crfVar.set(str(crf))
+    def setGPUVEnc(self, gpuVEnc):
+        self.gpuVEncVar.set(gpuVEnc)
 
     # --- Change-handler registration ---
     def setDirectoryChangeHandler(self, function):
@@ -131,6 +146,9 @@ class CameraSettingsEntry(ttk.LabelFrame):
 
     def setCompressionChangeHandler(self, function):
         self.compressionChangeHandler = function
+
+    def setGPUVEncChangeHandler(self, function):
+        self.gpuVEncChangeHandler = function
 
 
 class CameraSettingsPanel(ttk.Frame):
@@ -150,6 +168,7 @@ class CameraSettingsPanel(ttk.Frame):
         self.baseFileNameChangeHandler = lambda *a: None
         self.enableWriteChangeHandler = lambda *a: None
         self.compressionChangeHandler = lambda *a: None
+        self.gpuVEncChangeHandler = lambda *a: None
 
         self.entryFrame = ttk.Frame(self)
 
@@ -195,18 +214,24 @@ class CameraSettingsPanel(ttk.Frame):
         for entry in self.cameraEntries.values():
             entry.setCompressionChangeHandler(function)
 
+    def setGPUVEncChangeHandler(self, function):
+        self.gpuVEncChangeHandler = function
+        for entry in self.cameraEntries.values():
+            entry.setGPUVEncChangeHandler(function)
+
     def updateCameras(self, camSerials, directories=None, baseFileNames=None,
-                      writeEnables=None, cqs=None, crfs=None,
-                      defaultCQ=23, defaultCRF=23):
+                      writeEnables=None, compressionLevels=None, gpuVEncs=None,
+                      defaultCompressionLevel=23):
         """Rebuild the per-camera entries for the given list of camera serials,
         seeding each from the supplied per-camera dicts (keyed by serial).
-        Cameras without a stored cq/crf fall back to defaultCQ/defaultCRF.
+        Cameras without a stored compression level fall back to
+        defaultCompressionLevel; without a stored GPU flag, to CPU encoding.
         """
         directories = directories if directories is not None else {}
         baseFileNames = baseFileNames if baseFileNames is not None else {}
         writeEnables = writeEnables if writeEnables is not None else {}
-        cqs = cqs if cqs is not None else {}
-        crfs = crfs if crfs is not None else {}
+        compressionLevels = compressionLevels if compressionLevels is not None else {}
+        gpuVEncs = gpuVEncs if gpuVEncs is not None else {}
 
         # Destroy old entries
         for camSerial in list(self.cameraEntries.keys()):
@@ -222,14 +247,15 @@ class CameraSettingsPanel(ttk.Frame):
                 initialDirectory=directories.get(camSerial, ''),
                 initialBaseFileName=baseFileNames.get(camSerial, ''),
                 initialWriteEnable=writeEnables.get(camSerial, True),
-                initialCQ=cqs.get(camSerial, defaultCQ),
-                initialCRF=crfs.get(camSerial, defaultCRF)
+                initialCompressionLevel=compressionLevels.get(camSerial, defaultCompressionLevel),
+                initialGPUVEnc=gpuVEncs.get(camSerial, False)
                 )
             # Apply the currently-registered change handlers
             entry.setDirectoryChangeHandler(self.directoryChangeHandler)
             entry.setBaseFileNameChangeHandler(self.baseFileNameChangeHandler)
             entry.setEnableWriteChangeHandler(self.enableWriteChangeHandler)
             entry.setCompressionChangeHandler(self.compressionChangeHandler)
+            entry.setGPUVEncChangeHandler(self.gpuVEncChangeHandler)
             entry.grid(row=k, column=0, sticky=tk.NSEW, pady=2)
             self.cameraEntries[camSerial] = entry
 
@@ -245,8 +271,8 @@ class CameraSettingsPanel(ttk.Frame):
     def getWriteEnables(self):
         return dict((s, e.getEnableWrite()) for s, e in self.cameraEntries.items())
 
-    def getCQs(self):
-        return dict((s, e.getCQ()) for s, e in self.cameraEntries.items())
+    def getCompressionLevels(self):
+        return dict((s, e.getCompressionLevel()) for s, e in self.cameraEntries.items())
 
-    def getCRFs(self):
-        return dict((s, e.getCRF()) for s, e in self.cameraEntries.items())
+    def getGPUVEncs(self):
+        return dict((s, e.getGPUVEnc()) for s, e in self.cameraEntries.items())

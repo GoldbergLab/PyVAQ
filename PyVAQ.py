@@ -67,7 +67,6 @@ from ffmpegWriter import (
     DEFAULT_GPU_COMPRESSION_ARGS,
     buildCPUCompressionArgs,
     buildGPUCompressionArgs,
-    defaultCQ,
     defaultCRF,
     )
 from CameraConfig import CameraConfigPanel
@@ -376,11 +375,13 @@ class PyVAQ:
         self.audioChannelConfiguration = GeneralVar(); self.audioChannelConfiguration.set(None)
         self.videoMonitorDisplaySize = GeneralVar(); self.videoMonitorDisplaySize.set((400, 300))
         self.videoMonitorDisplaySize.trace('w', self.updateVideoMonitorDisplaySize)
-        # Per-camera compression quality, keyed by camera serial. videoCQ holds
-        #   nvenc -cq values, videoCRF holds libx264 -crf values. The full ffmpeg
-        #   arg lists are built from these on demand.
-        self.videoCQ = GeneralVar(); self.videoCQ.set({})
-        self.videoCRF = GeneralVar(); self.videoCRF.set({})
+        # Per-camera video compression, keyed by camera serial. videoGPUVEnc
+        #   selects GPU (nvenc) vs CPU (libx264) encoding; videoCompressionLevel
+        #   is a single level interpreted as nvenc -cq or libx264 -crf depending
+        #   on the encoder (higher = more compression). The ffmpeg arg lists are
+        #   built from these on demand.
+        self.videoGPUVEnc = GeneralVar(); self.videoGPUVEnc.set({})
+        self.videoCompressionLevel = GeneralVar(); self.videoCompressionLevel.set({})
 
         ########### GUI WIDGETS #####################
 
@@ -508,10 +509,6 @@ class PyVAQ:
         self.writeEnableOnHWSignalVar = tk.BooleanVar(); self.writeEnableOnHWSignalVar.set(False)
         self.writeEnableOnHWSignalCheckbutton = ttk.Checkbutton(self.acquisitionSignalParametersFrame, text="Write enable based on HW signal", variable=self.writeEnableOnHWSignalVar, offvalue=False, onvalue=True)
 
-        DEFAULT_NUM_GPU_VENC_SESSIONS = 3
-        self.maxGPUVencFrame = ttk.LabelFrame(self.acquisitionParametersFrame, text="Max GPU VEnc sessions", style='SingleContainer.TLabelframe')
-        self.maxGPUVEncVar = tk.StringVar(); self.maxGPUVEncVar.set(str(DEFAULT_NUM_GPU_VENC_SESSIONS))
-        self.maxGPUVEncEntry = ttk.Entry(self.maxGPUVencFrame, width=16, textvariable=self.maxGPUVEncVar)
 
         self.selectAcquisitionHardwareButton =  ttk.Button(self.acquisitionParametersFrame, text="Select audio/digital/video inputs", command=self.selectAcquisitionHardware)
         self.acquisitionHardwareText = tk.Text(self.acquisitionParametersFrame)
@@ -538,6 +535,7 @@ class PyVAQ:
         self.cameraSettingsPanel.setBaseFileNameChangeHandler(self.videoBaseFileNameChangeHandler)
         self.cameraSettingsPanel.setEnableWriteChangeHandler(self.videoWriteEnableChangeHandler)
         self.cameraSettingsPanel.setCompressionChangeHandler(self.videoCompressionChangeHandler)
+        self.cameraSettingsPanel.setGPUVEncChangeHandler(self.videoGPUVEncChangeHandler)
 
         self.mergeFrame = cf.CollapsableFrame(self.controlFrame, collapseText="AV File Merging", **COLLAPSABLE_FRAME_STYLE); self.mergeFrame.stateChangeButton.config(**COLLAPSABLE_FRAME_BUTTON_STYLE)
         # self.mergeFrame = ttk.LabelFrame(self.acquisitionFrame, text="AV File merging")
@@ -734,7 +732,6 @@ class PyVAQ:
             'dataFrequency':                   dict(get=lambda:int(self.audioFrequencyVar.get()),              set=self.audioFrequencyVar.set),
             'videoFrequency':                   dict(get=lambda:int(self.videoFrequencyVar.get()),              set=self.videoFrequencyVar.set),
             'chunkSize':                        dict(get=lambda:int(self.chunkSizeVar.get()),                   set=self.chunkSizeVar.set),
-            "maxGPUVEnc":                       dict(get=lambda:int(self.maxGPUVEncVar.get()),                  set=self.maxGPUVEncVar.set),
             # 'exposureTime':                     dict(get=lambda:int(self.exposureTimeVar.get()),                set=self.exposureTimeVar.set),
             'gain':                             dict(get=lambda:float(self.gainVar.get()),                      set=self.gainVar.set),
             'preTriggerTime':                   dict(get=lambda:float(self.preTriggerTimeVar.get()),            set=self.preTriggerTimeVar.set),
@@ -795,8 +792,8 @@ class PyVAQ:
             "startOnHWSignal":                  dict(get=self.startOnHWSignalVar.get,                           set=self.startOnHWSignalVar.set),
             "writeEnableOnHWSignal":            dict(get=self.writeEnableOnHWSignalVar.get,                     set=self.writeEnableOnHWSignalVar.set),
             "videoMonitorDisplaySize":          dict(get=self.videoMonitorDisplaySize.get,                      set=self.videoMonitorDisplaySize.set),
-            "videoCQ":                          dict(get=self.videoCQ.get,                                      set=self.videoCQ.set),
-            "videoCRF":                         dict(get=self.videoCRF.get,                                     set=self.videoCRF.set),
+            "videoGPUVEnc":                     dict(get=self.videoGPUVEnc.get,                                 set=self.videoGPUVEnc.set),
+            "videoCompressionLevel":            dict(get=self.videoCompressionLevel.get,                        set=self.videoCompressionLevel.set),
             "applyConfigurationOnInit":         dict(get=self.cameraConfigurationPanel.applyConfigurationOnInit,set=self.cameraConfigurationPanel.applyConfigurationOnInit),
         }
 
@@ -992,17 +989,20 @@ class PyVAQ:
             None
 
         """
-        p = self.getParams('videoCQ', 'videoCRF')
+        p = self.getParams('videoCompressionLevel', 'videoGPUVEnc')
         for camSerial in self.videoWriteProcesses:
-            cq = p['videoCQ'].get(camSerial, defaultCQ())
-            crf = p['videoCRF'].get(camSerial, defaultCRF())
+            level = p['videoCompressionLevel'].get(camSerial, defaultCRF())
+            gpuVEnc = p['videoGPUVEnc'].get(camSerial, False)
+            # Send the encoder choice plus compression args built from the single
+            #   level for both encoders; the writer uses the one matching gpuVEnc.
             sendMessage(self.videoWriteProcesses[camSerial], (Messages.SETPARAMS, {
-                'gpuCompressionArgs': buildGPUCompressionArgs(cq),
-                'cpuCompressionArgs': buildCPUCompressionArgs(crf),
+                'gpuVEnc': gpuVEnc,
+                'gpuCompressionArgs': buildGPUCompressionArgs(level),
+                'cpuCompressionArgs': buildCPUCompressionArgs(level),
                 }))
 
     def videoCompressionChangeHandler(self, *args):
-        """Handle a user change to a camera's compression quality fields.
+        """Handle a user change to a camera's compression level field.
 
         Args:
             *args (any): Dummy variable to hold unused event data
@@ -1011,8 +1011,20 @@ class PyVAQ:
             None
 
         """
-        self.videoCQ.set(self.cameraSettingsPanel.getCQs())
-        self.videoCRF.set(self.cameraSettingsPanel.getCRFs())
+        self.videoCompressionLevel.set(self.cameraSettingsPanel.getCompressionLevels())
+        self.transmitVideoCompressionArgs()
+
+    def videoGPUVEncChangeHandler(self, *args):
+        """Handle a user change to a camera's GPU-encoding checkbox.
+
+        Args:
+            *args (any): Dummy variable to hold unused event data
+
+        Returns:
+            None
+
+        """
+        self.videoGPUVEnc.set(self.cameraSettingsPanel.getGPUVEncs())
         self.transmitVideoCompressionArgs()
 
     def transmitDaySubfolderSetting(self, *args):
@@ -1509,18 +1521,17 @@ him know. Otherwise, I had nothing to do with it.
             'videoDirectories',
             'videoBaseFileNames',
             'videoWriteEnable',
-            'videoCQ',
-            'videoCRF'
+            'videoCompressionLevel',
+            'videoGPUVEnc'
             )
         self.cameraSettingsPanel.updateCameras(
             p['camSerials'],
             directories=p['videoDirectories'],
             baseFileNames=p['videoBaseFileNames'],
             writeEnables=p['videoWriteEnable'],
-            cqs=p['videoCQ'],
-            crfs=p['videoCRF'],
-            defaultCQ=defaultCQ(),
-            defaultCRF=defaultCRF()
+            compressionLevels=p['videoCompressionLevel'],
+            gpuVEncs=p['videoGPUVEnc'],
+            defaultCompressionLevel=defaultCRF()
             )
         self.update()
 
@@ -3284,6 +3295,18 @@ him know. Otherwise, I had nothing to do with it.
             if 'chunkSize' in params:
                 self.log('Warning, \'chunkSize\' is a legacy setting and will be ignored. Please use \'dataChunkSizeSeconds\' instead')
 
+            # Legacy compression settings: the separate per-camera videoCQ/videoCRF
+            #   were merged into a single videoCompressionLevel (interpreted per
+            #   encoder). Migrate the stored value (preferring cq, then crf) so it
+            #   isn't lost. The encoder choice (videoGPUVEnc) defaults to CPU.
+            if 'videoCompressionLevel' not in params and ('videoCQ' in params or 'videoCRF' in params):
+                legacyLevels = dict(params.get('videoCRF', {}))
+                legacyLevels.update(params.get('videoCQ', {}))
+                params['videoCompressionLevel'] = legacyLevels
+            params.pop('videoCQ', None)
+            params.pop('videoCRF', None)
+            params.pop('maxGPUVEnc', None)  # replaced by per-camera videoGPUVEnc
+
             self.setParams(**params)
             self.updateAcquisitionHardwareDisplay()
             # Rebuild the per-camera settings panel to reflect the loaded
@@ -4002,7 +4025,6 @@ him know. Otherwise, I had nothing to do with it.
                     #     stdoutQueue=self.StdoutManager.queue)
 
 
-        gpuCount = 0
         for k, camSerial in enumerate(p['camSerials']):
             if camSerial in p['videoDirectories']:
                 videoDirectory = p['videoDirectories'][camSerial]
@@ -4051,18 +4073,14 @@ him know. Otherwise, I had nothing to do with it.
                 videoWriteProcess = None
             else:
                 if p['triggerMode'] == "SimpleContinuous":
-                    gpuOk = (gpuCount < p['maxGPUVEnc'])
+                    # Per-camera encoder choice and compression level. The single
+                    #   level is interpreted as nvenc -cq or libx264 -crf by the
+                    #   writer depending on gpuVEnc.
+                    gpuVEnc = p['videoGPUVEnc'].get(camSerial, False)
+                    camLevel = p['videoCompressionLevel'].get(camSerial, defaultCRF())
+                    gpuCompressionArgs = buildGPUCompressionArgs(camLevel)
+                    cpuCompressionArgs = buildCPUCompressionArgs(camLevel)
 
-                    # Build this camera's ffmpeg compression args from its
-                    #   per-camera quality settings (falling back to defaults).
-                    camCQ = p['videoCQ'].get(camSerial, defaultCQ())
-                    camCRF = p['videoCRF'].get(camSerial, defaultCRF())
-                    gpuCompressionArgs = buildGPUCompressionArgs(camCQ)
-                    cpuCompressionArgs = buildCPUCompressionArgs(camCRF)
-
-                    if p['maxGPUVEnc'] > 0 and not gpuOk:
-                        # Some GPU video encoder sessions requested, but not enough for all cameras.
-                        self.log('Warning: Cannot use GPU acceleration for all cameras - not enough GPU VEnc sessions allowed.')
                     videoWriteProcess = SimpleVideoWriter(
                         camSerial=camSerial,
                         videoDirectory=videoDirectory,
@@ -4075,7 +4093,7 @@ him know. Otherwise, I had nothing to do with it.
                         daySubfolders=p['daySubfolders'],
                         verbose=self.videoWriteVerbose,
                         stdoutQueue=self.StdoutManager.queue,
-                        gpuVEnc=gpuOk,
+                        gpuVEnc=gpuVEnc,
                         scheduleEnabled=p['scheduleEnabled'],
                         scheduleStartTime=p['scheduleStartTime'],
                         scheduleStopTime=p['scheduleStopTime'],
@@ -4083,7 +4101,6 @@ him know. Otherwise, I had nothing to do with it.
                         gpuCompressionArgs=gpuCompressionArgs,
                         cpuCompressionArgs=cpuCompressionArgs,
                         )
-                    gpuCount += 1
                 elif p['triggerMode'] == 'None':
                     videoWriteProcess = None
                 else:
@@ -4547,8 +4564,6 @@ him know. Otherwise, I had nothing to do with it.
         self.preTriggerTimeEntry.grid()
         self.recordTimeFrame.grid(                  row=2, column=2, sticky=tk.EW)
         self.recordTimeEntry.grid()
-        self.maxGPUVencFrame.grid(                  row=2, column=3, sticky=tk.NSEW)
-        self.maxGPUVEncEntry.grid()
         self.acquisitionSignalParametersFrame.grid( row=3, column=0, columnspan=4, sticky=tk.NSEW)
         self.startOnHWSignalCheckbutton.grid(row=0, column=0)
         self.writeEnableOnHWSignalCheckbutton.grid(row=0, column=1)
