@@ -413,13 +413,15 @@ class CameraMonitor(BaseMonitor):
 
         self.isIdle = False  # Boolean flag indicating whether the monitor is actively sending images or not
 
+        # The viewer (preview window) toggle is always shown - it controls this
+        #   camera's ffplay preview window and is independent of file writing
+        #   (which now lives in the Camera Settings panel).
+        self.enableViewerCheckButton.grid(row=1, column=0, sticky=tk.W)
         if self.showFileWidgets:
-            self.fileWidget.grid(row=1, column=0, rowspan=2, sticky=tk.NSEW)
-            self.enableViewerCheckButton.grid(row=1, column=1)
+            self.fileWidget.grid(row=2, column=0, sticky=tk.NSEW)
             self.enableWriteCheckButton.grid(row=2, column=1)
         else:
             self.fileWidget.grid_remove()
-            self.enableViewerCheckButton.grid_remove()
             self.enableWriteCheckButton.grid_remove()
 
         # Initialize widget with idle image
@@ -432,11 +434,23 @@ class CameraMonitor(BaseMonitor):
         # self.canvas['width'] = self.displaySize[0]
         # self.canvas['height'] = self.displaySize[1]
 
+    def updateEnableViewerCheckButton(self, *args):
+        # Update the checkbox appearance (parent), then actually open/close the
+        #   ffplay preview window to match the toggle. When disabled, close the
+        #   window; when re-enabled, the next frame (updateImage) reopens it.
+        super().updateEnableViewerCheckButton(*args)
+        viewer = getattr(self, 'viewer', None)  # may not exist yet during init
+        if viewer is not None and not self.viewerEnabled():
+            viewer.close()
+
     def idle(self):
         if not self.isIdle:
             # Transitioning from active to idle
             self.isIdle = True
-            self.viewer.blank()
+            if self.viewerEnabled():
+                # Show a blank frame; skip (and don't reopen ffplay) if the
+                #   viewer is toggled off.
+                self.viewer.blank()
             # self.updateImage(NO_IMAGES_IMAGE)
     def active(self):
         self.isIdle = False
