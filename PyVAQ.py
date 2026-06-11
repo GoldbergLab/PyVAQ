@@ -874,7 +874,8 @@ class PyVAQ:
             if self.StdoutManager is not None:
                 self.StdoutManager.queue.put(self.stdoutBuffer)
             else:
-                print('Warning, logging failed - stdout queue not created.')
+                # No StdoutManager (only during final app shutdown, after
+                #   stopStdoutManager) - fall back to printing directly.
                 for msgBundle in self.stdoutBuffer:
                     args, kwargs = msgBundle
                     print(*args, **kwargs)
@@ -907,6 +908,8 @@ class PyVAQ:
         self.master.quit()
         self.log("Everything should be closed now!")
         self.endLog(inspect.currentframe().f_code.co_name)
+        # Stop the app-lifetime logging process last, after the final log flush.
+        self.stopStdoutManager()
 
     def setVerbosity(self):
         """Produce popup dialog box for setting child process logging verbosity.
@@ -4406,14 +4409,22 @@ him know. Otherwise, I had nothing to do with it.
         self.mergeProcess = None
         self.syncProcess = None
 
-        # Flush the GUI's own accumulated log entry while the StdoutManager is
-        #   still alive to print it.
+        # Flush the GUI's own accumulated log entry. The StdoutManager is an
+        #   app-lifetime utility (created once in __init__, stopped only at app
+        #   exit via stopStdoutManager), so it stays alive across acquisition
+        #   cycles and remains available for logging here and afterwards.
         self.endLog(inspect.currentframe().f_code.co_name)
 
-        # Shut down the StdoutManager last, after all worker processes have died
-        #   and flushed their final log messages, so nothing is lost. It is a
-        #   daemon, so it would otherwise leak (a fresh one is spawned on the
-        #   next createChildProcesses).
+    def stopStdoutManager(self):
+        """Stop the StdoutManager process. Call once, at application exit.
+
+        Should be called after all child processes have exited and flushed
+        their final log messages, so nothing is lost.
+
+        Returns:
+            None
+
+        """
         if self.StdoutManager is not None:
             try:
                 self.StdoutManager.queue.put(Messages.EXIT)
