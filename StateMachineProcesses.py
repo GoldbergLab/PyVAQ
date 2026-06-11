@@ -721,8 +721,9 @@ def generateFileName(directory='.', baseName='unnamed', tags=[], extension=''):
 
     """
     extension = '.' + slugify(extension)
-    fileName = baseName
-    fileName = '_'.join([fileName]+tags)
+    # Join the base name and tags with underscores, skipping any empty parts so
+    #   a blank base name doesn't produce a leading underscore in the filename.
+    fileName = '_'.join(part for part in [baseName] + tags if part)
     fileName = slugify(fileName)
     fileName += extension
     return os.path.join(directory, fileName)
