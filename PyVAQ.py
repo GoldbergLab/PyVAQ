@@ -3233,7 +3233,8 @@ him know. Otherwise, I had nothing to do with it.
             path = asksaveasfilename(
                 title = "Choose a filename to save current settings to.",
                 confirmoverwrite = True,
-                defaultextension = 'pvs',
+                defaultextension = '.pvs',
+                filetypes = [('PyVAQ settings', '*.pvs'), ('All files', '*.*')],
                 initialdir = '.'
             )
 
@@ -3257,7 +3258,8 @@ him know. Otherwise, I had nothing to do with it.
         if path is None:
             path = askopenfilename(
                 title = "Choose a settings file to load.",
-                defaultextension = 'pvs',
+                defaultextension = '.pvs',
+                filetypes = [('PyVAQ settings', '*.pvs'), ('All files', '*.*')],
                 initialdir = '.'
             )
         if path is not None and len(path) > 0:
