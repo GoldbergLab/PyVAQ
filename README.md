@@ -59,7 +59,8 @@ Recording scheduling function does not yet work.
 1. Install GitHub Desktop (or git)
 2. Clone [PyVAQ repository to your computer](https://github.com/GoldbergLab/PyVAQ)
 3. Install NI-DAQmx
-4. Install Python 3.10 (64-bit)
+4. Install Python 3.10 (64-bit) using the traditional installer (python-3.10.11-amd64.exe from python.org). Choose "Customize installation" and make sure "tcl/tk and IDLE" and "py launcher" are checked.
+	- Do NOT install Python 3.10 via the new Python Install Manager (`py install 3.10`). For versions below 3.13 it uses the NuGet builds, which omit Tcl/Tk, so PyVAQ fails with "No module named tkinter". tkinter is standard library and cannot be installed with pip.
 5. Create a virtual environment and install python libraries:
 	a) Open command prompt
 	b) cd C:\path\to\where\PyVAQ\is
