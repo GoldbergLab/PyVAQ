@@ -34,7 +34,7 @@ if simulatedHardware:
     import PySpinSim.PySpinSim as PySpin
     import nidaqmxSim as nidaqmx
     from nidaqmxSim.stream_readers import AnalogMultiChannelReader, DigitalMultiChannelReader, DigitalSingleChannelReader
-    from nidaqmxSim.constants import Edge, TriggerType
+    from nidaqmxSim.constants import TerminalConfiguration, FrequencyUnits, AcquisitionType, Edge
 else:
     # Use physical cameras/DAQs
     try:
@@ -43,7 +43,7 @@ else:
         # pip seems to install PySpin as pyspin sometimes...
         import pyspin as PySpin
     import nidaqmx
-    from nidaqmx.stream_readers import AnalogMultiChannelReader, DigitalSingleChannelReader
+    from nidaqmx.stream_readers import AnalogMultiChannelReader, DigitalMultiChannelReader, DigitalSingleChannelReader
     from nidaqmx.constants import TerminalConfiguration, FrequencyUnits, AcquisitionType, Edge
 
 DEFAULT = TerminalConfiguration.DEFAULT
@@ -5227,13 +5227,13 @@ class DigitalAcquirer(StateMachineProcess):
                             else:
                                 dataQueueSize = self.dataQueue.qsize()
                             if self.monitorQueue is None:
-                                dataQueueSize = None
+                                monitorQueueSize = None
                             else:
-                                dataQueueSize = self.monitorQueue.qsize()
+                                monitorQueueSize = self.monitorQueue.qsize()
                             if self.analysisQueue is None:
-                                dataQueueSize = None
+                                analysisQueueSize = None
                             else:
-                                dataQueueSize = self.analysisQueue.qsize()
+                                analysisQueueSize = self.analysisQueue.qsize()
                             self.log('Queue sizes:')
                             self.log('        Main:', dataQueueSize)
                             self.log('  Monitoring:', monitorQueueSize)

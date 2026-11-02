@@ -1,7 +1,9 @@
 import tkinter as tk
 import tkinter.ttk as ttk
+import os
+from pathlib import Path
 import numpy as np
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageDraw, ImageFont
 #from SharedImageQueue import SharedImageSender
 from scipy.signal import butter, lfilter
 from matplotlib.backends.backend_tkagg import (
@@ -23,6 +25,31 @@ WIDGET_COLORS = [
     '#FFC1C1'  # light red
 ]
 LINE_STYLES = [c+'-' for c in 'bykcmgr']
+
+LABEL_FONT_FILENAME = 'segoeuib.ttf'
+
+def loadLabelFont(size):
+    """Load the bold font used for digital channel labels.
+
+    Looks for the font in the repo's Resources folder (relative to this file,
+    not the CWD), then in the Windows system font folder, and finally falls
+    back to PIL's built-in default font so a missing font never breaks the
+    digital monitor.
+    """
+    candidates = [
+        Path(__file__).parent / 'Resources' / LABEL_FONT_FILENAME,
+        Path(os.environ.get('WINDIR', r'C:\Windows')) / 'Fonts' / LABEL_FONT_FILENAME,
+    ]
+    for candidate in candidates:
+        try:
+            return ImageFont.truetype(str(candidate), size)
+        except OSError:
+            continue
+    try:
+        return ImageFont.load_default(size)
+    except TypeError:
+        # Pillow < 10.1 does not accept a size argument
+        return ImageFont.load_default()
 
 class BaseMonitor(CollapsableFrame):
     """A base class that other monitor classes inherit from.
@@ -210,7 +237,7 @@ class DigitalMonitor(BaseMonitor):
             self.stripes = np.expand_dims(((np.array(range(self.viewerChannelCount)) % 2) * stripeIntensity).astype('uint8'), [1, 2])
             self.stripes = np.concatenate((self.stripes*0, self.stripes*0, self.stripes), axis=2)
 
-            font = ImageFont.truetype('.\Resources\segoeuib.ttf', int(self.channelHeight * 0.7))
+            font = loadLabelFont(int(self.channelHeight * 0.7))
 
             self.labelImage = Image.new('RGBA', (self.viewWidth, self.viewerChannelCount * self.channelHeight))
             labelDraw = ImageDraw.Draw(self.labelImage)

@@ -4040,7 +4040,7 @@ him know. Otherwise, I had nothing to do with it.
                         scheduleStopTime=p['scheduleStopTime'],
                         stdoutQueue=self.StdoutManager.queue)
                 elif p['triggerMode'] != 'None':
-                    raise Error('Cannot acquire digital signals without simple continuous triggering.')
+                    raise ValueError('Cannot acquire digital signals without simple continuous triggering.')
                     # self.audioWriteProcess = AudioWriter(
                     #     audioDirectory=p['audioDirectory'],
                     #     audioBaseFileName=p['audioBaseFileName'],
